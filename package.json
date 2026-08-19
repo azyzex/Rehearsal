@@ -20,8 +20,18 @@
   "contributes": {
     "commands": [
       {
+        "command": "dryrun.preview",
+        "title": "Preview",
+        "category": "Dry Run"
+      },
+      {
         "command": "dryrun.testConnection",
-        "title": "Dry Run: Test Connection",
+        "title": "Test Connection",
+        "category": "Dry Run"
+      },
+      {
+        "command": "dryrun.disconnect",
+        "title": "Disconnect",
         "category": "Dry Run"
       }
     ],
@@ -94,7 +104,24 @@
           "description": "Row count above which a table is treated as large for lock and index-build warnings."
         }
       }
-    }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "dryrun.preview",
+          "when": "resourceLangId == sql",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "dryrun.preview",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "resourceLangId == sql"
+      }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.js",

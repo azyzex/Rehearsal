@@ -33,6 +33,18 @@ export interface QueryResult {
  */
 export interface Transaction {
   query(sql: string, params?: readonly unknown[]): Promise<QueryResult>;
+
+  /**
+   * Marks a point to come back to. Analysis uses this to run a statement, look
+   * at the result, and undo just that statement while staying in the same
+   * transaction.
+   *
+   * Savepoints are exposed as two narrow methods rather than as a general
+   * bypass of `query`'s screening, so that there is still no code path in the
+   * codebase capable of issuing a COMMIT. `name` must be a bare identifier.
+   */
+  savepoint(name: string): Promise<void>;
+  rollbackTo(name: string): Promise<void>;
 }
 
 export interface TableStats {
@@ -67,6 +79,23 @@ export interface DatabaseAdapter {
   countRows(table: string, where?: string): Promise<number>;
   countNonNull(table: string, column: string): Promise<number>;
   countViolating(table: string, predicate: string): Promise<number>;
+  /** Rows in `table` whose `columns` do not match any row in the referenced table. */
+  countOrphans(
+    table: string,
+    columns: readonly string[],
+    referencedTable: string,
+    referencedColumns: readonly string[],
+  ): Promise<number>;
+  /** How many duplicate groups exist over `columns`, and how many rows they cover. */
+  countDuplicates(
+    table: string,
+    columns: readonly string[],
+  ): Promise<{ groups: number; rows: number }>;
+  /**
+   * Rows that would fail to cast to `newType`. Returns null when the cast
+   * cannot be tested at all — reported as unverifiable rather than as zero.
+   */
+  countCastFailures(table: string, column: string, newType: string): Promise<number | null>;
   tableStats(table: string): Promise<TableStats>;
   sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]>;
   primaryKeyColumns(table: string): Promise<string[]>;

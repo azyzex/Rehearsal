@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { findTransactionControl, maskLiterals, statementStarts } from '../parser/transactionControl';
+import { maskLiterals, statementStarts } from '../parser/mask';
+import { findTransactionControl } from '../parser/transactionControl';
 
 describe('maskLiterals', () => {
   const masked = (sql: string): string => maskLiterals(sql);

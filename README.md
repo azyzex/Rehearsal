@@ -2,8 +2,9 @@
 
 See what a SQL statement will actually do to your data, before you run it for real.
 
-> **Status: M0 (foundation).** The connection layer and the rollback mechanism are built and
-> tested against a real Postgres. The panel and the statement analysis land in M1–M2. See
+> **Status: M2.** The rollback mechanism, the statement splitter, DML previews with before/after
+> samples, all the DDL probes, and the panel are built and tested against a real Postgres —
+> 121 tests. Safety hardening (M3) and the demo GIF (M4) are next. See
 > [DRYRUN_SPEC.md](DRYRUN_SPEC.md) for the full plan.
 
 ## The problem

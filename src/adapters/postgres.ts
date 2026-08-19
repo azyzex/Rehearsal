@@ -22,6 +22,8 @@ import { findTransactionControl } from '../parser/transactionControl';
  * serialized through a queue so overlapping analyses can never interleave
  * statements inside one another's transaction.
  */
+const CAST_SAVEPOINT = 'dryrun_cast';
+
 export class PostgresAdapter implements DatabaseAdapter {
   readonly engine = 'postgres' as const;
   readonly supportsTransactionalDDL = true;
@@ -90,6 +92,14 @@ export class PostgresAdapter implements DatabaseAdapter {
           const result = await client.query(sql, params ? [...params] : undefined);
           return { rows: result.rows as Row[], rowCount: result.rowCount };
         },
+
+        savepoint: async (name: string): Promise<void> => {
+          await client.query(`SAVEPOINT ${savepointName(name)}`);
+        },
+
+        rollbackTo: async (name: string): Promise<void> => {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepointName(name)}`);
+        },
       };
 
       await client.query('BEGIN');
@@ -134,6 +144,82 @@ export class PostgresAdapter implements DatabaseAdapter {
       `SELECT COUNT(*)::bigint AS n FROM ${qualify(table)} WHERE NOT (${predicate})`,
     );
     return readCount(rows);
+  }
+
+  async countOrphans(
+    table: string,
+    columns: readonly string[],
+    referencedTable: string,
+    referencedColumns: readonly string[],
+  ): Promise<number> {
+    const refColumns = referencedColumns.length > 0 ? referencedColumns : columns;
+    if (columns.length === 0 || columns.length !== refColumns.length) {
+      throw new Error('Foreign key columns do not line up with the referenced columns.');
+    }
+
+    const on = columns
+      .map((c, i) => `r.${quoteIdent(refColumns[i]!)} = t.${quoteIdent(c)}`)
+      .join(' AND ');
+    // A NULL in any part of the key satisfies a foreign key by definition, so
+    // those rows are excluded rather than counted as orphans.
+    const notNull = columns.map((c) => `t.${quoteIdent(c)} IS NOT NULL`).join(' AND ');
+
+    const { rows } = await this.probe(
+      `SELECT COUNT(*)::bigint AS n
+         FROM ${qualify(table)} t
+         LEFT JOIN ${qualify(referencedTable)} r ON ${on}
+        WHERE ${notNull} AND r.${quoteIdent(refColumns[0]!)} IS NULL`,
+    );
+    return readCount(rows);
+  }
+
+  async countDuplicates(
+    table: string,
+    columns: readonly string[],
+  ): Promise<{ groups: number; rows: number }> {
+    if (columns.length === 0) {
+      return { groups: 0, rows: 0 };
+    }
+
+    const list = columns.map(quoteIdent).join(', ');
+    // NULLs never collide under a unique constraint, so they are excluded.
+    const notNull = columns.map((c) => `${quoteIdent(c)} IS NOT NULL`).join(' AND ');
+
+    const { rows } = await this.probe(
+      `SELECT COUNT(*)::bigint AS groups, COALESCE(SUM(c), 0)::bigint AS rows
+         FROM (
+           SELECT COUNT(*) AS c
+             FROM ${qualify(table)}
+            WHERE ${notNull}
+            GROUP BY ${list}
+           HAVING COUNT(*) > 1
+         ) d`,
+    );
+
+    const row = rows[0];
+    return { groups: Number(row?.['groups'] ?? 0), rows: Number(row?.['rows'] ?? 0) };
+  }
+
+  async countCastFailures(table: string, column: string, newType: string): Promise<number | null> {
+    // A failing cast raises, which would abort whatever transaction it runs in.
+    // It runs inside its own rolled-back transaction with a savepoint so that
+    // a raise costs nothing, and an unsupported cast is reported as unknown
+    // rather than silently as zero.
+    return this.withRollback(async (tx) => {
+      await tx.savepoint(CAST_SAVEPOINT);
+      try {
+        const { rows } = await tx.query(
+          `SELECT COUNT(*)::bigint AS n
+             FROM ${qualify(table)}
+            WHERE ${quoteIdent(column)} IS NOT NULL
+              AND CAST(${quoteIdent(column)} AS ${newType}) IS NULL`,
+        );
+        return readCount(rows);
+      } catch {
+        await tx.rollbackTo(CAST_SAVEPOINT).catch(() => undefined);
+        return null;
+      }
+    });
   }
 
   async tableStats(table: string): Promise<TableStats> {
@@ -265,4 +351,16 @@ export function quoteIdent(name: string): string {
 
 function readCount(rows: readonly Row[]): number {
   return Number(rows[0]?.['n'] ?? 0);
+}
+
+/**
+ * Savepoint names are interpolated into SQL, so they are restricted to bare
+ * identifiers. Every caller passes a constant today; this makes sure that
+ * stays true even if one day a caller passes something derived.
+ */
+function savepointName(name: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid savepoint name: ${name}`);
+  }
+  return name;
 }

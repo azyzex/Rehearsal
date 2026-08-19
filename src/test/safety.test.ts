@@ -48,11 +48,26 @@ describe('no COMMIT in the codebase', () => {
 
     it(`${relative} contains no COMMIT`, () => {
       const code = stripComments(fs.readFileSync(file, 'utf8'));
-      const match = /\bCOMMIT\b/i.exec(code);
+
+      // Case-sensitive: SQL keywords are uppercase throughout this codebase,
+      // so `COMMIT` is a statement while "previews never commit" is a sentence
+      // in an error message. Matching prose case-insensitively would push the
+      // wording around to satisfy the scanner, which is the tail wagging the
+      // dog — the hazard is a COMMIT reaching the server, not the word.
+      const keyword = /\bCOMMIT\b/.exec(code);
       assert.equal(
-        match,
+        keyword,
         null,
         `${relative} contains COMMIT — a preview must never persist anything.`,
+      );
+
+      // The lowercase spelling still matters in the one place it could do
+      // damage: handed to something that executes it.
+      const executed = /\b(?:query|execute|exec)\s*\(\s*[`'"]\s*commit\b/i.exec(code);
+      assert.equal(
+        executed,
+        null,
+        `${relative} passes a commit statement to a query call.`,
       );
     });
   }

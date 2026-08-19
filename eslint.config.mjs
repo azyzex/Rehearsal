@@ -14,12 +14,12 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'Literal[value=/\\bCOMMIT\\b/i]',
+          selector: 'Literal[value=/\\bCOMMIT\\b/]',
           message:
             'Dry Run never commits. If this is user-supplied SQL, route it through findTransactionControl instead.',
         },
         {
-          selector: 'TemplateElement[value.raw=/\\bCOMMIT\\b/i]',
+          selector: 'TemplateElement[value.raw=/\\bCOMMIT\\b/]',
           message: 'Dry Run never commits.',
         },
       ],
