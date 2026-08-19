@@ -130,7 +130,9 @@
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run compile-tests && node --test \"out/test/**/*.test.js\"",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "testbed:db": "node testbed/postgres-shop/scripts/local-db.mjs",
+    "testbed:seed": "node testbed/postgres-shop/scripts/setup.mjs"
   },
   "dependencies": {
     "pg": "^8.16.3"

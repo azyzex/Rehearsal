@@ -203,16 +203,31 @@ async function report(client) {
 
   const n = (v) => v.toLocaleString();
 
+  // Severities are derived from the same default thresholds the extension
+  // uses, not hardcoded. At a small --users the numbers fall below those
+  // thresholds and the honest answer changes — and since this printout is the
+  // acceptance check for the panel, it has to stay true at any scale.
+  const CAUTION_ROWS = 100;
+  const DESTRUCTIVE_ROWS = 1000;
+  const LARGE_TABLE = 100_000;
+
+  const blastRadius = (rows) =>
+    rows === 0 ? 'safe' : rows > DESTRUCTIVE_ROWS ? 'destructive' : rows > CAUTION_ROWS ? 'caution' : 'safe';
+
   console.log(`\nSeeded. What the panel should say when you preview each file:\n`);
   const rows = [
     ['0001_add_last_seen.sql', 'safe', 'nullable ADD COLUMN, no data touched'],
     ['0002_drop_phone_number.sql', 'destructive', `${n(phones)} rows have a phone number`],
     ['0003_email_not_null.sql', 'blocking', `${n(nullEmails)} rows have no email`],
-    ['0004_index_orders.sql', 'blocking', `${n(orderCount)} rows, no CONCURRENTLY`],
-    ['0005_retire_free_tier.sql', 'destructive', `${n(freeUsers)} rows change tier`],
+    [
+      '0004_index_orders.sql',
+      orderCount > LARGE_TABLE ? 'blocking' : 'caution',
+      `${n(orderCount)} rows, no CONCURRENTLY`,
+    ],
+    ['0005_retire_free_tier.sql', blastRadius(freeUsers), `${n(freeUsers)} rows change tier`],
     ['0006_add_constraints.sql', 'blocking', `${n(orphanUsers)} orphan users, ${n(orphanOrders)} orphan orders, ${n(dupeRows)} duplicate emails, ${n(zeroTotals)} zero-total orders`],
     ['0007_update.sql', 'mixed', 'the four-row demo: red, red, amber, green'],
-    ['0008_cleanup_carts.sql', 'destructive', `${n(carts)} carts total, ${n(abandoned)} abandoned`],
+    ['0008_cleanup_carts.sql', blastRadius(carts), `${n(carts)} carts total, ${n(abandoned)} abandoned`],
     ['0009_safe_changes.sql', 'safe', `nickname is null in all ${n(userCount)} rows (${nicknames} non-null) — DROP COLUMN is safe`],
   ];
 
