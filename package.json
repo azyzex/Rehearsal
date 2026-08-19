@@ -1,0 +1,122 @@
+{
+  "name": "dryrun",
+  "displayName": "Dry Run",
+  "description": "See what a SQL statement will actually do to your data, before you run it for real.",
+  "version": "0.0.1",
+  "publisher": "azizguenni",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:sql"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "dryrun.testConnection",
+        "title": "Dry Run: Test Connection",
+        "category": "Dry Run"
+      }
+    ],
+    "configuration": {
+      "title": "Dry Run",
+      "properties": {
+        "dryrun.connectionString": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
+        },
+        "dryrun.envFile": {
+          "type": "string",
+          "default": ".env",
+          "description": "Path (relative to the workspace root) of the .env file to read the connection string from."
+        },
+        "dryrun.productionPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "prod",
+            "production",
+            "live"
+          ],
+          "description": "Case-insensitive regular expressions. If a connection string matches any of them, Dry Run refuses to connect."
+        },
+        "dryrun.allowedConnections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override."
+        },
+        "dryrun.statementTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 100,
+          "description": "statement_timeout applied inside every preview transaction."
+        },
+        "dryrun.lockTimeoutMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue."
+        },
+        "dryrun.sampleSize": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "How many affected rows to show in a before/after sample."
+        },
+        "dryrun.cautionRowThreshold": {
+          "type": "number",
+          "default": 100,
+          "description": "Rows affected above which a statement is marked 'caution'."
+        },
+        "dryrun.destructiveRowThreshold": {
+          "type": "number",
+          "default": 1000,
+          "description": "Rows affected above which a statement is marked 'destructive'."
+        },
+        "dryrun.largeTableThreshold": {
+          "type": "number",
+          "default": 100000,
+          "description": "Row count above which a table is treated as large for lock and index-build warnings."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "test": "npm run compile-tests && node --test \"out/test/**/*.test.js\"",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.15.5",
+    "@types/vscode": "^1.90.0",
+    "embedded-postgres": "17.10.0-beta.17",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.20.0"
+  }
+}
