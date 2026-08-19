@@ -5,7 +5,13 @@
       "name": "Run Dry Run extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        // Open this folder in the dev-host window too. The connection string is
+        // read from the workspace .env, so a window with no folder open has
+        // nothing to connect with.
+        "${workspaceFolder}"
+      ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
       "preLaunchTask": "npm: compile"
     }
