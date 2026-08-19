@@ -129,7 +129,19 @@ export async function analyzeDml(
       };
     });
 
-    return { rowCount, sample: { rows, totalAffected: rowCount } };
+    return {
+      rowCount,
+      sample: {
+        rows,
+        totalAffected: rowCount,
+        // A DELETE or INSERT has no before/after pair to compare, so every
+        // sampled row counts as a change.
+        changedInSample:
+          classification.kind === 'update'
+            ? rows.filter((row) => row.changed.length > 0).length
+            : rows.length,
+      },
+    };
   });
 }
 

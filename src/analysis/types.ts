@@ -37,6 +37,17 @@ export interface Sample {
   /** Total rows affected, which is usually far larger than `rows.length`. */
   readonly totalAffected: number;
   /**
+   * How many of the sampled rows actually differ before versus after.
+   *
+   * This is not the same as `rows.length`. `UPDATE users SET tier = 'free'
+   * WHERE tier IS NOT NULL` rewrites every row, and Postgres counts every one
+   * of them as affected, but a row already holding 'free' does not change
+   * value. Saying "50,000 rows change" above twenty visibly identical rows
+   * reads as a bug in the tool, so the difference is measured and said out
+   * loud instead.
+   */
+  readonly changedInSample?: number;
+  /**
    * Set when no sample could be taken. The count is still exact; only the
    * per-row detail is missing. A wrong sample is worse than no sample, so
    * this is stated rather than approximated.

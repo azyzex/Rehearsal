@@ -4,7 +4,7 @@ import { SplitStatement } from '../parser/splitter';
 import { analyzeDdl } from './ddl';
 import { analyzeDml } from './dml';
 import { blastRadiusSeverity, formatCount, plural } from './severity';
-import { Finding, Thresholds } from './types';
+import { Finding, Sample, Thresholds } from './types';
 
 /**
  * Runs each statement through the right analyzer and turns the result into a
@@ -81,10 +81,13 @@ async function analyzeOne(
       thresholds,
     );
 
+    const described = describeDml(classification, rowCount, severity === 'destructive');
+
     return {
       ...base,
       severity,
-      ...describeDml(classification, rowCount, severity === 'destructive'),
+      ...described,
+      detail: described.detail + noOpRewriteNote(classification, sample),
       rowCount,
       sample,
     };
@@ -111,6 +114,28 @@ async function analyzeOne(
     ...(outcome.rowCount !== undefined ? { rowCount: outcome.rowCount } : {}),
     ...(outcome.estimated ? { estimated: true } : {}),
   };
+}
+
+/**
+ * An UPDATE can touch a row without changing it — `SET tier = 'free' WHERE tier
+ * IS NOT NULL` rewrites rows that already hold 'free'. Postgres counts those as
+ * affected, correctly, but a panel that says "50,000 rows change" above twenty
+ * visibly identical rows looks broken. So when none of the sample actually
+ * differs, the row says so.
+ *
+ * That is worth knowing on its own: a rewrite of the whole table still costs the
+ * same I/O, bloat and replication traffic as a real one.
+ */
+function noOpRewriteNote(classification: Classification, sample: Sample): string {
+  if (classification.kind !== 'update' || !sample.rows.length) {
+    return '';
+  }
+  if (sample.changedInSample !== 0) {
+    return '';
+  }
+  return sample.rows.length === sample.totalAffected
+    ? ' None of them actually change value — this rewrites the rows without altering them.'
+    : ` None of the ${sample.rows.length} sampled rows actually change value, so this may be rewriting rows without altering them.`;
 }
 
 /**
@@ -163,7 +188,7 @@ function describeDml(
       }
       return {
         headline: severe ? 'Changes a lot of rows' : 'Changes rows',
-        detail: `${rows} in ${table} ${plural(rowCount, 'changes', 'change')}.`,
+        detail: `${rows} in ${table} ${plural(rowCount, 'is', 'are')} updated.`,
       };
   }
 }

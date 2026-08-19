@@ -78,7 +78,7 @@ describe('analysis', () => {
       // still shows you exactly what it does. Severity is about blast radius;
       // the sample is available either way.
       assert.equal(finding.severity, 'safe');
-      assert.match(finding.detail, /^33 rows in users change\.$/);
+      assert.match(finding.detail, /^33 rows in users are updated\.$/);
 
       const sample = finding.sample!;
       assert.equal(sample.totalAffected, PRO);
@@ -104,6 +104,44 @@ describe('analysis', () => {
       assert.equal(finding.headline, 'Will change every row');
       assert.match(finding.detail, /There is no WHERE clause/);
       assert.equal(await countPro(), PRO);
+    });
+
+    it('says so when it rewrites rows without changing their values', async () => {
+      // Postgres counts every rewritten row as affected, including rows that
+      // already hold the new value. Reporting the count alone would put a
+      // large number above a sample of visibly identical rows, which reads as
+      // a broken tool rather than as the real finding: a full-table rewrite
+      // that costs the same I/O and bloat as a real one.
+      const finding = await one(`UPDATE users SET tier = tier WHERE tier IS NOT NULL`);
+
+      assert.equal(finding.rowCount, TOTAL_USERS);
+      assert.equal(finding.sample!.changedInSample, 0);
+
+      // Only 20 of the 100 rows were sampled, so the claim is hedged to what
+      // was actually observed. Asserting the unhedged wording here would be
+      // asserting an overclaim.
+      assert.match(finding.detail, /None of the 20 sampled rows actually change value/);
+      assert.match(finding.detail, /may be rewriting rows without altering them/);
+
+      for (const row of finding.sample!.rows) {
+        assert.deepEqual(row.changed, [], 'no column actually differs');
+      }
+    });
+
+    it('drops the hedge when the whole affected set was sampled', async () => {
+      const finding = await one(
+        `UPDATE users SET tier = tier WHERE id <= ${DEFAULT_THRESHOLDS.sampleSize}`,
+      );
+
+      assert.equal(finding.rowCount, DEFAULT_THRESHOLDS.sampleSize);
+      assert.equal(finding.sample!.changedInSample, 0);
+      assert.match(finding.detail, /None of them actually change value/);
+    });
+
+    it('does not claim a no-op when values really do change', async () => {
+      const finding = await one(`UPDATE users SET tier = 'free' WHERE tier = 'pro'`);
+      assert.equal(finding.sample!.changedInSample, DEFAULT_THRESHOLDS.sampleSize);
+      assert.doesNotMatch(finding.detail, /without altering/);
     });
 
     it('says plainly when a statement matches nothing', async () => {

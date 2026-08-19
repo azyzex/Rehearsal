@@ -41,6 +41,10 @@ cloud database is for driving the extension by hand and recording the demo.
 Neon is free, needs no credit card, and gives you a plain Postgres connection
 string. Roughly two minutes.
 
+> The project used while building this is called `dryrun-testbed`, on Postgres 18
+> in `us-east-1`. The steps below are what to repeat from scratch — and worth
+> reading anyway for the two settings that matter, in steps 2 and 5.
+
 ### 1. Create the project
 
 1. Go to **https://neon.com** and sign up (GitHub or Google is fastest).

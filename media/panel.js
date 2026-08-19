@@ -224,7 +224,10 @@
         tbody.appendChild(sampleRow('before', row, columns, keyColumns, false));
       }
       if (row.after) {
-        tbody.appendChild(sampleRow(row.before ? 'after' : 'new', row, columns, keyColumns, true));
+        // An UPDATE can rewrite a row without altering it. Labelling that is
+        // the difference between an honest report and a rendering bug.
+        const label = !row.before ? 'new' : row.changed.length === 0 ? 'unchanged' : 'after';
+        tbody.appendChild(sampleRow(label, row, columns, keyColumns, true));
       }
     }
     table.appendChild(tbody);
