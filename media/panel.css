@@ -337,6 +337,199 @@ td.changed.after {
   text-align: center;
 }
 
+/* ---- impact diagram ---- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tab {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 9px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.tab.active {
+  color: var(--vscode-foreground);
+  border-color: var(--dryrun-border);
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+#diagram {
+  position: relative;
+  padding: 18px 14px 24px;
+  overflow: auto;
+}
+
+.diagram-grid {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px 56px;
+  align-items: flex-start;
+}
+
+/* The arrows are drawn on top of the cards but must not eat their clicks. */
+.diagram-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.table-card {
+  position: relative;
+  border: 1px solid var(--dryrun-border);
+  border-radius: 5px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  min-width: 210px;
+  max-width: 320px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.table-card.caution { border-color: var(--dryrun-caution); }
+.table-card.blocking,
+.table-card.destructive { border-color: var(--dryrun-destructive); }
+
+.table-card.doomed {
+  opacity: 0.72;
+}
+
+.table-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--dryrun-border);
+  background: var(--vscode-editorWidget-background, transparent);
+}
+
+.table-name {
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.table-card.doomed .table-name {
+  text-decoration: line-through;
+}
+
+.table-rows {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.82em;
+  white-space: nowrap;
+}
+
+.column {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 10px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.86em;
+}
+
+.column.touched {
+  cursor: pointer;
+}
+
+.column.touched:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.column-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-type {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.column-note {
+  font-size: 0.85em;
+  white-space: nowrap;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+
+.column.impact-drop .column-name {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.column.sev-safe .column-note { color: var(--dryrun-safe); }
+.column.sev-caution .column-note { color: var(--dryrun-caution); }
+.column.sev-blocking .column-note,
+.column.sev-destructive .column-note { color: var(--dryrun-destructive); }
+
+.column .pk {
+  color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
+  flex-shrink: 0;
+}
+
+.table-notes {
+  border-top: 1px solid var(--dryrun-border);
+  padding: 5px 10px;
+}
+
+.table-note {
+  font-size: 0.83em;
+  cursor: pointer;
+  padding: 1px 0;
+}
+
+.table-note.safe { color: var(--dryrun-safe); }
+.table-note.caution { color: var(--dryrun-caution); }
+.table-note.blocking,
+.table-note.destructive { color: var(--dryrun-destructive); }
+
+.edge-line {
+  fill: none;
+  stroke: var(--vscode-descriptionForeground);
+  stroke-width: 1.2;
+  opacity: 0.55;
+}
+
+.edge-line.added {
+  stroke: var(--dryrun-safe);
+  opacity: 1;
+}
+
+.edge-line.added.blocking,
+.edge-line.added.destructive {
+  stroke: var(--dryrun-destructive);
+  stroke-dasharray: 5 3;
+}
+
+.edge-label {
+  fill: var(--dryrun-destructive);
+  font-size: 10px;
+  font-family: var(--vscode-font-family);
+}
+
+.edge-break {
+  stroke: var(--dryrun-destructive);
+  stroke-width: 1.6;
+}
+
+.diagram-legend {
+  margin-top: 20px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+
 footer {
   padding: 8px 14px;
   border-top: 1px solid var(--dryrun-border);

@@ -60,6 +60,22 @@ export interface QueryPlan {
   readonly raw: unknown;
 }
 
+export interface ColumnInfo {
+  readonly name: string;
+  /** As Postgres renders it: `text`, `character varying(20)`, `timestamptz`. */
+  readonly type: string;
+  readonly nullable: boolean;
+  readonly isPrimaryKey: boolean;
+}
+
+export interface ForeignKeyInfo {
+  readonly name: string;
+  readonly fromTable: string;
+  readonly fromColumns: readonly string[];
+  readonly toTable: string;
+  readonly toColumns: readonly string[];
+}
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -99,6 +115,10 @@ export interface DatabaseAdapter {
   tableStats(table: string): Promise<TableStats>;
   sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]>;
   primaryKeyColumns(table: string): Promise<string[]>;
+  /** Columns in declaration order, for drawing the table. */
+  tableColumns(table: string): Promise<ColumnInfo[]>;
+  /** Foreign keys with either end among `tables`. */
+  foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]>;
   explain(sql: string, analyze: boolean): Promise<QueryPlan>;
 }
 

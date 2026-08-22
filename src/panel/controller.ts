@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Diagram } from '../analysis/impact';
 import { Finding, Severity } from '../analysis/types';
 import { SplitStatement } from '../parser/splitter';
 
@@ -106,6 +107,11 @@ export class PreviewPanel {
     this.findings.set(finding.statementIndex, finding);
     void this.panel.webview.postMessage({ type: 'finding', finding: serialize(finding) });
     this.applyDecorations();
+  }
+
+  /** The impact diagram, sent separately because it needs every finding first. */
+  showDiagram(diagram: Diagram): void {
+    void this.panel.webview.postMessage({ type: 'diagram', diagram });
   }
 
   finish(summary?: string): void {
@@ -240,12 +246,17 @@ export class PreviewPanel {
     <span id="file">No file analysed yet</span>
   </div>
   <div class="meta">
+    <div class="tabs" role="tablist">
+      <button id="tab-list" class="tab active" type="button" role="tab">List</button>
+      <button id="tab-diagram" class="tab" type="button" role="tab">Diagram</button>
+    </div>
     <span id="connection"></span>
     <button id="cancel" type="button" hidden>Stop</button>
   </div>
 </header>
 <div id="summary" class="summary" hidden></div>
 <main id="rows"></main>
+<div id="diagram" hidden></div>
 <footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
 <script nonce="${nonce}" src="${media('panel.js')}"></script>
 </body>

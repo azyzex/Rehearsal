@@ -23,6 +23,10 @@
   /** @type {number | null} */
   let current = null;
   let running = false;
+  /** @type {any} */
+  let diagram = null;
+  /** @type {'list' | 'diagram'} */
+  let view = 'list';
 
   const el = {
     file: /** @type {HTMLElement} */ (document.getElementById('file')),
@@ -30,7 +34,35 @@
     cancel: /** @type {HTMLButtonElement} */ (document.getElementById('cancel')),
     summary: /** @type {HTMLElement} */ (document.getElementById('summary')),
     rows: /** @type {HTMLElement} */ (document.getElementById('rows')),
+    diagram: /** @type {HTMLElement} */ (document.getElementById('diagram')),
+    tabList: /** @type {HTMLButtonElement} */ (document.getElementById('tab-list')),
+    tabDiagram: /** @type {HTMLButtonElement} */ (document.getElementById('tab-diagram')),
   };
+
+  function setView(next) {
+    view = next;
+    el.tabList.classList.toggle('active', view === 'list');
+    el.tabDiagram.classList.toggle('active', view === 'diagram');
+    el.rows.hidden = view !== 'list';
+    el.diagram.hidden = view !== 'diagram';
+    if (view === 'diagram') {
+      renderDiagram();
+    }
+  }
+
+  el.tabList.addEventListener('click', () => setView('list'));
+  el.tabDiagram.addEventListener('click', () => setView('diagram'));
+
+  // The edges are positioned from the laid-out cards, so they have to be
+  // redrawn whenever the panel is resized.
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    if (view !== 'diagram') {
+      return;
+    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderDiagram, 80);
+  });
 
   el.cancel.addEventListener('click', () => {
     vscode.postMessage({ type: 'cancel' });
@@ -48,6 +80,7 @@
         expanded.clear();
         current = null;
         running = true;
+        diagram = null;
         el.file.textContent = message.file;
         el.connection.textContent = message.connection;
         el.cancel.hidden = false;
@@ -62,11 +95,21 @@
         render();
         break;
 
+      case 'diagram':
+        diagram = message.diagram;
+        if (view === 'diagram') {
+          renderDiagram();
+        }
+        break;
+
       case 'done':
         running = false;
         el.cancel.hidden = true;
         showSummary(message.summary);
         render();
+        if (view === 'diagram') {
+          renderDiagram();
+        }
         break;
 
       case 'failed':
@@ -346,5 +389,245 @@
 
   function oneLine(sql) {
     return sql.replace(/\s+/g, ' ').trim();
+  }
+
+  // ---- impact diagram ----------------------------------------------------
+
+  /**
+   * The tables this migration touches, drawn with what happens to them.
+   *
+   * A schema diagram shows the same picture whatever you are about to run.
+   * This one only exists because of the statements in the open file: the
+   * dropped column struck through with the rows it costs, the foreign key
+   * that will fail drawn broken, the table that will be locked marked as
+   * locked. Same visual language as an ERD, opposite content.
+   */
+  function renderDiagram() {
+    el.diagram.replaceChildren();
+
+    if (!diagram || diagram.tables.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = running
+        ? 'Working out what this touches…'
+        : 'No tables were identified in this file.';
+      el.diagram.appendChild(empty);
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'diagram-grid';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'diagram-edges');
+    grid.appendChild(svg);
+
+    const cards = new Map();
+    for (const table of diagram.tables) {
+      const card = renderTableCard(table);
+      cards.set(table.name, card);
+      grid.appendChild(card);
+    }
+
+    el.diagram.appendChild(grid);
+    el.diagram.appendChild(renderLegend());
+
+    // Edges are positioned from the laid-out cards, so this has to happen
+    // after the grid is in the document.
+    requestAnimationFrame(() => drawEdges(svg, grid, cards));
+  }
+
+  function renderTableCard(table) {
+    const card = document.createElement('div');
+    card.className = `table-card ${table.severity}${table.doomed ? ' doomed' : ''}`;
+    card.dataset.table = table.name;
+
+    const head = document.createElement('div');
+    head.className = 'table-head';
+
+    const name = document.createElement('span');
+    name.className = 'table-name';
+    name.textContent = table.name;
+    head.appendChild(name);
+
+    if (typeof table.rows === 'number') {
+      const rows = document.createElement('span');
+      rows.className = 'table-rows';
+      rows.textContent = `${table.rows.toLocaleString()} rows`;
+      head.appendChild(rows);
+    }
+    card.appendChild(head);
+
+    for (const column of table.columns) {
+      card.appendChild(renderColumn(column));
+    }
+
+    if (table.notes.length) {
+      const notes = document.createElement('div');
+      notes.className = 'table-notes';
+      for (const note of table.notes) {
+        const line = document.createElement('div');
+        line.className = `table-note ${note.severity}`;
+        line.textContent = note.text;
+        line.addEventListener('click', () =>
+          vscode.postMessage({ type: 'reveal', index: note.statementIndex }),
+        );
+        notes.appendChild(line);
+      }
+      card.appendChild(notes);
+    }
+
+    return card;
+  }
+
+  function renderColumn(column) {
+    const row = document.createElement('div');
+    const touched = Boolean(column.impact);
+    row.className = [
+      'column',
+      touched ? 'touched' : '',
+      column.impact ? `impact-${column.impact}` : '',
+      column.severity ? `sev-${column.severity}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    row.dataset.column = column.name;
+
+    if (column.isPrimaryKey) {
+      const key = document.createElement('span');
+      key.className = 'pk';
+      key.textContent = '⚿';
+      row.appendChild(key);
+    }
+
+    const name = document.createElement('span');
+    name.className = 'column-name';
+    name.textContent = column.name;
+    row.appendChild(name);
+
+    if (column.note) {
+      const note = document.createElement('span');
+      note.className = 'column-note';
+      note.textContent = column.note;
+      row.appendChild(note);
+    } else if (column.type) {
+      const type = document.createElement('span');
+      type.className = 'column-type';
+      type.textContent = shortType(column.type);
+      row.appendChild(type);
+    }
+
+    if (touched && typeof column.statementIndex === 'number') {
+      row.addEventListener('click', () =>
+        vscode.postMessage({ type: 'reveal', index: column.statementIndex }),
+      );
+    }
+
+    return row;
+  }
+
+  /**
+   * Draws a relationship as a curve between the two column rows it actually
+   * connects, rather than between table centres — an arrow that lands on
+   * `org_id` and leaves from `id` says which columns are involved without a
+   * label.
+   */
+  function drawEdges(svg, grid, cards) {
+    const frame = grid.getBoundingClientRect();
+    svg.setAttribute('width', String(frame.width));
+    svg.setAttribute('height', String(frame.height));
+    svg.replaceChildren();
+
+    for (const edge of diagram.edges) {
+      const fromCard = cards.get(edge.fromTable);
+      const toCard = cards.get(edge.toTable);
+      if (!fromCard || !toCard || fromCard === toCard) {
+        continue;
+      }
+
+      const from = anchorFor(fromCard, edge.fromColumn, frame);
+      const to = anchorFor(toCard, edge.toColumn, frame);
+      if (!from || !to) {
+        continue;
+      }
+
+      // Leave from whichever side faces the other card.
+      const leftToRight = from.centre <= to.centre;
+      const start = { x: leftToRight ? from.right : from.left, y: from.y };
+      const end = { x: leftToRight ? to.left : to.right, y: to.y };
+      const bend = Math.max(24, Math.abs(end.x - start.x) / 2);
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute(
+        'd',
+        `M ${start.x} ${start.y} C ${start.x + (leftToRight ? bend : -bend)} ${start.y}, ` +
+          `${end.x - (leftToRight ? bend : -bend)} ${end.y}, ${end.x} ${end.y}`,
+      );
+      path.setAttribute('class', `edge-line ${edge.origin} ${edge.severity}`);
+      svg.appendChild(path);
+
+      // A relationship that cannot be created is crossed out where it would
+      // have landed, and labelled with why.
+      if (edge.origin === 'added' && (edge.severity === 'blocking' || edge.severity === 'destructive')) {
+        const midX = (start.x + end.x) / 2;
+        const midY = (start.y + end.y) / 2;
+
+        const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        cross.setAttribute('d', `M ${midX - 5} ${midY - 5} L ${midX + 5} ${midY + 5} M ${midX + 5} ${midY - 5} L ${midX - 5} ${midY + 5}`);
+        cross.setAttribute('class', 'edge-break');
+        svg.appendChild(cross);
+
+        if (edge.note) {
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('x', String(midX));
+          label.setAttribute('y', String(midY - 9));
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('class', 'edge-label');
+          label.textContent = edge.note;
+          svg.appendChild(label);
+        }
+      }
+    }
+  }
+
+  /** Where on a card an edge for `column` should attach, relative to the grid. */
+  function anchorFor(card, column, frame) {
+    const target =
+      card.querySelector(`.column[data-column="${cssEscape(column)}"]`) ??
+      card.querySelector('.column');
+    if (!target) {
+      return null;
+    }
+
+    const box = target.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    return {
+      left: cardBox.left - frame.left,
+      right: cardBox.right - frame.left,
+      centre: cardBox.left + cardBox.width / 2,
+      y: box.top - frame.top + box.height / 2,
+    };
+  }
+
+  function cssEscape(value) {
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
+
+  function renderLegend() {
+    const legend = document.createElement('div');
+    legend.className = 'diagram-legend';
+    legend.textContent =
+      'Only the tables this file touches. Struck-through columns are dropped, ' +
+      'crossed arrows are relationships that cannot be created, and every number ' +
+      'was measured against your data. Click anything to jump to the statement.';
+    return legend;
+  }
+
+  function shortType(type) {
+    return type
+      .replace('character varying', 'varchar')
+      .replace('timestamp with time zone', 'timestamptz')
+      .replace('timestamp without time zone', 'timestamp')
+      .replace('double precision', 'float8');
   }
 })();

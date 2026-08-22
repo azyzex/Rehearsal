@@ -1,7 +1,9 @@
 import { Client } from 'pg';
 import {
+  ColumnInfo,
   ConnectionConfig,
   DatabaseAdapter,
+  ForeignKeyInfo,
   PrimaryKeyValue,
   QueryPlan,
   QueryResult,
@@ -271,6 +273,67 @@ export class PostgresAdapter implements DatabaseAdapter {
     return rows.map((r) => String(r['name']));
   }
 
+  async tableColumns(table: string): Promise<ColumnInfo[]> {
+    const { rows } = await this.probe(
+      `SELECT a.attname AS name,
+              format_type(a.atttypid, a.atttypmod) AS type,
+              NOT a.attnotnull AS nullable,
+              EXISTS (
+                SELECT 1 FROM pg_index i
+                 WHERE i.indrelid = a.attrelid
+                   AND i.indisprimary
+                   AND a.attnum = ANY(i.indkey)
+              ) AS is_primary
+         FROM pg_attribute a
+        WHERE a.attrelid = to_regclass($1)
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum`,
+      [table],
+    );
+
+    return rows.map((row) => ({
+      name: String(row['name']),
+      type: String(row['type']),
+      nullable: Boolean(row['nullable']),
+      isPrimaryKey: Boolean(row['is_primary']),
+    }));
+  }
+
+  async foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]> {
+    if (tables.length === 0) {
+      return [];
+    }
+
+    const { rows } = await this.probe(
+      `SELECT c.conname AS name,
+              src.relname AS from_table,
+              tgt.relname AS to_table,
+              (SELECT array_agg(att.attname ORDER BY k.ord)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.conrelid AND att.attnum = k.attnum) AS from_columns,
+              (SELECT array_agg(att.attname ORDER BY k.ord)
+                 FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.confrelid AND att.attnum = k.attnum) AS to_columns
+         FROM pg_constraint c
+         JOIN pg_class src ON src.oid = c.conrelid
+         JOIN pg_class tgt ON tgt.oid = c.confrelid
+        WHERE c.contype = 'f'
+          AND (src.relname = ANY($1) OR tgt.relname = ANY($1))`,
+      [tables.map(bareName)],
+    );
+
+    return rows.map((row) => ({
+      name: String(row['name']),
+      fromTable: String(row['from_table']),
+      fromColumns: (row['from_columns'] as string[] | null) ?? [],
+      toTable: String(row['to_table']),
+      toColumns: (row['to_columns'] as string[] | null) ?? [],
+    }));
+  }
+
   async sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]> {
     if (pks.length === 0) {
       return [];
@@ -356,6 +419,13 @@ export function qualify(table: string): string {
 export function quoteIdent(name: string): string {
   const bare = name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name;
   return `"${bare.replace(/"/g, '""')}"`;
+}
+
+/** The table name without its schema, for matching against pg_class.relname. */
+function bareName(table: string): string {
+  const parts = table.split('.');
+  const last = parts[parts.length - 1] ?? table;
+  return last.trim().replace(/^"|"$/g, '');
 }
 
 function readCount(rows: readonly Row[]): number {

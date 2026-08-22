@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { buildDiagram } from './analysis/impact';
 import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
 import { Finding, Severity, Thresholds } from './analysis/types';
@@ -99,6 +100,18 @@ async function preview(
         panel.add(finding);
       },
     });
+
+    // The diagram needs the whole picture, so it is built after the rows have
+    // all resolved rather than incrementally.
+    if (!cancelled) {
+      try {
+        panel.showDiagram(await buildDiagram(connection.adapter, findings));
+      } catch (error) {
+        // A missing diagram is a worse panel, not a broken one — the rows
+        // carry every measurement already.
+        output.appendLine(`Diagram unavailable: ${errorMessage(error)}`);
+      }
+    }
 
     panel.finish(summarize(findings, statements.length, cancelled));
   } catch (error) {
