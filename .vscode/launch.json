@@ -7,6 +7,10 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
+        // Load only the extension under development. Other installed extensions
+        // bring their own activation failures into this window, and sorting out
+        // whose error is whose wastes time on every launch.
+        "--disable-extensions",
         // Open this folder in the dev-host window too. The connection string is
         // read from the workspace .env, so a window with no folder open has
         // nothing to connect with.
