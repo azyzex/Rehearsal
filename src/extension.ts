@@ -10,7 +10,7 @@ import { SchemaPanel } from './panel/schemaPanel';
 import { splitStatements } from './parser/splitter';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const connections = new ConnectionManager();
+  const connections = new ConnectionManager(context.workspaceState);
   const output = vscode.window.createOutputChannel('Dry Run');
   context.subscriptions.push(connections, output);
 
@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Dry Run connected to ${connection.identity.display}.`,
         );
       } catch (error) {
-        reportError(error, output);
+        reportError(error, output, connections);
       }
     }),
 
@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const snapshot = await connection.adapter.schemaSnapshot();
         panel.show(snapshot, connection.identity.display);
       } catch (error) {
-        reportError(error, output);
+        reportError(error, output, connections);
         panel.fail(errorMessage(error));
       }
     }),
@@ -129,7 +129,7 @@ async function preview(
 
     panel.finish(summarize(findings, statements.length, cancelled));
   } catch (error) {
-    reportError(error, output);
+    reportError(error, output, connections);
     panel.fail(errorMessage(error));
   }
 }
@@ -176,7 +176,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function reportError(error: unknown, output: vscode.OutputChannel): void {
+function reportError(
+  error: unknown,
+  output: vscode.OutputChannel,
+  connections?: ConnectionManager,
+): void {
   if (error instanceof ProductionRefusedError) {
     output.appendLine(`Refused: ${error.message}`);
     void vscode.window.showErrorMessage(error.message, 'Open Settings').then((choice) => {
@@ -192,7 +196,28 @@ function reportError(error: unknown, output: vscode.OutputChannel): void {
 
   if (error instanceof ConnectionResolutionError) {
     output.appendLine(error.message);
-    void vscode.window.showErrorMessage(error.message);
+    // Rather than leaving the user to work out where the extension is looking,
+    // let them point at the file. Only the path is kept; the credential inside
+    // it is read fresh each time and never stored.
+    void vscode.window
+      .showErrorMessage(error.message, 'Select .env file…')
+      .then(async (choice) => {
+        if (choice !== 'Select .env file…' || !connections) {
+          return;
+        }
+        const picked = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          openLabel: 'Use this file',
+          title: 'Select the .env file holding your connection string',
+          filters: { 'Environment files': ['env'], 'All files': ['*'] },
+        });
+        if (picked?.[0]) {
+          await connections.useEnvFile(picked[0]);
+          void vscode.window.showInformationMessage(
+            `Dry Run will read ${vscode.workspace.asRelativePath(picked[0])}. Run the command again.`,
+          );
+        }
+      });
     return;
   }
 
