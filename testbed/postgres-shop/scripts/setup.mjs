@@ -10,7 +10,7 @@
  *   --users <n>        how many users to create        (default 50000)
  *   --orders <n>       how many orders to create       (default 300000)
  *
- * This script DROPS AND RECREATES its four tables, so it refuses to run against
+ * This script DROPS AND RECREATES all twenty-one tables, so it refuses to run against
  * anything whose host or database name looks like production — the same rule
  * the extension itself applies.
  *
@@ -77,6 +77,12 @@ function refuseProduction(url) {
 
 const USERS = Number(arg('--users', '50000'));
 const ORDERS = Number(arg('--orders', '300000'));
+// Scaled off the user count, so `--users 2000` shrinks the whole thing rather
+// than leaving a small users table joined to a huge one.
+const scaled = (fraction, minimum) => Math.max(minimum, Math.round(USERS * fraction));
+const PRODUCTS = scaled(0.1, 200);
+const REVIEWS = scaled(0.4, 500);
+const MOVEMENTS = scaled(1, 2000);
 const ORPHAN_USERS = 200; // users pointing at an org that does not exist
 const ORPHAN_ORDERS = 150; // orders pointing at a user that does not exist
 const NULL_EMAILS = 12;
@@ -153,9 +159,185 @@ async function main() {
       [USERS],
     );
 
+    // ---- the related tables, in dependency order --------------------------
+
+    await step(
+      client,
+      'countries',
+      `INSERT INTO countries (code, name)
+       SELECT chr(65 + (i / 26) % 26) || chr(65 + i % 26), 'Country ' || i
+         FROM generate_series(1, 24) AS i`,
+    );
+
+    await step(
+      client,
+      'warehouses',
+      `INSERT INTO warehouses (country_id, name, capacity)
+       SELECT 1 + (i % 24), 'Warehouse ' || i, 5000 + i * 250
+         FROM generate_series(1, 8) AS i`,
+    );
+
+    await step(
+      client,
+      'suppliers',
+      `INSERT INTO suppliers (country_id, name, contact_email)
+       SELECT 1 + (i % 24), 'Supplier ' || i,
+              CASE WHEN i % 7 <> 0 THEN 'supplier' || i || '@example.com' END
+         FROM generate_series(1, 40) AS i`,
+    );
+
+    // Top-level categories first, then children pointing at them, so the
+    // self-reference always resolves.
+    await step(
+      client,
+      'categories',
+      `INSERT INTO categories (parent_id, name, slug)
+       SELECT NULL, 'Category ' || i, 'category-' || i FROM generate_series(1, 8) AS i;
+       INSERT INTO categories (parent_id, name, slug)
+       SELECT 1 + (i % 8), 'Subcategory ' || i, 'subcategory-' || i
+         FROM generate_series(1, 24) AS i`,
+    );
+
+    await step(
+      client,
+      'products',
+      `INSERT INTO products (category_id, supplier_id, sku, name, price_cents, discontinued)
+       SELECT 1 + (i % 32),
+              CASE WHEN i % 13 <> 0 THEN 1 + (i % 40) END,
+              'SKU-' || lpad(i::text, 7, '0'),
+              'Product ' || i,
+              300 + (i * 71) % 60000,
+              i % 23 = 0
+         FROM generate_series(1, $1) AS i`,
+      [PRODUCTS],
+    );
+
+    await step(
+      client,
+      'coupons',
+      `INSERT INTO coupons (code, discount_pct, expires_at)
+       SELECT 'SAVE' || lpad(i::text, 4, '0'), 5 + (i % 6) * 5,
+              now() + (i % 120) * interval '1 day'
+         FROM generate_series(1, 200) AS i`,
+    );
+
+    await step(
+      client,
+      'addresses',
+      `INSERT INTO addresses (user_id, country_id, line1, city, postcode)
+       SELECT 1 + (i % $1), 1 + (i % 24), i || ' Example Street', 'City ' || (i % 400),
+              CASE WHEN i % 9 <> 0 THEN lpad(((i * 7) % 99999)::text, 5, '0') END
+         FROM generate_series(1, $2) AS i`,
+      [USERS, Math.max(1, Math.floor(USERS * 0.6))],
+    );
+
+    await step(
+      client,
+      'sessions',
+      `INSERT INTO sessions (user_id, token, expires_at, user_agent)
+       SELECT 1 + (i % $1), md5(i::text || 'session'), now() + (i % 30) * interval '1 day',
+              CASE WHEN i % 3 = 0 THEN 'ios' WHEN i % 3 = 1 THEN 'android' ELSE 'web' END
+         FROM generate_series(1, $2) AS i`,
+      [USERS, Math.max(1, Math.floor(USERS * 0.5))],
+    );
+
+    await step(
+      client,
+      'wishlists',
+      `INSERT INTO wishlists (user_id, name)
+       SELECT 1 + (i % $1), CASE WHEN i % 4 = 0 THEN 'Gifts' ELSE 'Saved' END
+         FROM generate_series(1, $2) AS i`,
+      [USERS, Math.max(1, Math.floor(USERS * 0.15))],
+    );
+
+    await step(
+      client,
+      'wishlist_items',
+      // Product ids run 1..PRODUCTS contiguously, so the id can be computed
+      // directly rather than looked up.
+      `INSERT INTO wishlist_items (wishlist_id, product_id)
+       SELECT w.id, 1 + ((w.id * 7 + g) % $1)
+         FROM wishlists w, generate_series(0, 2) AS g
+       ON CONFLICT DO NOTHING`,
+      [PRODUCTS],
+    );
+
+    await step(
+      client,
+      'order_items',
+      `INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
+       SELECT o.id, 1 + ((o.id * 13 + g) % $1), 1 + (o.id + g) % 4, 300 + ((o.id * 71) % 60000)
+         FROM orders o, generate_series(0, 1) AS g`,
+      [PRODUCTS],
+    );
+
+    await step(
+      client,
+      'payments',
+      `INSERT INTO payments (order_id, method, amount_cents, status, captured_at)
+       SELECT o.id,
+              CASE WHEN o.id % 4 = 0 THEN 'paypal' WHEN o.id % 7 = 0 THEN 'transfer' ELSE 'card' END,
+              o.total_cents,
+              CASE WHEN o.status = 'refunded' THEN 'refunded'
+                   WHEN o.status = 'pending' THEN 'authorised' ELSE 'captured' END,
+              CASE WHEN o.status <> 'pending' THEN o.placed_at + interval '2 minutes' END
+         FROM orders o`,
+    );
+
+    await step(
+      client,
+      'shipments',
+      `INSERT INTO shipments (order_id, address_id, carrier, tracking, shipped_at)
+       SELECT o.id,
+              1 + (o.id % (SELECT GREATEST(COUNT(*), 1) FROM addresses)),
+              CASE WHEN o.id % 3 = 0 THEN 'ups' WHEN o.id % 3 = 1 THEN 'dhl' ELSE 'royalmail' END,
+              CASE WHEN o.id % 11 <> 0 THEN 'TRK' || lpad(o.id::text, 10, '0') END,
+              CASE WHEN o.id % 11 <> 0 THEN o.placed_at + interval '1 day' END
+         FROM orders o
+        WHERE o.status <> 'pending'`,
+    );
+
+    await step(
+      client,
+      'order_coupons',
+      `INSERT INTO order_coupons (order_id, coupon_id)
+       SELECT o.id, 1 + (o.id % 200) FROM orders o WHERE o.id % 9 = 0
+       ON CONFLICT DO NOTHING`,
+    );
+
+    await step(
+      client,
+      'reviews',
+      `INSERT INTO reviews (product_id, user_id, rating, body)
+       SELECT 1 + (i % $1), 1 + (i % $2), 1 + (i % 5),
+              CASE WHEN i % 3 <> 0 THEN 'Review body ' || i END
+         FROM generate_series(1, $3) AS i`,
+      [PRODUCTS, USERS, REVIEWS],
+    );
+
+    await step(
+      client,
+      'cart_items',
+      `INSERT INTO cart_items (cart_id, product_id, quantity)
+       SELECT c.id, 1 + ((c.id * 5 + g) % $1), 1 + (c.id + g) % 3
+         FROM carts c, generate_series(0, 2) AS g`,
+      [PRODUCTS],
+    );
+
+    await step(
+      client,
+      'inventory',
+      `INSERT INTO inventory_movements (product_id, warehouse_id, delta, reason)
+       SELECT 1 + (i % $1), 1 + (i % 8),
+              CASE WHEN i % 3 = 0 THEN -(1 + i % 9) ELSE 1 + i % 40 END,
+              CASE WHEN i % 3 = 0 THEN 'sale' WHEN i % 5 = 0 THEN 'return' ELSE 'restock' END
+         FROM generate_series(1, $2) AS i`,
+      [PRODUCTS, MOVEMENTS],
+    );
+
     // Without this, pg_class.reltuples is -1 on a freshly loaded table and every
     // table-size estimate the extension makes would be meaningless.
-    await step(client, 'analyze', 'ANALYZE orgs, users, orders, carts');
+    await step(client, 'analyze', 'ANALYZE');
 
     await report(client);
   } finally {

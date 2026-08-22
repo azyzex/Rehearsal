@@ -162,8 +162,19 @@ button:focus {
   border-radius: 6px;
   background: var(--s-card);
   overflow: hidden;
-  cursor: pointer;
+  cursor: grab;
   transition: opacity 120ms ease, border-color 120ms ease;
+  /* Stop a drag from selecting the column text under the cursor. */
+  user-select: none;
+  touch-action: none;
+}
+
+.table.dragging {
+  cursor: grabbing;
+  /* Lifted out of the pack, so it is never dragged underneath a neighbour. */
+  z-index: 10;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  transition: none;
 }
 
 .table.dimmed {

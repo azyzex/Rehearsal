@@ -131,7 +131,10 @@
       toColumn: fk.toColumns[0] || '',
     }));
 
-    layout();
+    // A layout you arranged by hand beats one a simulation guessed at.
+    if (!restorePositions()) {
+      layout();
+    }
     renderCards();
     renderEdges();
     fit();
@@ -312,12 +315,8 @@
         card.appendChild(more);
       }
 
-      card.addEventListener('click', (event) => {
-        event.stopPropagation();
-        selected = selected === node.table.qualified ? null : node.table.qualified;
-        applyHighlight();
-      });
-
+      node.el = card;
+      attachDrag(card, node);
       fragment.appendChild(card);
     }
 
@@ -345,6 +344,128 @@
     row.appendChild(type);
 
     return row;
+  }
+
+  /**
+   * Dragging a table.
+   *
+   * The automatic layout is a starting point, not an answer — it does not know
+   * that these four tables are the ones you care about today. So the cards move,
+   * and where you put them is remembered, because an arrangement you have to
+   * rebuild every time you open the panel is one you stop bothering with.
+   *
+   * A press that does not move is a click, which selects. The threshold matters:
+   * without it, every attempt to select would nudge the card a pixel and every
+   * attempt to drag would also toggle the selection.
+   */
+  function attachDrag(card, node) {
+    /** @type {any} */
+    let drag = null;
+
+    card.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      // Otherwise the stage starts panning underneath the card.
+      event.stopPropagation();
+
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: node.x,
+        originY: node.y,
+        moved: false,
+      };
+      card.setPointerCapture(event.pointerId);
+      card.classList.add('dragging');
+    });
+
+    card.addEventListener('pointermove', (event) => {
+      if (!drag) {
+        return;
+      }
+
+      const screenDx = event.clientX - drag.startX;
+      const screenDy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(screenDx, screenDy) > 3) {
+        drag.moved = true;
+      }
+      if (!drag.moved) {
+        return;
+      }
+
+      // Divided by the zoom, so the card tracks the cursor at any scale.
+      node.x = drag.originX + screenDx / view.scale;
+      node.y = drag.originY + screenDy / view.scale;
+      card.style.left = `${node.x}px`;
+      card.style.top = `${node.y}px`;
+      renderEdges();
+    });
+
+    const finish = (event) => {
+      if (!drag) {
+        return;
+      }
+      card.classList.remove('dragging');
+      if (card.hasPointerCapture(event.pointerId)) {
+        card.releasePointerCapture(event.pointerId);
+      }
+
+      if (drag.moved) {
+        savePositions();
+      } else {
+        selected = selected === node.table.qualified ? null : node.table.qualified;
+        applyHighlight();
+      }
+      drag = null;
+    };
+
+    card.addEventListener('pointerup', finish);
+    card.addEventListener('pointercancel', finish);
+    // The stage's click handler clears the selection; a click that landed on a
+    // card has already been dealt with here.
+    card.addEventListener('click', (event) => event.stopPropagation());
+  }
+
+  /**
+   * Remembers where the tables were put, per database and schema.
+   *
+   * Webview state rather than anything on disk: it survives the panel being
+   * hidden and restored, which is the case that matters, and it costs nothing
+   * if it is lost.
+   */
+  function savePositions() {
+    const positions = {};
+    for (const [name, node] of nodes) {
+      positions[name] = { x: Math.round(node.x), y: Math.round(node.y) };
+    }
+    vscode.setState({ key: layoutKey(), positions });
+  }
+
+  function restorePositions() {
+    const state = vscode.getState();
+    if (!state || state.key !== layoutKey() || !state.positions) {
+      return false;
+    }
+
+    // Only reuse a saved layout that still covers every table. A schema that
+    // has gained a table since would otherwise stack the new one at the origin.
+    for (const name of nodes.keys()) {
+      if (!state.positions[name]) {
+        return false;
+      }
+    }
+
+    for (const [name, node] of nodes) {
+      node.x = state.positions[name].x;
+      node.y = state.positions[name].y;
+    }
+    return true;
+  }
+
+  function layoutKey() {
+    return `${el.connection.textContent || ''}::${schemaFilter}::${nodes.size}`;
   }
 
   function foreignKeyColumns(table) {
@@ -499,6 +620,9 @@
 
   el.fit.addEventListener('click', fit);
   el.relayout.addEventListener('click', () => {
+    // Explicitly throws away a hand-made arrangement, which is the only reason
+    // anyone presses this.
+    vscode.setState(undefined);
     layout();
     renderCards();
     renderEdges();
