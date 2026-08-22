@@ -32,6 +32,26 @@ export interface AnalyzeOptions {
 export async function analyzeStatements(options: AnalyzeOptions): Promise<void> {
   const { adapter, statements, thresholds, onFinding, isCancelled } = options;
 
+  // Table sizes are looked up once per run, not once per statement: a
+  // migration usually hits the same two or three tables repeatedly, and this
+  // is a network round trip each time.
+  const tableSizes = new Map<string, number | undefined>();
+  const sizeOf = async (table: string | undefined): Promise<number | undefined> => {
+    if (!table) {
+      return undefined;
+    }
+    if (!tableSizes.has(table)) {
+      tableSizes.set(
+        table,
+        await adapter
+          .tableStats(table)
+          .then((stats) => stats.estimatedRows)
+          .catch(() => undefined),
+      );
+    }
+    return tableSizes.get(table);
+  };
+
   for (const statement of statements) {
     if (isCancelled?.()) {
       return;
@@ -40,7 +60,9 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
     const classification = classify(statement.sql);
 
     try {
-      onFinding(await analyzeOne(adapter, statement, classification, thresholds));
+      const finding = await analyzeOne(adapter, statement, classification, thresholds);
+      const tableRows = await sizeOf(classification.table);
+      onFinding(tableRows === undefined ? finding : { ...finding, tableRows });
     } catch (error) {
       onFinding({
         statementIndex: statement.index,

@@ -184,6 +184,56 @@ describe('analysis', () => {
     });
   });
 
+  describe('blast radius', () => {
+    it('reports the table size alongside the affected count', async () => {
+      // Without the total, "33 rows" carries no weight — the panel cannot draw
+      // it to scale and the reader cannot tell a rounding error from a
+      // catastrophe.
+      const finding = await one(`UPDATE users SET tier = 'free' WHERE tier = 'pro'`);
+      assert.equal(finding.rowCount, PRO);
+      assert.equal(finding.tableRows, TOTAL_USERS);
+    });
+
+    it('reports it for DDL too', async () => {
+      const finding = await one(`ALTER TABLE users DROP COLUMN phone_number`);
+      assert.equal(finding.rowCount, 50);
+      assert.equal(finding.tableRows, TOTAL_USERS);
+    });
+
+    it('does not read a never-analysed table as an empty one', async () => {
+      // Postgres reports reltuples = -1 until a table has been analysed. Taking
+      // that as zero would size every warning against an empty table — and the
+      // freshly-loaded table that has never been analysed is exactly the one
+      // most likely to be huge.
+      await verifier.query(`CREATE TABLE never_analysed AS SELECT i FROM generate_series(1, 500) i`);
+      try {
+        const { rows } = await verifier.query(
+          `SELECT reltuples::bigint AS n FROM pg_class WHERE oid = to_regclass('never_analysed')`,
+        );
+        assert.equal(Number(rows[0].n), -1, 'precondition: the catalog says "unknown"');
+
+        const stats = await adapter.tableStats('never_analysed');
+        assert.equal(stats.estimatedRows, 500, 'falls back to counting rather than reporting zero');
+      } finally {
+        await verifier.query('DROP TABLE never_analysed');
+      }
+    });
+
+    it('looks the table up once however many statements hit it', async () => {
+      // Each lookup is a network round trip, and a migration touches the same
+      // few tables over and over.
+      const findings = await analyze(`
+        UPDATE users SET tier = 'free' WHERE tier = 'pro';
+        DELETE FROM users WHERE tier = 'pro';
+        ALTER TABLE users DROP COLUMN nickname;
+      `);
+      assert.deepEqual(
+        findings.map((f) => f.tableRows),
+        [TOTAL_USERS, TOTAL_USERS, TOTAL_USERS],
+      );
+    });
+  });
+
   describe('DDL probes', () => {
     it('counts the rows a DROP COLUMN would empty', async () => {
       const finding = await one(`ALTER TABLE users DROP COLUMN phone_number`);

@@ -95,6 +95,12 @@ async function seed(connectionString: string): Promise<void> {
         CASE WHEN i % 2 = 0 THEN '+1555000' || i ELSE NULL END,
         CASE WHEN i > 90 THEN 99 ELSE 1 + (i % 2) END
       FROM generate_series(1, 100) AS i;
+
+      -- Real databases have autovacuum keeping the catalog statistics current.
+      -- A fixture that skips this is not a smaller version of production, it is
+      -- a different thing: reltuples stays at -1 and every size-derived answer
+      -- is measured against a table the planner believes is unknown.
+      ANALYZE orgs, users;
     `);
   } finally {
     await client.end();

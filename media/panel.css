@@ -15,6 +15,8 @@
 
 * {
   box-sizing: border-box;
+  min-width: 0; /* flex and grid children default to min-content, which is what
+                   makes a long SQL line push the whole panel sideways */
 }
 
 body {
@@ -24,6 +26,11 @@ body {
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
+  /* The panel is resized constantly by dragging the editor split. Nothing here
+     may ever scroll the page sideways; wide content scrolls inside its own
+     container instead. */
+  overflow-x: hidden;
+  word-break: break-word;
 }
 
 header {
@@ -59,7 +66,18 @@ header .meta {
   gap: 10px;
   color: var(--vscode-descriptionForeground);
   font-size: 0.9em;
-  flex-shrink: 0;
+  /* The connection string is long and the least important thing in the header,
+     so it gives way to the filename rather than pushing it out. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+header .meta #connection {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the database name visible, drop the host */
+  text-align: right;
 }
 
 .badge-dot {
@@ -120,11 +138,30 @@ main {
 .row.destructive { border-left-color: var(--dryrun-destructive); }
 .row.pending { border-left-color: var(--dryrun-border); }
 
+/*
+ * Badge, statement and line number on one line, with the statement taking
+ * whatever is left. The badge and line number never shrink; the statement
+ * ellipsises. Below ~340px the statement drops to its own line rather than
+ * being squeezed into uselessness.
+ */
 .row-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+@container (max-width: 340px) {
+  .row-head {
+    flex-wrap: wrap;
+  }
+  .statement {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+main {
+  container-type: inline-size;
 }
 
 .badge {
@@ -136,6 +173,7 @@ main {
   border-radius: 3px;
   white-space: nowrap;
   border: 1px solid currentColor;
+  flex-shrink: 0;
 }
 
 .badge.safe { color: var(--dryrun-safe); }
@@ -185,6 +223,43 @@ main {
   margin-top: 5px;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
+}
+
+/* ---- blast radius ---- */
+
+.radius {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.radius-track {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vscode-progressBar-background, var(--dryrun-border));
+  opacity: 0.35;
+  overflow: hidden;
+}
+
+.radius-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.radius-track.safe { color: var(--dryrun-safe); }
+.radius-track.caution { color: var(--dryrun-caution); }
+.radius-track.blocking { color: var(--dryrun-blocking); }
+.radius-track.destructive { color: var(--dryrun-destructive); }
+
+.radius-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.82em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ---- before / after ---- */

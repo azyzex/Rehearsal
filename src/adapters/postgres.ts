@@ -226,7 +226,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     const { rows } = await this.probe(
       `SELECT n.nspname AS schema,
               c.relname AS name,
-              GREATEST(c.reltuples, 0)::bigint AS estimated_rows,
+              c.reltuples::bigint AS estimated_rows,
               pg_total_relation_size(c.oid)::bigint AS total_bytes
          FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -239,10 +239,19 @@ export class PostgresAdapter implements DatabaseAdapter {
       throw new Error(`Table not found: ${table}`);
     }
 
+    // Postgres reports reltuples = -1 for a table that has never been analysed,
+    // which is different from 0 and must not be flattened into it: one means
+    // "no idea", the other means "empty", and a table nobody has analysed is
+    // exactly the freshly-loaded table most likely to be large. Clamping the
+    // two together would silently size an index-build warning, or a blast
+    // radius bar, against a row count of zero.
+    const estimate = Number(row['estimated_rows']);
+    const estimatedRows = estimate >= 0 ? estimate : await this.countRows(table);
+
     return {
       schema: String(row['schema']),
       table: String(row['name']),
-      estimatedRows: Number(row['estimated_rows']),
+      estimatedRows,
       totalBytes: Number(row['total_bytes']),
     };
   }

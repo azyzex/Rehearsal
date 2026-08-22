@@ -158,6 +158,11 @@
     detail.textContent = finding.detail;
     row.appendChild(detail);
 
+    const bar = renderBlastRadius(finding);
+    if (bar) {
+      row.appendChild(bar);
+    }
+
     const sample = finding.sample;
     if (sample && sample.unavailable) {
       const note = document.createElement('div');
@@ -169,6 +174,65 @@
     }
 
     return row;
+  }
+
+  /**
+   * How much of the table this touches, drawn to scale.
+   *
+   * A bare "40,072 rows" carries no weight until you know the table holds
+   * 50,000. The bar answers that in the time it takes to glance at it, which
+   * is the whole point of putting this in a panel rather than a log line.
+   *
+   * The table total is the planner's estimate, so the bar is proportional
+   * rather than precise — the exact number stays in the sentence above, and
+   * the bar carries no digits of its own.
+   */
+  function renderBlastRadius(finding) {
+    const affected = finding.rowCount;
+    const total = finding.tableRows;
+
+    if (typeof affected !== 'number' || typeof total !== 'number' || total <= 0) {
+      return null;
+    }
+    if (affected === 0) {
+      return null; // nothing to draw, and the sentence already says so
+    }
+
+    const share = Math.max(0, Math.min(1, affected / total));
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'radius';
+
+    const track = document.createElement('div');
+    track.className = `radius-track ${finding.severity}`;
+
+    const fill = document.createElement('div');
+    fill.className = 'radius-fill';
+    // Anything non-zero stays visible: a 12-in-50,000 row is 0.02% wide, and a
+    // bar you cannot see reads as no bar at all.
+    fill.style.width = `${Math.max(share * 100, 0.8)}%`;
+    track.appendChild(fill);
+
+    const label = document.createElement('span');
+    label.className = 'radius-label';
+    label.textContent =
+      share >= 0.995 && affected < total
+        ? `nearly all of ~${total.toLocaleString()} rows`
+        : share === 1
+          ? `every one of ~${total.toLocaleString()} rows`
+          : `${formatShare(share)} of ~${total.toLocaleString()} rows`;
+
+    wrapper.appendChild(track);
+    wrapper.appendChild(label);
+    return wrapper;
+  }
+
+  function formatShare(share) {
+    const percent = share * 100;
+    if (percent < 0.1) {
+      return '<0.1%';
+    }
+    return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
   }
 
   function renderSampleToggle(index, sample) {

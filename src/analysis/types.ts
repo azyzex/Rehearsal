@@ -71,6 +71,15 @@ export interface Finding {
   readonly detail: string;
   /** Exact, when known. */
   readonly rowCount?: number;
+  /**
+   * Total rows in the target table, so `rowCount` can be drawn as a share of
+   * the whole rather than left as a bare number. "40,072 rows" means nothing
+   * until you know whether the table holds fifty thousand or fifty million.
+   *
+   * This is the planner's estimate from the catalog, not a COUNT(*) — it is
+   * free, and it only ever drives the width of a bar.
+   */
+  readonly tableRows?: number;
   readonly sample?: Sample;
   /**
    * True when any number in `detail` is an estimate rather than a measurement.
