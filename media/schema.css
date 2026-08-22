@@ -1,0 +1,324 @@
+/*
+ * The schema explorer. Every colour is a VS Code theme variable, so the diagram
+ * belongs to whatever theme the reader is using rather than importing its own
+ * look.
+ */
+
+:root {
+  --s-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  --s-card: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --s-pk: var(--vscode-charts-yellow, #d7a72a);
+  --s-fk: var(--vscode-charts-blue, #4a9eff);
+  --s-line: var(--vscode-descriptionForeground);
+}
+
+* {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+/* ---- toolbar ---- */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--s-border);
+  flex-shrink: 0;
+}
+
+#toolbar .left,
+#toolbar .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#toolbar .left {
+  min-width: 0;
+}
+
+#stats {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--s-fk);
+  flex-shrink: 0;
+}
+
+input,
+select,
+button {
+  font-family: inherit;
+  font-size: 0.92em;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--s-border));
+  border-radius: 3px;
+  padding: 3px 7px;
+}
+
+button {
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border-color: var(--s-border);
+}
+
+button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+#search {
+  width: 200px;
+}
+
+/* ---- stage ---- */
+
+#stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  /* A faint grid, so panning has something to move against and the diagram
+     does not feel like it is floating in nothing. */
+  background-image: radial-gradient(circle, var(--s-border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center;
+}
+
+#stage.panning {
+  cursor: grabbing;
+}
+
+#canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+#edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+  pointer-events: none;
+  padding: 24px;
+  text-align: center;
+}
+
+.status[hidden] {
+  display: none;
+}
+
+/* ---- table cards ---- */
+
+.table {
+  position: absolute;
+  border: 1px solid var(--s-border);
+  border-radius: 6px;
+  background: var(--s-card);
+  overflow: hidden;
+  cursor: pointer;
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+
+.table.dimmed {
+  opacity: 0.18;
+}
+
+.table.selected {
+  border-color: var(--s-fk);
+  box-shadow: 0 0 0 1px var(--s-fk);
+}
+
+.table.match {
+  border-color: var(--vscode-charts-green, #2ea043);
+}
+
+.table-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--s-border);
+  background: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+}
+
+.table-title {
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.78em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.col {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 9px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.82em;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+
+.col.hit {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 220, 100, 0.2));
+}
+
+.col-key {
+  width: 11px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.col-key.pk { color: var(--s-pk); }
+.col-key.fk { color: var(--s-fk); }
+
+.col-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.col-name.nullable {
+  opacity: 0.82;
+}
+
+.col-type {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+
+.col-more {
+  padding: 2px 9px 4px;
+  font-size: 0.78em;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+/* ---- edges ---- */
+
+.edge {
+  fill: none;
+  stroke: var(--s-line);
+  stroke-width: 1.1;
+  opacity: 0.4;
+}
+
+.edge.active {
+  stroke: var(--s-fk);
+  stroke-width: 1.8;
+  opacity: 1;
+}
+
+.edge.dimmed {
+  opacity: 0.06;
+}
+
+.edge-head {
+  fill: var(--s-line);
+  opacity: 0.5;
+}
+
+.edge-head.active {
+  fill: var(--s-fk);
+  opacity: 1;
+}
+
+.edge-head.dimmed {
+  opacity: 0.06;
+}
+
+/* ---- legend ---- */
+
+#legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--s-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.8em;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#connection {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.swatch.pk { background: var(--s-pk); }
+.swatch.fk { background: var(--s-fk); }

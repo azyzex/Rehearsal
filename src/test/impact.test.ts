@@ -145,6 +145,19 @@ describe('impact diagram', () => {
     assert.equal(users.columns.find((c) => c.name === 'email')!.statementIndex, 1);
   });
 
+  it('resolves the columns of an existing relationship, not a raw array literal', async () => {
+    // pg has no parser for Postgres's `name[]`, so `array_agg(attname)` arrives
+    // as the string "{org_id}" and `columns[0]` silently becomes "{". The edge
+    // then anchors to a column that does not exist. Casting to text[] is what
+    // makes this an array on the way out.
+    const diagram = await diagramFor(`
+      ALTER TABLE users ADD CONSTRAINT users_org_fkey FOREIGN KEY (org_id) REFERENCES orgs (id);
+    `);
+    const edge = diagram.edges[0]!;
+    assert.equal(edge.fromColumn, 'org_id');
+    assert.ok(!edge.fromColumn.startsWith('{'), 'not a raw array literal');
+  });
+
   it('is empty rather than wrong when no table could be identified', async () => {
     const diagram = await diagramFor(`SELECT 1;`);
     assert.deepEqual(diagram.tables, []);

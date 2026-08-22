@@ -15,13 +15,19 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:sql"
+    "onLanguage:sql",
+    "onCommand:dryrun.exploreSchema"
   ],
   "contributes": {
     "commands": [
       {
         "command": "dryrun.preview",
         "title": "Preview",
+        "category": "Dry Run"
+      },
+      {
+        "command": "dryrun.exploreSchema",
+        "title": "Explore Schema",
         "category": "Dry Run"
       },
       {

@@ -76,6 +76,31 @@ export interface ForeignKeyInfo {
   readonly toColumns: readonly string[];
 }
 
+export interface SchemaTable {
+  readonly schema: string;
+  readonly name: string;
+  /** `schema.name`, or just `name` when it lives in the default schema. */
+  readonly qualified: string;
+  readonly rows: number;
+  readonly bytes: number;
+  readonly columns: readonly ColumnInfo[];
+  /** True for a partitioned parent table. */
+  readonly partitioned: boolean;
+}
+
+/**
+ * Everything needed to draw the database. Read in a fixed number of queries
+ * regardless of how many tables there are — a per-table round trip is fine for
+ * the three tables a migration touches and unusable for the two hundred a real
+ * schema holds.
+ */
+export interface SchemaSnapshot {
+  readonly tables: readonly SchemaTable[];
+  readonly foreignKeys: readonly ForeignKeyInfo[];
+  /** Schemas that were found, in the order they should be offered. */
+  readonly schemas: readonly string[];
+}
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -119,6 +144,8 @@ export interface DatabaseAdapter {
   tableColumns(table: string): Promise<ColumnInfo[]>;
   /** Foreign keys with either end among `tables`. */
   foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]>;
+  /** The whole database: every table, column and relationship. */
+  schemaSnapshot(): Promise<SchemaSnapshot>;
   explain(sql: string, analyze: boolean): Promise<QueryPlan>;
 }
 

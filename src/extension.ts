@@ -6,6 +6,7 @@ import { Finding, Severity, Thresholds } from './analysis/types';
 import { ConnectionManager, ProductionRefusedError } from './connection/manager';
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
+import { SchemaPanel } from './panel/schemaPanel';
 import { splitStatements } from './parser/splitter';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -30,6 +31,19 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       } catch (error) {
         reportError(error, output);
+      }
+    }),
+
+    vscode.commands.registerCommand('dryrun.exploreSchema', async () => {
+      const panel = SchemaPanel.show(context);
+      try {
+        const connection = await connections.acquire();
+        panel.loading(connection.identity.display);
+        const snapshot = await connection.adapter.schemaSnapshot();
+        panel.show(snapshot, connection.identity.display);
+      } catch (error) {
+        reportError(error, output);
+        panel.fail(errorMessage(error));
       }
     }),
 

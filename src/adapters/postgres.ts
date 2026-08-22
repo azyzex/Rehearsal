@@ -8,6 +8,8 @@ import {
   QueryPlan,
   QueryResult,
   Row,
+  SchemaSnapshot,
+  SchemaTable,
   TableStats,
   Transaction,
   TransactionControlError,
@@ -309,11 +311,11 @@ export class PostgresAdapter implements DatabaseAdapter {
       `SELECT c.conname AS name,
               src.relname AS from_table,
               tgt.relname AS to_table,
-              (SELECT array_agg(att.attname ORDER BY k.ord)
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
                  FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
                  JOIN pg_attribute att
                    ON att.attrelid = c.conrelid AND att.attnum = k.attnum) AS from_columns,
-              (SELECT array_agg(att.attname ORDER BY k.ord)
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
                  FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
                  JOIN pg_attribute att
                    ON att.attrelid = c.confrelid AND att.attnum = k.attnum) AS to_columns
@@ -332,6 +334,133 @@ export class PostgresAdapter implements DatabaseAdapter {
       toTable: String(row['to_table']),
       toColumns: (row['to_columns'] as string[] | null) ?? [],
     }));
+  }
+
+  /**
+   * The whole database in three queries.
+   *
+   * Three, not one per table: a schema with two hundred tables would otherwise
+   * be six hundred round trips, and on a cloud database that is minutes rather
+   * than the moment this needs to take.
+   *
+   * System schemas are excluded, along with TOAST and any extension-owned
+   * table, because nobody wants to look at a diagram of `pg_catalog`.
+   */
+  async schemaSnapshot(): Promise<SchemaSnapshot> {
+    const tablesResult = await this.probe(
+      `SELECT n.nspname AS schema,
+              c.relname AS name,
+              GREATEST(c.reltuples, 0)::bigint AS rows,
+              pg_total_relation_size(c.oid)::bigint AS bytes,
+              c.relkind = 'p' AS partitioned
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p')
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_toast%'
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+             WHERE d.objid = c.oid AND d.deptype = 'e'
+          )
+        ORDER BY n.nspname, c.relname`,
+    );
+
+    const columnsResult = await this.probe(
+      `SELECT n.nspname AS schema,
+              c.relname AS "table",
+              a.attname AS name,
+              format_type(a.atttypid, a.atttypmod) AS type,
+              NOT a.attnotnull AS nullable,
+              COALESCE(pk.is_primary, false) AS is_primary
+         FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         LEFT JOIN LATERAL (
+           SELECT true AS is_primary
+             FROM pg_index i
+            WHERE i.indrelid = a.attrelid
+              AND i.indisprimary
+              AND a.attnum = ANY(i.indkey)
+            LIMIT 1
+         ) pk ON true
+        WHERE c.relkind IN ('r', 'p')
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_toast%'
+        ORDER BY n.nspname, c.relname, a.attnum`,
+    );
+
+    const keysResult = await this.probe(
+      `SELECT c.conname AS name,
+              srcn.nspname AS from_schema,
+              src.relname AS from_table,
+              tgtn.nspname AS to_schema,
+              tgt.relname AS to_table,
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.conrelid AND att.attnum = k.attnum) AS from_columns,
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
+                 FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.confrelid AND att.attnum = k.attnum) AS to_columns
+         FROM pg_constraint c
+         JOIN pg_class src ON src.oid = c.conrelid
+         JOIN pg_namespace srcn ON srcn.oid = src.relnamespace
+         JOIN pg_class tgt ON tgt.oid = c.confrelid
+         JOIN pg_namespace tgtn ON tgtn.oid = tgt.relnamespace
+        WHERE c.contype = 'f'
+          AND srcn.nspname NOT IN ('pg_catalog', 'information_schema')`,
+    );
+
+    // Columns are grouped onto their tables here rather than in a join, so the
+    // wire carries one row per column instead of one per column per key.
+    const columnsByTable = new Map<string, ColumnInfo[]>();
+    for (const row of columnsResult.rows) {
+      const key = `${String(row['schema'])}.${String(row['table'])}`;
+      const list = columnsByTable.get(key) ?? [];
+      list.push({
+        name: String(row['name']),
+        type: String(row['type']),
+        nullable: Boolean(row['nullable']),
+        isPrimaryKey: Boolean(row['is_primary']),
+      });
+      columnsByTable.set(key, list);
+    }
+
+    const schemas = new Set<string>();
+    const tables: SchemaTable[] = tablesResult.rows.map((row) => {
+      const schema = String(row['schema']);
+      const name = String(row['name']);
+      schemas.add(schema);
+      return {
+        schema,
+        name,
+        qualified: schema === 'public' ? name : `${schema}.${name}`,
+        rows: Number(row['rows']),
+        bytes: Number(row['bytes']),
+        columns: columnsByTable.get(`${schema}.${name}`) ?? [],
+        partitioned: Boolean(row['partitioned']),
+      };
+    });
+
+    const qualify_ = (schema: string, name: string): string =>
+      schema === 'public' ? name : `${schema}.${name}`;
+
+    const foreignKeys: ForeignKeyInfo[] = keysResult.rows.map((row) => ({
+      name: String(row['name']),
+      fromTable: qualify_(String(row['from_schema']), String(row['from_table'])),
+      fromColumns: (row['from_columns'] as string[] | null) ?? [],
+      toTable: qualify_(String(row['to_schema']), String(row['to_table'])),
+      toColumns: (row['to_columns'] as string[] | null) ?? [],
+    }));
+
+    return {
+      tables,
+      foreignKeys,
+      schemas: [...schemas].sort((a, b) => (a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b))),
+    };
   }
 
   async sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]> {
