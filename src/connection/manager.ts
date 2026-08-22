@@ -92,21 +92,61 @@ export class ConnectionManager implements vscode.Disposable {
     void this.close();
   }
 
-  /** Reads the workspace `.env` file, if there is one. Absence is not an error. */
+  /**
+   * Finds the `.env` file. Absence is not an error.
+   *
+   * Looked for in the workspace folders first, and then by walking up from the
+   * file being previewed. That second path matters more than it looks: opening
+   * a single `.sql` file without opening its folder is a completely ordinary
+   * thing to do, and it leaves `workspaceFolders` empty, so a workspace-only
+   * lookup finds nothing and the extension claims there is no connection
+   * configured when there is one sitting next to the file.
+   */
   private async readEnvFile(
     relativePath: string,
   ): Promise<{ envFileContents?: string; envFilePath?: string }> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder || relativePath.trim().length === 0) {
+    if (relativePath.trim().length === 0) {
       return {};
     }
 
-    const uri = vscode.Uri.joinPath(folder.uri, relativePath);
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const found = await this.tryReadEnv(vscode.Uri.joinPath(folder.uri, relativePath));
+      if (found) {
+        return found;
+      }
+    }
+
+    const active = vscode.window.activeTextEditor?.document.uri;
+    if (active?.scheme === 'file') {
+      // Walk up from the file's own directory to the filesystem root.
+      let directory = vscode.Uri.joinPath(active, '..');
+      for (let depth = 0; depth < 24; depth++) {
+        const found = await this.tryReadEnv(vscode.Uri.joinPath(directory, relativePath));
+        if (found) {
+          return found;
+        }
+        const parent = vscode.Uri.joinPath(directory, '..');
+        if (parent.path === directory.path) {
+          break;
+        }
+        directory = parent;
+      }
+    }
+
+    return {};
+  }
+
+  private async tryReadEnv(
+    uri: vscode.Uri,
+  ): Promise<{ envFileContents: string; envFilePath: string } | undefined> {
     try {
       const bytes = await vscode.workspace.fs.readFile(uri);
-      return { envFileContents: new TextDecoder().decode(bytes), envFilePath: relativePath };
+      return {
+        envFileContents: new TextDecoder().decode(bytes),
+        envFilePath: vscode.workspace.asRelativePath(uri),
+      };
     } catch {
-      return {};
+      return undefined;
     }
   }
 }
