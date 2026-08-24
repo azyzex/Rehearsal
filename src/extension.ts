@@ -10,6 +10,8 @@ import { ConnectionManager, ProductionRefusedError } from './connection/manager'
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
 import { SchemaPanel } from './panel/schemaPanel';
+import { CandidateResult, IndexPanel } from './panel/indexPanel';
+import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvice';
 import { splitStatements } from './parser/splitter';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -39,6 +41,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('dryrun.exploreSchema', () =>
       exploreSchema(context, connections, output),
+    ),
+
+    vscode.commands.registerCommand('dryrun.suggestIndexes', () =>
+      suggestIndexes(context, connections, output),
     ),
 
     vscode.commands.registerCommand('dryrun.disconnect', async () => {
@@ -200,6 +206,196 @@ async function exploreSchema(
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
   }
+}
+
+/**
+ * Answers "would an index help this query", with the answer measured.
+ *
+ * The suggestion is the easy half and every tool stops there. The half that
+ * decides anything is whether the planner would actually reach for the index,
+ * and that is a question only the planner can answer — so it is asked, before
+ * the suggestion is shown.
+ */
+async function suggestIndexes(
+  context: vscode.ExtensionContext,
+  connections: ConnectionManager,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showWarningMessage('Dry Run: open a SQL file first.');
+    return;
+  }
+
+  const found = statementAtCursor(editor);
+  if (!found) {
+    void vscode.window.showWarningMessage(
+      'Dry Run: put the cursor inside a query, or select one.',
+    );
+    return;
+  }
+
+  const panel = IndexPanel.show(context);
+
+  try {
+    const connection = await connections.acquire();
+    panel.begin(found.sql, connection.identity.display, {
+      uri: editor.document.uri,
+      line: found.startLine,
+    });
+
+    // Estimate-only: the plan is needed to find the scans, and running the
+    // query for real to find out whether it is slow would be a strange way to
+    // treat a query the user already suspects is slow.
+    const plan = await connection.adapter.explain(found.sql, false);
+
+    const columnsByTable = new Map<string, readonly string[]>();
+    for (const scan of seqScans(plan)) {
+      if (columnsByTable.has(scan.relation)) {
+        continue;
+      }
+      try {
+        const columns = await connection.adapter.tableColumns(scan.relation);
+        columnsByTable.set(
+          scan.relation,
+          columns.map((column) => column.name),
+        );
+      } catch (error) {
+        output.appendLine(`Could not read ${scan.relation}: ${errorMessage(error)}`);
+      }
+    }
+
+    // The plan carries no measured rows, so size cannot filter candidates here.
+    // The table's own size does that instead, further down.
+    const candidates = indexCandidates(plan, { columnsByTable, minimumRowsRead: 0 });
+    const worthwhile = await filterBySize(connection.adapter, candidates, readThresholds());
+
+    if (worthwhile.length === 0) {
+      panel.candidates([]);
+      panel.finish(
+        candidates.length === 0
+          ? 'No sequential scan in this plan has a filter an index could narrow.'
+          : 'Every table this scans is small enough that a scan is the right plan.',
+      );
+      return;
+    }
+
+    const build = await confirmBuildingIfNeeded(connection.adapter);
+    if (build === undefined) {
+      panel.finish('Cancelled. Nothing was tested.');
+      return;
+    }
+
+    const results: CandidateResult[] = worthwhile.map((candidate) => ({ candidate }));
+    panel.candidates(results);
+
+    let helped = 0;
+    for (const [index, result] of results.entries()) {
+      try {
+        const experiment = await connection.adapter.testIndex(
+          result.candidate.sql,
+          found.sql,
+          [],
+          { build },
+        );
+        if (experiment.used && experiment.afterCost < experiment.beforeCost) {
+          helped += 1;
+        }
+        panel.result(index, { ...result, experiment });
+      } catch (error) {
+        panel.result(index, { ...result, error: errorMessage(error) });
+      }
+    }
+
+    panel.finish(
+      helped === 0
+        ? `Tested ${results.length}. The planner would not use any of them.`
+        : `${helped} of ${results.length} would be used. Nothing was built — the index is still yours to create.`,
+    );
+  } catch (error) {
+    reportError(error, output, connections);
+    panel.fail(errorMessage(error));
+  }
+}
+
+/**
+ * Drops candidates whose table is too small to care about.
+ *
+ * An index on a thousand-row table costs write throughput and buys a scan the
+ * database was doing in microseconds anyway.
+ */
+async function filterBySize(
+  adapter: { tableStats(table: string): Promise<{ estimatedRows: number }> },
+  candidates: readonly IndexCandidate[],
+  thresholds: Thresholds,
+): Promise<IndexCandidate[]> {
+  const kept: IndexCandidate[] = [];
+  const sizes = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    let rows = sizes.get(candidate.table);
+    if (rows === undefined) {
+      try {
+        rows = (await adapter.tableStats(candidate.table)).estimatedRows;
+      } catch {
+        // A table whose size cannot be read is not a reason to withhold the
+        // suggestion; it is a reason not to filter on size.
+        rows = Number.POSITIVE_INFINITY;
+      }
+      sizes.set(candidate.table, rows);
+    }
+    if (rows >= thresholds.cautionRows) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Establishes whether building an index for real is allowed.
+ *
+ * Returns false when the no-lock path is available, true when the user has
+ * agreed to the other one, and undefined when they declined. The prompt is
+ * deliberate: the two paths differ by a lock held for the length of a real
+ * index build, which on a large table is not a detail.
+ */
+async function confirmBuildingIfNeeded(adapter: {
+  supportsHypotheticalIndexes(): Promise<boolean>;
+}): Promise<boolean | undefined> {
+  if (await adapter.supportsHypotheticalIndexes()) {
+    return false;
+  }
+
+  const choice = await vscode.window.showWarningMessage(
+    'Testing an index without building it needs the hypopg extension, which this database ' +
+      'does not have. Dry Run can instead build each index inside a transaction it rolls ' +
+      'back: the measurements are real and nothing is kept, but the build takes the same ' +
+      'lock a real one would while it runs.',
+    { modal: true },
+    'Build and roll back',
+  );
+  return choice === 'Build and roll back' ? true : undefined;
+}
+
+/** The statement the cursor is inside, or the selection when there is one. */
+function statementAtCursor(
+  editor: vscode.TextEditor,
+): { sql: string; startLine: number } | undefined {
+  if (!editor.selection.isEmpty) {
+    const sql = editor.document.getText(editor.selection).trim();
+    return sql.length > 0 ? { sql, startLine: editor.selection.start.line } : undefined;
+  }
+
+  const offset = editor.document.offsetAt(editor.selection.active);
+  const statements = splitStatements(editor.document.getText());
+  const containing =
+    statements.find(
+      (statement) => offset >= statement.startOffset && offset <= statement.endOffset,
+    ) ?? statements[0];
+
+  return containing
+    ? { sql: containing.sql.trim(), startLine: containing.startLine }
+    : undefined;
 }
 
 function readThresholds(): Thresholds {

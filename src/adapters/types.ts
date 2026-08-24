@@ -163,6 +163,45 @@ export interface CascadeNode {
 
 export type CascadeAction = 'cascade' | 'set null' | 'set default' | 'restrict' | 'no action';
 
+/**
+ * What an index would do to a query, measured rather than guessed.
+ *
+ * Two ways to find out, and the difference between them is the whole point.
+ * A hypothetical index exists only in the planner's head: it costs nothing to
+ * create, takes no lock, touches no disk, and answers "would the planner even
+ * use this" in milliseconds against production-shaped statistics. Building the
+ * index for real inside a rolled-back transaction answers the same question
+ * and also gives real timings — at the price of actually building it, which
+ * on a large table blocks writes for as long as it takes.
+ */
+export interface IndexExperiment {
+  readonly method: 'hypothetical' | 'built';
+  readonly before: QueryPlan;
+  readonly after: QueryPlan;
+  /** Whether the planner reached for the new index. The only question that matters. */
+  readonly used: boolean;
+  readonly beforeCost: number;
+  readonly afterCost: number;
+  /** Measured milliseconds. Only the `built` method can produce these. */
+  readonly beforeMs?: number;
+  readonly afterMs?: number;
+  /** Anything the caller has to say about the numbers before trusting them. */
+  readonly note?: string;
+}
+
+/** Thrown when the no-lock path is unavailable and the caller did not permit the other one. */
+export class HypotheticalIndexUnavailableError extends Error {
+  constructor() {
+    super(
+      'Testing an index without building it needs the hypopg extension: ' +
+        'CREATE EXTENSION hypopg; The alternative is to build the index for real ' +
+        'inside a transaction that is rolled back, which measures the same thing ' +
+        'but takes a lock while it builds.',
+    );
+    this.name = 'HypotheticalIndexUnavailableError';
+  }
+}
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -258,6 +297,24 @@ export interface DatabaseAdapter {
    * same values it would really run with.
    */
   explain(sql: string, analyze: boolean, params?: readonly unknown[]): Promise<QueryPlan>;
+
+  /** Whether indexes can be tested without building them. */
+  supportsHypotheticalIndexes(): Promise<boolean>;
+
+  /**
+   * What `indexSql` would do to `query`.
+   *
+   * Prefers the hypothetical path, which takes no lock and writes nothing. When
+   * that is unavailable it either refuses or builds the index inside a
+   * rolled-back transaction, depending on `build` — never silently, because the
+   * two have very different costs on a large table.
+   */
+  testIndex(
+    indexSql: string,
+    query: string,
+    params: readonly unknown[],
+    options: { readonly build: boolean },
+  ): Promise<IndexExperiment>;
 }
 
 /** Thrown when a caller tries to smuggle transaction control into a preview. */

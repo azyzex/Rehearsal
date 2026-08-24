@@ -32,6 +32,11 @@
         "category": "Dry Run"
       },
       {
+        "command": "dryrun.suggestIndexes",
+        "title": "Would an Index Help?",
+        "category": "Dry Run"
+      },
+      {
         "command": "dryrun.testConnection",
         "title": "Test Connection",
         "category": "Dry Run"
@@ -131,6 +136,12 @@
         "command": "dryrun.preview",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
+        "when": "resourceLangId == sql"
+      },
+      {
+        "command": "dryrun.suggestIndexes",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i",
         "when": "resourceLangId == sql"
       }
     ]

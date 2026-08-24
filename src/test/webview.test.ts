@@ -40,12 +40,14 @@ function stripComments(source: string): string {
 const panels: Record<string, string[]> = {
   'controller.ts': scriptsFor('controller.ts'),
   'schemaPanel.ts': scriptsFor('schemaPanel.ts'),
+  'indexPanel.ts': scriptsFor('indexPanel.ts'),
 };
 
 describe('webview scripts', () => {
   it('finds the scripts each panel loads', () => {
     assert.deepEqual(panels['controller.ts'], ['panel.js']);
     assert.deepEqual(panels['schemaPanel.ts'], ['schema.js', 'schema-editor.js']);
+    assert.deepEqual(panels['indexPanel.ts'], ['indexes.js']);
   });
 
   for (const [panel, scripts] of Object.entries(panels)) {
@@ -134,23 +136,30 @@ describe('webview scripts', () => {
     }
   });
 
-  it('every message the preview panel sends is handled by its webview', () => {
-    // The same gap the other way round: a measurement is computed, posted, and
-    // dropped on the floor.
-    const controller = stripComments(fs.readFileSync(path.join(PANELS, 'controller.ts'), 'utf8'));
-    const script = stripComments(fs.readFileSync(path.join(MEDIA, 'panel.js'), 'utf8'));
+  // schemaPanel.ts posts through a single helper, so what it sends cannot be
+  // read off the source the way these two can.
+  for (const [panel, script] of [
+    ['controller.ts', 'panel.js'],
+    ['indexPanel.ts', 'indexes.js'],
+  ]) {
+    it(`every message ${panel} sends is handled by ${script}`, () => {
+      // The same gap the other way round: a measurement is computed, posted,
+      // and dropped on the floor.
+      const controller = stripComments(fs.readFileSync(path.join(PANELS, panel!), 'utf8'));
+      const source = stripComments(fs.readFileSync(path.join(MEDIA, script!), 'utf8'));
 
-    const sent = new Set(
-      [...controller.matchAll(/postMessage\(\{\s*type:\s*'(\w+)'/g)].map((m) => m[1]!),
-    );
-    assert.ok(sent.size > 0, 'found no outgoing messages at all — the regex has rotted');
-
-    for (const type of sent) {
-      assert.match(
-        script,
-        new RegExp(`case '${type}':`),
-        `controller.ts sends { type: '${type}' }, which panel.js never handles`,
+      const sent = new Set(
+        [...controller.matchAll(/postMessage\(\{\s*type:\s*'(\w+)'/g)].map((m) => m[1]!),
       );
-    }
-  });
+      assert.ok(sent.size > 0, 'found no outgoing messages at all — the regex has rotted');
+
+      for (const type of sent) {
+        assert.match(
+          source,
+          new RegExp(`case '${type}':`),
+          `${panel} sends { type: '${type}' }, which ${script} never handles`,
+        );
+      }
+    });
+  }
 });

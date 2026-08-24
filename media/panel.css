@@ -799,3 +799,69 @@ footer {
   background: var(--vscode-inputValidation-warningBackground, rgba(209, 134, 22, 0.18));
   font-weight: 600;
 }
+
+/* Before and after on one scale.
+   A cost that drops by two orders of magnitude and one that drops by four per
+   cent read as the same sentence in English and as obviously different
+   pictures, which is the entire reason this is drawn rather than written. */
+.compare {
+  margin: 10px 0 6px;
+}
+
+.compare-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  margin-bottom: 5px;
+}
+
+.compare-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.compare-name {
+  flex: 0 0 110px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.compare-track {
+  flex: 1 1 auto;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.18));
+  overflow: hidden;
+}
+
+.compare-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.compare-fill.before {
+  background: var(--vscode-charts-orange, #d18616);
+}
+
+.compare-fill.after {
+  background: var(--vscode-charts-green, #89d185);
+}
+
+.compare-value {
+  flex: 0 0 auto;
+  min-width: 76px;
+  text-align: right;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+.compare-change {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+  margin-left: 118px;
+}

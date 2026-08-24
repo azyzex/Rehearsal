@@ -68,6 +68,26 @@ believed, and the interesting cases are where it believed wrong. Sequential scan
 on large tables and estimates that are ten times out are called out by name. It is
 off by default because `EXPLAIN ANALYZE` runs the statement a second time.
 
+**Show me which rows.** A blocking count is a starting point, not an answer:
+"12 rows have no email" tells you that you are stuck, not which twelve or what
+they should be. Blocking findings carry a button that fetches exactly those rows
+— the nulls, the orphans, the duplicates with their group members sitting
+together — along with a statement that would clear them. Where only you can
+decide what a value should become, the statement comes with the decision left as
+a hole to fill rather than something quietly invented.
+
+**Would an index help?** `Dry Run: Would an Index Help?` (`ctrl + alt + i`) reads
+the plan for the query under your cursor, finds the sequential scans, works out
+which columns the filters actually test, and then — this is the part every other
+tool skips — tests each candidate index against the planner and reports whether
+the planner would reach for it. On a database with `hypopg` the index is never
+built: it exists only in the planner's head, so the answer takes milliseconds on
+a table of any size and takes no lock at all. Without `hypopg` it offers to build
+each one inside a transaction it rolls back, which measures real milliseconds at
+the price of a real build. Either way nothing is kept, and an index the planner
+ignores is reported as ignored — a suggestion that costs write throughput
+forever is worth refusing.
+
 **Explore the schema.** `Dry Run: Explore Schema` draws the whole database —
 every table, every relationship, laid out so that the shape of the schema is
 visible before you have read a name. Drag tables where you want them, search
@@ -187,6 +207,7 @@ Press `F5` to launch the extension host, then:
 |---|---|
 | `Dry Run: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
 | `Dry Run: Explore Schema` | Draw the database, and edit it |
+| `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |
 

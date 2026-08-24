@@ -18,7 +18,10 @@ import {
   TableStats,
   Transaction,
   TransactionControlError,
+  IndexExperiment,
+  HypotheticalIndexUnavailableError,
 } from './types';
+import { executionMs, indexNames, totalCost } from './planShape';
 import { CommittableStatement, CommittedResult, runCommittedOn } from './commit';
 import { findTransactionControl } from '../parser/transactionControl';
 
@@ -817,6 +820,137 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
     const { rows } = await this.probe(`EXPLAIN (FORMAT JSON) ${sql}`, params);
     return { raw: rows[0]?.['QUERY PLAN'] };
+  }
+
+// ---- index experiments -------------------------------------------------
+
+  async supportsHypotheticalIndexes(): Promise<boolean> {
+    const { rows } = await this.probe(`SELECT 1 FROM pg_extension WHERE extname = 'hypopg'`);
+    return rows.length > 0;
+  }
+
+  async testIndex(
+    indexSql: string,
+    query: string,
+    params: readonly unknown[],
+    options: { readonly build: boolean },
+  ): Promise<IndexExperiment> {
+    if (await this.supportsHypotheticalIndexes()) {
+      return this.hypotheticalIndexTest(indexSql, query, params);
+    }
+    if (!options.build) {
+      throw new HypotheticalIndexUnavailableError();
+    }
+    return this.builtIndexTest(indexSql, query, params);
+  }
+
+  /**
+   * The no-lock path.
+   *
+   * hypopg registers the index in the planner's catalogue and nowhere else, so
+   * the answer comes back in milliseconds on a table of any size and nothing
+   * on disk changes. The catch is that no rows are ever read through it: there
+   * are estimates and no timings, which is honest — a cost the planner has
+   * computed beats a millisecond figure nobody measured.
+   *
+   * hypopg state is per-session and this adapter holds one connection, so the
+   * whole experiment runs inside a single serialized block. Interleaving
+   * another caller's EXPLAIN between the create and the reset would silently
+   * plan their query against an index that does not exist.
+   */
+  private async hypotheticalIndexTest(
+    indexSql: string,
+    query: string,
+    params: readonly unknown[],
+  ): Promise<IndexExperiment> {
+    return this.serialize(async () => {
+      const client = this.requireClient();
+      const bound = params.length > 0 ? [...params] : undefined;
+
+      const explain = async (): Promise<QueryPlan> => {
+        const result = await client.query(`EXPLAIN (FORMAT JSON) ${query}`, bound);
+        return { raw: result.rows[0]?.['QUERY PLAN'] };
+      };
+
+      // Reset first as well as last: a previous run that died mid-experiment
+      // would otherwise leave an index in the planner's head and make the
+      // "before" plan a lie.
+      await client.query('SELECT hypopg_reset()');
+      const before = await explain();
+
+      try {
+        const created = await client.query(
+          'SELECT indexname FROM hypopg_create_index($1)',
+          [indexSql],
+        );
+        const name = String(created.rows[0]?.['indexname'] ?? '');
+        const after = await explain();
+
+        return {
+          method: 'hypothetical',
+          before,
+          after,
+          used: name.length > 0 && indexNames(after).has(name),
+          beforeCost: totalCost(before),
+          afterCost: totalCost(after),
+          note:
+            'Estimated, not timed: the index was never built, so no rows were read ' +
+            'through it. The planner scored both plans against the same statistics.',
+        };
+      } finally {
+        await client.query('SELECT hypopg_reset()').catch(() => undefined);
+      }
+    });
+  }
+
+  /**
+   * The measured path, for databases without hypopg.
+   *
+   * Builds the index for real inside a transaction that is rolled back, which
+   * gives genuine timings and leaves nothing behind — but does take the lock
+   * and do the work of a real CREATE INDEX while it runs. That is why nothing
+   * reaches here without the caller explicitly asking for it.
+   *
+   * The "before" plan is run twice and the second reading kept. The first run
+   * warms the cache, and comparing a cold "before" against a warm "after"
+   * would credit the index with an improvement that was really the page cache.
+   */
+  private async builtIndexTest(
+    indexSql: string,
+    query: string,
+    params: readonly unknown[],
+  ): Promise<IndexExperiment> {
+    return this.withRollback(async (tx) => {
+      const explain = async (): Promise<QueryPlan> => {
+        const result = await tx.query(
+          `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`,
+          params.length > 0 ? params : undefined,
+        );
+        return { raw: result.rows[0]?.['QUERY PLAN'] };
+      };
+
+      await explain();
+      const before = await explain();
+      const existing = indexNames(before);
+
+      await tx.query(indexSql);
+      const after = await explain();
+
+      const fresh = [...indexNames(after)].filter((name) => !existing.has(name));
+      return {
+        method: 'built',
+        before,
+        after,
+        used: fresh.length > 0,
+        beforeCost: totalCost(before),
+        afterCost: totalCost(after),
+        beforeMs: executionMs(before),
+        afterMs: executionMs(after),
+        note:
+          'Measured by building the index inside a transaction that was rolled back. ' +
+          'Nothing was kept, but the build itself took the lock a real one would.',
+      };
+    });
   }
 
   // ---- internals --------------------------------------------------------
