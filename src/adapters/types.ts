@@ -126,6 +126,10 @@ export interface TableDetail {
   /** True when `rows` is the planner's estimate because counting timed out. */
   readonly rowsEstimated: boolean;
   readonly sample: readonly Row[];
+  /** The filter the sample was taken under, when one was given. */
+  readonly filter?: string;
+  /** How many rows the filter matched, capped at the sample limit. */
+  readonly matched?: number;
 }
 
 export type PrimaryKeyValue = Record<string, unknown>;
@@ -173,8 +177,11 @@ export interface DatabaseAdapter {
   foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]>;
   /** The whole database: every table, column and relationship. */
   schemaSnapshot(): Promise<SchemaSnapshot>;
-  /** One table in full, with a sample of real rows. */
-  tableDetail(table: string, sampleLimit: number): Promise<TableDetail>;
+  /**
+   * One table in full, with a sample of real rows.  matches any column
+   * cast to text, case-insensitively — for finding one row among many.
+   */
+  tableDetail(table: string, sampleLimit: number, filter?: string): Promise<TableDetail>;
 
   /**
    * Applies previewed statements for real, in one transaction. The only write

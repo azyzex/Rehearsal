@@ -35,6 +35,8 @@
   let schemaFilter = '';
   /** 0 shows the whole schema; higher shows only what is within N relationships. */
   let focusDepth = 0;
+  /** Called when a card is clicked rather than dragged. Set through the bridge. */
+  let onActivate = () => {};
 
   const view = { x: 0, y: 0, scale: 1 };
 
@@ -469,7 +471,20 @@
         savePositions();
       } else {
         selected = selected === node.table.qualified ? null : node.table.qualified;
+        // With focus on, selecting changes which tables exist at all, not just
+        // which are dimmed.
+        if (focusDepth > 0) {
+          build();
+        }
         applyHighlight();
+
+        // Opening the table is announced here rather than left to a click
+        // listener further up the tree: the card stops the click from
+        // propagating (so it does not also clear the selection), which means
+        // nothing above this ever sees it.
+        if (selected) {
+          onActivate(node.table.qualified);
+        }
       }
       drag = null;
     };
@@ -862,6 +877,17 @@
     },
     shortType(type) {
       return shortType(type);
+    },
+    /**
+     * Registers what happens when a card is clicked rather than dragged.
+     *
+     * A callback rather than a DOM event, because the card stops its own click
+     * from propagating — it has to, or the stage's handler would immediately
+     * clear the selection the click just made — and so nothing above the card
+     * ever sees it.
+     */
+    onTableActivate(handler) {
+      onActivate = handler;
     },
   };
 })();

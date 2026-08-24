@@ -220,6 +220,25 @@
       );
 
       actions.appendChild(
+        miniButton('Type', () => {
+          const to = window.prompt(
+            `Change ${column.name} from ${column.type} to:\n\n` +
+              `Every existing value has to convert. The preview will count the ` +
+              `ones that cannot before anything runs.`,
+            column.type,
+          );
+          if (to && to.trim() && to.trim() !== column.type) {
+            addEdit({
+              kind: 'alter_type',
+              table: detail.table,
+              column: column.name,
+              to: to.trim(),
+            });
+          }
+        }),
+      );
+
+      actions.appendChild(
         miniButton(column.nullable ? 'Require' : 'Allow null', () => {
           addEdit({
             kind: 'set_nullability',
@@ -407,10 +426,49 @@
   function renderDataSection() {
     const section = document.createElement('div');
     section.className = 'drawer-section';
-    section.appendChild(text('h3', '', `Rows (first ${detail.sample.length})`));
+
+    section.appendChild(
+      text(
+        'h3',
+        '',
+        detail.filter
+          ? `Rows matching "${detail.filter}" (${detail.sample.length})`
+          : `Rows (first ${detail.sample.length})`,
+      ),
+    );
+
+    // Finding one row among a quarter of a million is the difference between
+    // editing your data and editing its first 25 rows.
+    const find = document.createElement('div');
+    find.className = 'form-row';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Find a row — any column, any value';
+    search.value = detail.filter || '';
+    search.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        openTable(detail.table, search.value);
+      }
+    });
+
+    const go = document.createElement('button');
+    go.className = 'mini';
+    go.type = 'button';
+    go.textContent = 'Find';
+    go.addEventListener('click', () => openTable(detail.table, search.value));
+
+    find.append(search, go);
+    section.appendChild(find);
 
     if (detail.sample.length === 0) {
-      section.appendChild(text('div', 'hint', 'This table is empty.'));
+      section.appendChild(
+        text(
+          'div',
+          'hint',
+          detail.filter ? 'Nothing matched that.' : 'This table is empty.',
+        ),
+      );
       return section;
     }
 
@@ -716,18 +774,16 @@
 
   // ---- opening a table ---------------------------------------------------
 
-  // The diagram owns click-to-select; this listens for the same click on the
-  // capture phase so opening the drawer does not fight it.
-  document.getElementById('tables').addEventListener('click', (event) => {
-    const card = event.target instanceof Element ? event.target.closest('.table') : null;
-    if (!card) {
-      return;
-    }
-    const table = card.dataset.table;
-    if (table) {
-      vscode.postMessage({ type: 'openTable', table });
-    }
+  // The diagram tells us directly. Listening for the click on a parent does not
+  // work: the card stops it propagating so that the stage does not clear the
+  // selection the click just made, which means it never reaches anything above.
+  host.onTableActivate((table) => {
+    openTable(table);
   });
+
+  function openTable(table, filter) {
+    vscode.postMessage({ type: 'openTable', table, filter: filter ?? '' });
+  }
 
   // ---- helpers -----------------------------------------------------------
 

@@ -151,7 +151,7 @@ export class SchemaPanel {
     try {
       switch (message.type) {
         case 'openTable':
-          await this.openTable(String(message.table));
+          await this.openTable(String(message.table), String(message.filter ?? ''));
           break;
 
         case 'addEdit':
@@ -203,10 +203,10 @@ export class SchemaPanel {
     }
   }
 
-  private async openTable(table: string): Promise<void> {
+  private async openTable(table: string, filter = ''): Promise<void> {
     const adapter = this.requireAdapter();
     this.post({ type: 'tableLoading', table });
-    const detail = await adapter.tableDetail(table, 25);
+    const detail = await adapter.tableDetail(table, 25, filter);
     this.post({ type: 'tableDetail', detail: serialiseDetail(detail) });
   }
 
@@ -469,6 +469,8 @@ function errorMessage(error: unknown): string {
 
 /** Postgres values become display strings before crossing into the webview. */
 function serialiseDetail(detail: {
+  filter?: string;
+  matched?: number;
   table: string;
   columns: readonly unknown[];
   indexes: readonly unknown[];

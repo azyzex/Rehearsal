@@ -300,4 +300,52 @@ describe('tableDetail', () => {
   it('says so rather than throwing when the table is not there', async () => {
     await assert.rejects(adapter.tableDetail('no_such_table', 5), /Table not found/);
   });
+
+  describe('finding one row among many', () => {
+    it('matches a value in any column without being told which', async () => {
+      // The user is looking for a value, not writing a query, and does not know
+      // or care which column holds it.
+      const detail = await adapter.tableDetail('users', 25, 'dupe@example.com');
+
+      assert.ok(detail.sample.length > 0);
+      assert.equal(detail.filter, 'dupe@example.com');
+      for (const row of detail.sample) {
+        assert.equal(row['email'], 'dupe@example.com');
+      }
+    });
+
+    it('matches case-insensitively, and on a partial value', async () => {
+      const detail = await adapter.tableDetail('users', 25, 'DUPE@EXAM');
+      assert.ok(detail.sample.length > 0, 'found it despite the case and the truncation');
+    });
+
+    it('matches a number as readily as text', async () => {
+      // Every column is cast to text, so an id is searchable without the user
+      // having to think about types.
+      const detail = await adapter.tableDetail('users', 25, '42');
+      assert.ok(detail.sample.some((row) => String(row['id']).includes('42')));
+    });
+
+    it('returns nothing rather than everything when nothing matches', async () => {
+      const detail = await adapter.tableDetail('users', 25, 'no-row-contains-this-string');
+      assert.deepEqual(detail.sample, []);
+      assert.equal(detail.matched, 0, 'the filter ran and matched nothing');
+    });
+
+    it('treats a blank filter as no filter', async () => {
+      const detail = await adapter.tableDetail('users', 5, '   ');
+      assert.equal(detail.sample.length, 5);
+      assert.equal(detail.filter, undefined);
+    });
+
+    it('does not let a search term reach the SQL as SQL', async () => {
+      // The term is bound; only column names are interpolated, and those come
+      // from the catalog.
+      const detail = await adapter.tableDetail('users', 25, `' OR 1=1 --`);
+      assert.deepEqual(detail.sample, [], 'matched literally, as a string');
+
+      const stillThere = await adapter.countRows('users');
+      assert.equal(stillThere, 100);
+    });
+  });
 });

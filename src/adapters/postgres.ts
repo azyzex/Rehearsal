@@ -495,7 +495,7 @@ export class PostgresAdapter implements DatabaseAdapter {
    * it would blow the statement timeout the estimate is used instead and
    * labelled as one, rather than the drawer showing nothing.
    */
-  async tableDetail(table: string, sampleLimit: number): Promise<TableDetail> {
+  async tableDetail(table: string, sampleLimit: number, filter?: string): Promise<TableDetail> {
     const [columns, primaryKey] = await Promise.all([
       this.tableColumns(table),
       this.primaryKeyColumns(table),
@@ -533,8 +533,25 @@ export class PostgresAdapter implements DatabaseAdapter {
     // unordered LIMIT can return different rows each time, which makes the
     // drawer look like it is showing changing data when nothing has changed.
     const order = primaryKey.length > 0 ? ` ORDER BY ${primaryKey.map(quoteIdent).join(', ')}` : '';
+
+    // Finding one row among a quarter of a million is the difference between
+    // being able to edit your data and being able to edit its first 25 rows.
+    // Every column is cast to text and matched case-insensitively, which is
+    // slow and exactly right for the question — the user is looking for a
+    // value, not writing a query, and does not know or care which column holds
+    // it. The search term is bound; only the column names are interpolated,
+    // and those come from the catalog.
+    const search = filter?.trim();
+    const where =
+      search && columns.length > 0
+        ? ` WHERE ${columns
+            .map((column) => `CAST(${quoteIdent(column.name)} AS text) ILIKE $1`)
+            .join(' OR ')}`
+        : '';
+
     const sampleResult = await this.probe(
-      `SELECT * FROM ${qualify(table)}${order} LIMIT ${Math.max(1, Math.floor(sampleLimit))}`,
+      `SELECT * FROM ${qualify(table)}${where}${order} LIMIT ${Math.max(1, Math.floor(sampleLimit))}`,
+      where ? [`%${search}%`] : undefined,
     );
 
     let rows: number;
@@ -553,6 +570,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       rows,
       rowsEstimated,
       sample: sampleResult.rows,
+      ...(search ? { filter: search, matched: sampleResult.rows.length } : {}),
       indexes: indexesResult.rows.map((row) => ({
         name: String(row['name']),
         columns: (row['columns'] as string[] | null) ?? [],
