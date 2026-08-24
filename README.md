@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 290 tests, all against a real Postgres.
+> **Status: working, not yet published.** 343 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
@@ -42,6 +42,24 @@ SAFE                ALTER TABLE users ADD COLUMN last_seen_at timestamptz
 
 `UPDATE` and `DELETE` rows expand to show the affected records as they are and
 as they would become, with the changed cells highlighted.
+
+**Know whether it will queue.** Every other number assumes the statement runs
+unobstructed. Postgres queues lock requests fairly, so a DDL statement waiting
+behind a long-running reader becomes the head of a queue that every later query
+joins — including reads that conflict with nothing. That is how a routine
+`ADD COLUMN` takes a site down for twenty minutes. Each statement reports the
+lock it takes, what that blocks, and who is holding a conflicting one right now.
+
+**See what a delete takes with it.** `DELETE FROM users WHERE id = 5` is one row
+in the statement and an unknown number across tables it never names. The cascade
+is walked and counted at every level, with `ON DELETE SET NULL` reported
+separately as the quieter surprise.
+
+**Get the safer form.** A statement that would lock a table for the length of a
+scan is offered the Postgres pattern that avoids it — `CONCURRENTLY` for an index,
+`NOT VALID` then `VALIDATE` for a constraint, the three-step route for
+`SET NOT NULL`. Suggested only when the measurement says it is needed, with one
+click to replace it in the file.
 
 **See the plan.** Turn on `dryrun.explainAnalyze` and each `UPDATE`, `DELETE` and
 `INSERT` also carries its query plan, with node widths drawn from time actually

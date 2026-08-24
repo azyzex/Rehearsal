@@ -122,14 +122,64 @@ export class PreviewPanel {
     void this.panel.webview.postMessage({ type: 'failed', message });
   }
 
-  private onMessage(message: { type?: string; index?: number }): void {
+  private onMessage(message: {
+    type?: string;
+    index?: number;
+    statements?: string[];
+  }): void {
     if (message.type === 'reveal' && typeof message.index === 'number') {
       void this.revealStatement(message.index);
       return;
     }
     if (message.type === 'cancel') {
       this.host?.onCancel();
+      return;
     }
+    if (
+      message.type === 'applyRewrite' &&
+      typeof message.index === 'number' &&
+      Array.isArray(message.statements)
+    ) {
+      void this.replaceStatement(message.index, message.statements);
+    }
+  }
+
+  /**
+   * Swaps a statement in the file for a safer form.
+   *
+   * An edit to the document, not a write to the database — so it lands in the
+   * undo stack, shows up in a diff, and can be reviewed like anything else the
+   * user typed. The panel deliberately does not re-run afterwards: the file has
+   * changed, the previous measurements no longer describe it, and silently
+   * showing stale numbers against new SQL would be the worst of both.
+   */
+  private async replaceStatement(index: number, statements: readonly string[]): Promise<void> {
+    const statement = this.statements[index];
+    if (!statement || !this.documentUri) {
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(this.documentUri);
+    const editor = await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.One,
+    });
+
+    // Indented to match what it replaces, so the file still reads as one
+    // document rather than as something a tool has been at.
+    const indent = /^[ \t]*/.exec(document.lineAt(statement.startLine).text)?.[0] ?? '';
+    const replacement = statements.map((sql) => `${indent}${sql};`).join('\n');
+
+    const range = new vscode.Range(
+      document.positionAt(statement.startOffset),
+      document.positionAt(Math.min(statement.endOffset + 1, document.getText().length)),
+    );
+
+    await editor.edit((builder) => builder.replace(range, replacement.trimStart()));
+
+    void vscode.window.showInformationMessage(
+      `Replaced with the safer form. Preview again to measure it — the old numbers ` +
+        `described the old statement.`,
+    );
   }
 
   private async revealStatement(index: number): Promise<void> {

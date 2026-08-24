@@ -623,3 +623,151 @@ footer {
   border-top: 1px solid var(--dryrun-border);
   color: var(--dryrun-caution);
 }
+
+/* ---- lock outlook ---- */
+
+/*
+ * The queue warning is the loudest thing in a row, deliberately. Every other
+ * number assumes the statement runs unobstructed; this is the one that says it
+ * will not, and it changes a one-second migration into an outage.
+ */
+.queue-warning {
+  margin-top: 9px;
+  padding: 7px 9px;
+  border-left: 3px solid var(--dryrun-destructive);
+  background: var(--vscode-inputValidation-errorBackground, transparent);
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.queue-warning strong {
+  color: var(--dryrun-destructive);
+}
+
+.queue-blocker {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.lock-note {
+  margin-top: 6px;
+  font-size: 0.82em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.lock-level {
+  font-family: var(--vscode-editor-font-family);
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+/* ---- cascade ---- */
+
+.cascade {
+  margin-top: 9px;
+  border: 1px solid var(--dryrun-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cascade-head {
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--dryrun-border);
+  font-size: 0.83em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.cascade-node {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 9px;
+  font-size: 0.85em;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.cascade-rows {
+  color: var(--dryrun-destructive);
+  font-weight: 600;
+  min-width: 68px;
+  text-align: right;
+}
+
+.cascade-node.nulled .cascade-rows {
+  color: var(--dryrun-caution);
+  font-weight: 400;
+}
+
+.cascade-action {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+}
+
+/* ---- rewrites ---- */
+
+.rewrites {
+  margin-top: 9px;
+}
+
+.rewrite {
+  border: 1px solid var(--dryrun-border);
+  border-left: 3px solid var(--dryrun-safe);
+  border-radius: 3px;
+  padding: 7px 9px;
+  margin-top: 6px;
+}
+
+.rewrite-title {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: var(--dryrun-safe);
+}
+
+.rewrite-why {
+  margin-top: 3px;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--vscode-descriptionForeground);
+}
+
+.rewrite-sql {
+  margin-top: 6px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.82em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 5px 7px;
+  border-radius: 2px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.12));
+}
+
+.rewrite-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.rewrite-warn {
+  margin-top: 5px;
+  font-size: 0.8em;
+  color: var(--dryrun-caution);
+}
+
+.tiny {
+  font-size: 0.8em;
+  padding: 2px 8px;
+  border: 1px solid var(--dryrun-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.tiny:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}

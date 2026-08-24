@@ -6,6 +6,7 @@ import { cascadeTotal, describeCascade } from './cascade';
 import { analyzeDdl } from './ddl';
 import { analyzeDml } from './dml';
 import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
+import { rewritesFor } from './rewrite';
 import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
 import { Finding, Sample, Thresholds } from './types';
 
@@ -75,14 +76,19 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
       // and it is the half that turns a one-second migration into an outage.
       const outlook = await lockOutlook(adapter, classification, blockerCache);
 
-      onFinding({
+      const withContext: Finding = {
         ...finding,
         ...(tableRows === undefined ? {} : { tableRows }),
         ...outlook,
         ...(outlook.queuedBehind && outlook.queuedBehind.length > 0
           ? { severity: worst([finding.severity, 'blocking']) }
           : {}),
-      });
+      };
+
+      // Rewrites are computed from the finished finding, because what to
+      // suggest depends on what was measured rather than on the statement.
+      const rewrites = rewritesFor(withContext);
+      onFinding(rewrites.length > 0 ? { ...withContext, rewrites } : withContext);
     } catch (error) {
       onFinding({
         statementIndex: statement.index,

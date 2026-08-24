@@ -206,6 +206,19 @@
       row.appendChild(bar);
     }
 
+    // Ordered by what changes a decision: whether it will queue, then what it
+    // silently takes with it, then how to do it more safely.
+    for (const section of [
+      renderQueueWarning(finding),
+      renderCascade(finding.cascade),
+      renderRewrites(finding),
+      renderLockNote(finding),
+    ]) {
+      if (section) {
+        row.appendChild(section);
+      }
+    }
+
     if (finding.plan) {
       row.appendChild(renderPlan(finding.plan));
     }
@@ -702,5 +715,233 @@
     row.appendChild(ms);
 
     return row;
+  }
+
+  /**
+   * The queue warning.
+   *
+   * Loudest thing in the row, on purpose. Every other number here assumes the
+   * statement runs unobstructed; this is the one that says it will not — and
+   * the cost is not the waiting, it is that everything arriving afterwards
+   * waits behind you.
+   */
+  function renderQueueWarning(finding) {
+    const blockers = finding.queuedBehind;
+    if (!blockers || blockers.length === 0) {
+      return null;
+    }
+
+    const worst = blockers.reduce((a, b) => (b.seconds > a.seconds ? b : a), blockers[0]);
+
+    const box = document.createElement('div');
+    box.className = 'queue-warning';
+
+    const heading = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = 'This will queue. ';
+    heading.appendChild(strong);
+    heading.appendChild(
+      document.createTextNode(
+        `${blockers.length === 1 ? 'A session is' : `${blockers.length} sessions are`} ` +
+          `holding a conflicting lock on ${finding.classification.table}. Your statement waits ` +
+          `for ${blockers.length === 1 ? 'it' : 'them'} — and every query that arrives after ` +
+          `yours waits behind you, including reads.`,
+      ),
+    );
+    box.appendChild(heading);
+
+    for (const blocker of blockers.slice(0, 4)) {
+      const line = document.createElement('div');
+      line.className = 'queue-blocker';
+      line.textContent =
+        `pid ${blocker.pid} · ${blocker.state} · ${formatSeconds(blocker.seconds)}` +
+        (blocker.applicationName ? ` · ${blocker.applicationName}` : '') +
+        (blocker.query ? ` · ${blocker.query.slice(0, 90)}` : '');
+      box.appendChild(line);
+    }
+
+    if (blockers.length > 4) {
+      const more = document.createElement('div');
+      more.className = 'queue-blocker';
+      more.textContent = `…and ${blockers.length - 4} more`;
+      box.appendChild(more);
+    }
+
+    // The longest-held lock is the one that decides how long the outage is.
+    const advice = document.createElement('div');
+    advice.className = 'queue-blocker';
+    advice.textContent =
+      `The oldest has been there ${formatSeconds(worst.seconds)}. Wait for it, or ` +
+      `end it with: SELECT pg_terminate_backend(${worst.pid});`;
+    box.appendChild(advice);
+
+    return box;
+  }
+
+  /** Which lock a statement takes, said quietly when nothing is in the way. */
+  function renderLockNote(finding) {
+    if (!finding.lock || finding.lock.level === 'NONE' || finding.queuedBehind) {
+      return null;
+    }
+
+    const note = document.createElement('div');
+    note.className = 'lock-note';
+
+    const level = document.createElement('span');
+    level.className = 'lock-level';
+    level.textContent = finding.lock.level;
+    note.appendChild(level);
+    note.appendChild(
+      document.createTextNode(
+        ` — blocks ${finding.lock.blocks}` +
+          (finding.lock.brief ? ', held only for an instant.' : ', held for the whole operation.'),
+      ),
+    );
+
+    return note;
+  }
+
+  /**
+   * What a delete takes with it.
+   *
+   * Drawn as a tree rather than written as a sentence, because the shape is
+   * the point: one row named at the top, and an unnamed pile underneath it.
+   */
+  function renderCascade(cascade) {
+    if (!cascade || cascade.children.length === 0) {
+      return null;
+    }
+
+    const box = document.createElement('div');
+    box.className = 'cascade';
+
+    const head = document.createElement('div');
+    head.className = 'cascade-head';
+    head.textContent = 'Also removed, through foreign keys the statement never names';
+    box.appendChild(head);
+
+    const walk = (node, depth) => {
+      for (const child of node.children) {
+        const row = document.createElement('div');
+        const nulled = child.via && child.via.action === 'set null';
+        row.className = `cascade-node${nulled ? ' nulled' : ''}`;
+
+        const count = document.createElement('span');
+        count.className = 'cascade-rows';
+        count.textContent = Number(child.rows).toLocaleString();
+        row.appendChild(count);
+
+        const name = document.createElement('span');
+        name.textContent = `${'   '.repeat(depth)}${child.table}`;
+        row.appendChild(name);
+
+        const action = document.createElement('span');
+        action.className = 'cascade-action';
+        action.textContent = nulled ? 'set to null' : 'deleted';
+        row.appendChild(action);
+
+        box.appendChild(row);
+        walk(child, depth + 1);
+      }
+    };
+    walk(cascade, 0);
+
+    if (cascade.truncated) {
+      const note = document.createElement('div');
+      note.className = 'cascade-head';
+      note.textContent = `The walk ${cascade.truncated}, so the real total may be higher.`;
+      box.appendChild(note);
+    }
+
+    return box;
+  }
+
+  /**
+   * Safer ways to say the same thing.
+   *
+   * Offered, never applied. Each changes the shape of a migration — one
+   * statement becomes three, and some cannot share a transaction — so the
+   * decision stays with the reader. Copying it is one click; running it is
+   * their business.
+   */
+  function renderRewrites(finding) {
+    if (!finding.rewrites || finding.rewrites.length === 0) {
+      return null;
+    }
+
+    const box = document.createElement('div');
+    box.className = 'rewrites';
+
+    for (const rewrite of finding.rewrites) {
+      const card = document.createElement('div');
+      card.className = 'rewrite';
+
+      const title = document.createElement('div');
+      title.className = 'rewrite-title';
+      title.textContent = rewrite.title;
+      card.appendChild(title);
+
+      const why = document.createElement('div');
+      why.className = 'rewrite-why';
+      why.textContent = rewrite.rationale;
+      card.appendChild(why);
+
+      const sql = document.createElement('div');
+      sql.className = 'rewrite-sql';
+      sql.textContent = rewrite.statements.map((s) => `${s};`).join('\n');
+      card.appendChild(sql);
+
+      if (rewrite.needsSeparateTransactions) {
+        const warn = document.createElement('div');
+        warn.className = 'rewrite-warn';
+        warn.textContent =
+          'These cannot all run in one transaction — run them as separate migrations.';
+        card.appendChild(warn);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'rewrite-actions';
+
+      const copy = document.createElement('button');
+      copy.className = 'tiny';
+      copy.type = 'button';
+      copy.textContent = 'Copy';
+      copy.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void navigator.clipboard?.writeText(rewrite.statements.map((s) => `${s};`).join('\n'));
+        copy.textContent = 'Copied';
+        setTimeout(() => (copy.textContent = 'Copy'), 1200);
+      });
+      actions.appendChild(copy);
+
+      const replace = document.createElement('button');
+      replace.className = 'tiny';
+      replace.type = 'button';
+      replace.textContent = 'Replace in file';
+      replace.addEventListener('click', (event) => {
+        event.stopPropagation();
+        vscode.postMessage({
+          type: 'applyRewrite',
+          index: finding.statementIndex,
+          statements: rewrite.statements,
+        });
+      });
+      actions.appendChild(replace);
+
+      card.appendChild(actions);
+      box.appendChild(card);
+    }
+
+    return box;
+  }
+
+  function formatSeconds(seconds) {
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+    if (seconds < 3600) {
+      return `${Math.round(seconds / 60)} min`;
+    }
+    return `${(seconds / 3600).toFixed(1)} hours`;
   }
 })();

@@ -3,6 +3,7 @@ import { Row } from '../adapters/types';
 import { CascadeNode } from '../adapters/types';
 import { Blocker, LockProfile } from './locks';
 import { AnalysedPlan } from './plan';
+import type { Rewrite } from './rewrite';
 
 export type Severity = 'safe' | 'caution' | 'blocking' | 'destructive';
 
@@ -101,6 +102,14 @@ export interface Finding {
   readonly queuedBehind?: readonly Blocker[];
   /** What a delete would take with it through ON DELETE CASCADE. */
   readonly cascade?: CascadeNode;
+  /**
+   * Safer ways to say the same thing, offered rather than applied.
+   *
+   * Driven by what was measured: a SET NOT NULL on a table with no nulls will
+   * apply cleanly and needs no three-step dance, and suggesting one anyway is
+   * the cargo-cult version of the advice.
+   */
+  readonly rewrites?: readonly Rewrite[];
   /**
    * True when any number in `detail` is an estimate rather than a measurement.
    * The panel renders these differently — an estimate must never carry the
