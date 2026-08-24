@@ -32,6 +32,9 @@
   let canApply = false;
   let previewDestructive = false;
   let showingAfter = false;
+  /** True when the pending list came from a file rather than from clicking. */
+  let readOnly = false;
+  let source = '';
 
   const ui = {
     drawer: /** @type {HTMLElement} */ (document.getElementById('drawer')),
@@ -61,6 +64,8 @@
         break;
 
       case 'changeset':
+        readOnly = Boolean(message.readOnly);
+        source = message.source || '';
         changes = message.changes;
         diff = message.diff;
         projected = message.projected;
@@ -484,9 +489,16 @@
       return;
     }
 
-    ui.changesTitle.textContent =
-      `${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}`;
-    ui.apply.hidden = !canApply;
+    ui.changesTitle.textContent = readOnly
+      ? `${source} — ${changes.length} ${changes.length === 1 ? 'change' : 'changes'}`
+      : `${changes.length} pending ${changes.length === 1 ? 'change' : 'changes'}`;
+
+    // A file's changes belong to whatever migration tool owns it, so the
+    // buttons that would act on them are not offered.
+    ui.apply.hidden = readOnly || !canApply;
+    ui.preview.hidden = readOnly;
+    ui.discard.hidden = readOnly;
+    ui.exportSql.hidden = readOnly;
     ui.preview.textContent = findings.length > 0 ? 'Preview again' : 'Preview';
 
     const body = document.createDocumentFragment();

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
+import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
 
 /**
@@ -34,6 +35,13 @@ export class SchemaPanel {
   private host: SchemaHost | undefined;
   private previewToken: string | undefined;
   private previewDestructive = false;
+  /** The schema as read, kept so a migration impact can be projected from it. */
+  private baseline: SchemaSnapshot | undefined;
+
+  /** The open panel, when there is one. */
+  static get open(): SchemaPanel | undefined {
+    return SchemaPanel.current;
+  }
 
   static show(context: vscode.ExtensionContext, host: SchemaHost): SchemaPanel {
     if (SchemaPanel.current) {
@@ -79,12 +87,60 @@ export class SchemaPanel {
 
   show(snapshot: SchemaSnapshot, connection: string): void {
     this.session.setBaseline(snapshot);
+    this.baseline = snapshot;
     this.post({ type: 'schema', snapshot, connection });
     this.postChangeset();
   }
 
   fail(message: string): void {
     this.post({ type: 'failed', message });
+  }
+
+  /** True while a schema is loaded, so callers know there is a picture to mark. */
+  get hasSchema(): boolean {
+    return this.baseline !== undefined;
+  }
+
+  /**
+   * Shows a migration file's impact on the real schema diagram.
+   *
+   * The same before/after machinery as a visual changeset, fed from a parsed
+   * file instead — so a migration and a click get the identical treatment
+   * rather than two implementations of "what will this look like afterwards"
+   * that could disagree.
+   *
+   * Marked read-only: these changes belong to a file, and applying them is the
+   * job of whatever migration tool owns it.
+   */
+  showMigrationImpact(options: {
+    file: string;
+    edits: readonly Edit[];
+    labels: readonly string[];
+    findings: readonly unknown[];
+    summary: string;
+  }): void {
+    if (!this.baseline) {
+      return;
+    }
+
+    const projected = projectSchema(this.baseline, options.edits);
+    this.post({
+      type: 'changeset',
+      readOnly: true,
+      source: options.file,
+      changes: options.labels.map((label, index) => ({ index, label, sql: '' })),
+      diff: diffSchemas(this.baseline, projected, options.edits),
+      projected,
+      sql: '',
+    });
+    this.post({
+      type: 'preview',
+      findings: options.findings,
+      summary: options.summary,
+      destructive: false,
+      blocking: false,
+      canApply: false,
+    });
   }
 
   // ---- message handling --------------------------------------------------

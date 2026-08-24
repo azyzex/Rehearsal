@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { buildDiagram } from './analysis/impact';
+import { editsFromClassifications } from './edit/fromSql';
 import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
 import { Finding, Severity, Thresholds } from './analysis/types';
@@ -116,6 +117,24 @@ async function preview(
         // carry every measurement already.
         output.appendLine(`Diagram unavailable: ${errorMessage(error)}`);
       }
+    }
+
+    // If the schema explorer is open, put this file's impact on the real
+    // diagram too. A migration and a visual edit go through the same
+    // projection, so the two cannot tell different stories.
+    const schema = SchemaPanel.open;
+    if (!cancelled && schema?.hasSchema) {
+      const { edits, indexes } = editsFromClassifications(findings.map((f) => f.classification));
+      schema.showMigrationImpact({
+        file: vscode.workspace.asRelativePath(editor.document.uri),
+        edits,
+        labels: indexes.map((i) => findings[i]?.headline ?? ''),
+        findings: indexes.map((i, position) => ({
+          ...findings[i],
+          statementIndex: position,
+        })),
+        summary: summarize(findings, statements.length, cancelled),
+      });
     }
 
     panel.finish(summarize(findings, statements.length, cancelled));
