@@ -33,6 +33,8 @@
   let selected = null;
   let query = '';
   let schemaFilter = '';
+  /** 0 shows the whole schema; higher shows only what is within N relationships. */
+  let focusDepth = 0;
 
   const view = { x: 0, y: 0, scale: 1 };
 
@@ -47,6 +49,8 @@
     schemaFilter: /** @type {HTMLSelectElement} */ (document.getElementById('schema-filter')),
     fit: /** @type {HTMLButtonElement} */ (document.getElementById('fit')),
     relayout: /** @type {HTMLButtonElement} */ (document.getElementById('relayout')),
+    focus: /** @type {HTMLSelectElement} */ (document.getElementById('focus')),
+    exportDiagram: /** @type {HTMLButtonElement} */ (document.getElementById('export-diagram')),
     connection: /** @type {HTMLElement} */ (document.getElementById('connection')),
   };
 
@@ -92,7 +96,48 @@
     if (!snapshot) {
       return [];
     }
-    return snapshot.tables.filter((t) => !schemaFilter || t.schema === schemaFilter);
+
+    const inSchema = snapshot.tables.filter((t) => !schemaFilter || t.schema === schemaFilter);
+
+    // Focus mode. Past about thirty tables the whole schema is a wall, and the
+    // question is almost never "show me everything" — it is "show me this table
+    // and what it touches". Unrelated tables are removed rather than dimmed, so
+    // the layout re-runs around the neighbourhood and actually uses the space.
+    if (focusDepth > 0 && selected) {
+      const near = neighbourhood(selected, focusDepth);
+      const focused = inSchema.filter((t) => near.has(t.qualified));
+      if (focused.length > 0) {
+        return focused;
+      }
+    }
+
+    return inSchema;
+  }
+
+  /** Tables reachable from `root` in at most `depth` relationships, either way. */
+  function neighbourhood(root, depth) {
+    const reached = new Set([root]);
+    let frontier = [root];
+
+    for (let step = 0; step < depth; step++) {
+      const next = [];
+      for (const table of frontier) {
+        for (const fk of snapshot.foreignKeys) {
+          const other =
+            fk.fromTable === table ? fk.toTable : fk.toTable === table ? fk.fromTable : null;
+          if (other && !reached.has(other)) {
+            reached.add(other);
+            next.push(other);
+          }
+        }
+      }
+      if (next.length === 0) {
+        break;
+      }
+      frontier = next;
+    }
+
+    return reached;
   }
 
   function build() {
@@ -617,6 +662,16 @@
 
   el.search.addEventListener('input', () => {
     query = el.search.value;
+    applyHighlight();
+  });
+
+  el.exportDiagram.addEventListener('click', () =>
+    vscode.postMessage({ type: 'exportDiagram' }),
+  );
+
+  el.focus.addEventListener('change', () => {
+    focusDepth = Number(el.focus.value);
+    build();
     applyHighlight();
   });
 

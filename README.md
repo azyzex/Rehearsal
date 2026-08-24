@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 225 tests, all against a real Postgres.
+> **Status: working, not yet published.** 242 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
@@ -127,8 +127,9 @@ Stated plainly, because a README that hides them makes the rest less believable.
 - **A sample can be unavailable.** If a table has no primary key, affected rows
   cannot be identified, so the count is still exact and the sample says it is
   missing. A wrong sample is worse than none.
-- **Large schemas crowd the diagram.** Past roughly thirty tables the layout needs
-  a focus mode that does not exist yet.
+- **Large schemas still crowd the diagram.** Focus mode (show only what is within
+  N relationships of a table) makes them workable, but the automatic layout does
+  not route edges around cards, so a dense schema needs some dragging.
 
 ## Setup
 
@@ -157,6 +158,9 @@ Press `F5` to launch the extension host, then:
 | `Dry Run: Explore Schema` | Draw the database, and edit it |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |
+
+In the explorer, **Export** writes the schema as a Mermaid ER diagram — GitHub
+renders it natively, so it can live in a README and stay readable in a diff.
 
 ## Development
 
