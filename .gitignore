@@ -4,3 +4,6 @@ dist/
 *.vsix
 .env
 .pgdata/
+
+# Rescue files written before a destructive apply.
+.dryrun/

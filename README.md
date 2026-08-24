@@ -88,6 +88,13 @@ the price of a real build. Either way nothing is kept, and an index the planner
 ignores is reported as ignored — a suggestion that costs write throughput
 forever is worth refusing.
 
+**Keep a copy of what you destroy.** Applying is the one irreversible thing this
+extension does, so before it runs anything destructive it writes the rows that
+are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
+statements that put them back — and opens the file before the confirmation, not
+after. If the capture hits its cap the confirmation says so, because a rescue
+file believed to be complete and isn't is worse than none at all.
+
 **Explore the schema.** `Dry Run: Explore Schema` draws the whole database —
 every table, every relationship, laid out so that the shape of the schema is
 visible before you have read a name. Drag tables where you want them, search

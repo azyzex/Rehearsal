@@ -1,7 +1,9 @@
+import * as os from 'node:os';
 import * as vscode from 'vscode';
 import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
+import { captureRescue } from '../edit/rescue';
 import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
 import { findJoinPath } from '../analysis/joinPath';
@@ -260,9 +262,21 @@ export class SchemaPanel {
     // anything that destroys data. The webview asked once; this is the one the
     // user cannot click through without reading.
     if (this.previewDestructive && confirmed) {
+      // Written before the confirmation, not after it. A safety net offered
+      // after the user has already committed to the change is a receipt.
+      const rescue = await this.writeRescueFile();
+
+      const detail = rescue
+        ? rescue.incomplete
+          ? `The rows it removes have been saved to ${rescue.path}, but the capture ` +
+            `hit its cap — that file is not a complete copy.`
+          : `The ${rescue.rows.toLocaleString()} rows it removes have been saved to ` +
+            `${rescue.path}, with the statements to put them back.`
+        : 'Dry Run could not save a copy of the rows this removes.';
+
       const choice = await vscode.window.showWarningMessage(
         'These changes destroy data that cannot be recovered. Apply them?',
-        { modal: true },
+        { modal: true, detail },
         'Apply',
       );
       if (choice !== 'Apply') {
@@ -283,6 +297,58 @@ export class SchemaPanel {
 
     // The picture is now out of date in a way the projection cannot fix.
     await this.host?.refresh();
+  }
+
+/**
+   * Saves the rows the pending changes would destroy, as SQL that puts them
+   * back.
+   *
+   * To a file on disk rather than an unsaved editor tab: the point of the file
+   * is to survive the thing that goes wrong, and an unsaved buffer does not
+   * survive very much. Failing to write it does not block the apply — the user
+   * is told instead, and gets to decide, which is the same principle the rest
+   * of the extension runs on.
+   */
+  private async writeRescueFile(): Promise<
+    { path: string; rows: number; incomplete: boolean } | undefined
+  > {
+    try {
+      const adapter = this.requireAdapter();
+      const rescue = await captureRescue(
+        adapter,
+        this.session.state().changes.map((change) => change.edit),
+      );
+      if (rescue.sections.length === 0) {
+        return undefined;
+      }
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+      const directory = folder
+        ? vscode.Uri.joinPath(folder, '.dryrun')
+        : vscode.Uri.file(os.tmpdir());
+      const target = vscode.Uri.joinPath(directory, `rescue-${stamp}.sql`);
+
+      await vscode.workspace.fs.createDirectory(directory);
+      await vscode.workspace.fs.writeFile(target, Buffer.from(rescue.sql, 'utf8'));
+
+      // Opened beside, so the user can read what is about to be lost while the
+      // confirmation is still on screen.
+      const document = await vscode.workspace.openTextDocument(target);
+      await vscode.window.showTextDocument(document, {
+        viewColumn: vscode.ViewColumn.One,
+        preview: false,
+      });
+
+      return {
+        path: vscode.workspace.asRelativePath(target),
+        rows: rescue.totalRows,
+        incomplete: rescue.incomplete,
+      };
+    } catch (error) {
+      this.host?.report(error);
+      return undefined;
+    }
   }
 
   private async exportSql(): Promise<void> {
