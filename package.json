@@ -109,6 +109,11 @@
           "type": "number",
           "default": 100000,
           "description": "Row count above which a table is treated as large for lock and index-build warnings."
+        },
+        "dryrun.explainAnalyze": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason."
         }
       }
     },

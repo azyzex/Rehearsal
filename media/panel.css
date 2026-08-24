@@ -548,3 +548,78 @@ footer {
   color: var(--vscode-foreground);
   line-height: 1.5;
 }
+
+/* ---- query plan ---- */
+
+.plan {
+  margin-top: 10px;
+  border: 1px solid var(--dryrun-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.plan-head {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--dryrun-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.83em;
+}
+
+.plan-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.plan-node:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.plan-label {
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+/* Width is actual time, never estimated cost. A plan drawn by cost shows what
+   the planner believed, and the interesting cases are where it believed wrong. */
+.plan-bar {
+  flex: 1;
+  height: 9px;
+  background: var(--vscode-progressBar-background, var(--dryrun-border));
+  opacity: 0.25;
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 30px;
+}
+
+.plan-fill {
+  height: 100%;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.plan-node.hot { color: var(--dryrun-destructive); }
+.plan-node.warm { color: var(--dryrun-caution); }
+.plan-node.cool { color: var(--dryrun-safe); }
+
+.plan-ms {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  min-width: 52px;
+  text-align: right;
+}
+
+.plan-insight {
+  padding: 4px 8px;
+  font-size: 0.83em;
+  font-family: var(--vscode-font-family);
+  border-top: 1px solid var(--dryrun-border);
+  color: var(--dryrun-caution);
+}

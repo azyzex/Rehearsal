@@ -1,5 +1,6 @@
 import { Classification, StatementKind } from '../parser/classifier';
 import { Row } from '../adapters/types';
+import { AnalysedPlan } from './plan';
 
 export type Severity = 'safe' | 'caution' | 'blocking' | 'destructive';
 
@@ -12,6 +13,11 @@ export interface Thresholds {
   readonly largeTable: number;
   /** How many affected rows to show in a before/after sample. */
   readonly sampleSize: number;
+  /**
+   * Capture a query plan for DML. Off by default: EXPLAIN ANALYZE runs the
+   * statement a second time, so it roughly doubles the cost of a preview.
+   */
+  readonly explainAnalyze?: boolean;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -81,6 +87,8 @@ export interface Finding {
    */
   readonly tableRows?: number;
   readonly sample?: Sample;
+  /** The query plan, when plan capture is turned on and it succeeded. */
+  readonly plan?: AnalysedPlan;
   /**
    * True when any number in `detail` is an estimate rather than a measurement.
    * The panel renders these differently — an estimate must never carry the

@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 253 tests, all against a real Postgres.
+> **Status: working, not yet published.** 267 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
@@ -42,6 +42,13 @@ SAFE                ALTER TABLE users ADD COLUMN last_seen_at timestamptz
 
 `UPDATE` and `DELETE` rows expand to show the affected records as they are and
 as they would become, with the changed cells highlighted.
+
+**See the plan.** Turn on `dryrun.explainAnalyze` and each `UPDATE`, `DELETE` and
+`INSERT` also carries its query plan, with node widths drawn from time actually
+spent rather than estimated cost — a plan drawn by cost shows what the planner
+believed, and the interesting cases are where it believed wrong. Sequential scans
+on large tables and estimates that are ten times out are called out by name. It is
+off by default because `EXPLAIN ANALYZE` runs the statement a second time.
 
 **Explore the schema.** `Dry Run: Explore Schema` draws the whole database —
 every table, every relationship, laid out so that the shape of the schema is

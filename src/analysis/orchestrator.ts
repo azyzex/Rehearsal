@@ -90,7 +90,7 @@ async function analyzeOne(
   };
 
   if (DML_KINDS.has(classification.kind)) {
-    const { rowCount, sample } = await analyzeDml(
+    const { rowCount, sample, plan } = await analyzeDml(
       adapter,
       statement.sql,
       classification,
@@ -113,6 +113,7 @@ async function analyzeOne(
       detail: described.detail + noOpRewriteNote(classification, sample),
       rowCount,
       sample,
+      ...(plan ? { plan } : {}),
     };
   }
 

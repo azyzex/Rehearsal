@@ -1,6 +1,7 @@
 import { DatabaseAdapter, Row, Transaction } from '../adapters/types';
 import { Classification } from '../parser/classifier';
 import { quoteIdent, qualify } from '../adapters/postgres';
+import { AnalysedPlan, analysePlan, parsePlan } from './plan';
 import { Sample, SampleRow, Thresholds } from './types';
 
 /**
@@ -38,6 +39,8 @@ import { Sample, SampleRow, Thresholds } from './types';
 export interface DmlResult {
   readonly rowCount: number;
   readonly sample: Sample;
+  /** Present only when plan capture was asked for and succeeded. */
+  readonly plan?: AnalysedPlan;
 }
 
 const SAVEPOINT = 'dryrun_stmt';
@@ -110,6 +113,15 @@ export async function analyzeDml(
         ? new Map<string, Row>()
         : await fetchByKeys(tx, table!, pkColumns, keys);
 
+    // The plan, when it was asked for. It goes here — after the statement has
+    // run and before the savepoint is rolled back — so it measures the same
+    // conditions the statement actually met. It runs the statement a second
+    // time, which is why it is off by default.
+    let plan: AnalysedPlan | undefined;
+    if (thresholds.explainAnalyze) {
+      plan = await capturePlan(tx, sql, params, thresholds);
+    }
+
     // Step 4: undo just this statement.
     await tx.rollbackTo(SAVEPOINT);
 
@@ -133,6 +145,7 @@ export async function analyzeDml(
 
     return {
       rowCount,
+      ...(plan ? { plan } : {}),
       sample: {
         rows,
         totalAffected: rowCount,
@@ -221,4 +234,35 @@ function keyOf(row: Record<string, unknown>, columns: readonly string[]): string
 
 function stripTrailingSemicolon(sql: string): string {
   return sql.replace(/;\s*$/, '');
+}
+
+/**
+ * Captures a plan for the statement that just ran.
+ *
+ * A failure here is not a failure of the preview. The measurements are already
+ * taken; a missing plan makes the row less informative, not wrong, so this
+ * swallows its own errors rather than taking the analysis down with it.
+ */
+async function capturePlan(
+  tx: Transaction,
+  sql: string,
+  params: readonly unknown[],
+  thresholds: Thresholds,
+): Promise<AnalysedPlan | undefined> {
+  try {
+    const { rows } = await tx.query(
+      `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${stripTrailingSemicolon(sql)}`,
+      params,
+    );
+
+    const node = parsePlan(rows[0]?.['QUERY PLAN']);
+    return node
+      ? analysePlan(node, {
+          largeTable: thresholds.largeTable,
+          estimateFactor: 10,
+        })
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

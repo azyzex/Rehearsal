@@ -206,6 +206,10 @@
       row.appendChild(bar);
     }
 
+    if (finding.plan) {
+      row.appendChild(renderPlan(finding.plan));
+    }
+
     const sample = finding.sample;
     if (sample && sample.unavailable) {
       const note = document.createElement('div');
@@ -629,5 +633,74 @@
       .replace('timestamp with time zone', 'timestamptz')
       .replace('timestamp without time zone', 'timestamp')
       .replace('double precision', 'float8');
+  }
+
+  /**
+   * The query plan, drawn to scale.
+   *
+   * Bar width comes from time actually spent in a node, not from the planner's
+   * estimated cost. A plan drawn by cost shows you what the planner believed,
+   * and the cases worth looking at are exactly the ones where it believed
+   * wrong. Nesting is shown by indentation, so the tree reads top-down the way
+   * the plan does.
+   */
+  function renderPlan(plan) {
+    const wrap = document.createElement('div');
+    wrap.className = 'plan';
+
+    const head = document.createElement('div');
+    head.className = 'plan-head';
+    head.textContent = `Query plan — ${plan.totalMs.toFixed(1)} ms total`;
+    wrap.appendChild(head);
+
+    const total = plan.totalMs || 1;
+    const walk = (node, depth) => {
+      wrap.appendChild(renderPlanNode(node, depth, total));
+      for (const child of node.children) {
+        walk(child, depth + 1);
+      }
+    };
+    walk(plan.root, 0);
+
+    for (const insight of plan.insights) {
+      const line = document.createElement('div');
+      line.className = 'plan-insight';
+      line.textContent = insight.message;
+      wrap.appendChild(line);
+    }
+
+    return wrap;
+  }
+
+  function renderPlanNode(node, depth, total) {
+    const share = Math.max(0, Math.min(1, node.selfMs / total));
+
+    const row = document.createElement('div');
+    // Colour by how much of the total this node holds on its own, so the eye
+    // lands on the hot node before reading a single name.
+    row.className = `plan-node ${share > 0.4 ? 'hot' : share > 0.15 ? 'warm' : 'cool'}`;
+
+    const label = document.createElement('span');
+    label.className = 'plan-label';
+    label.textContent =
+      `${'  '.repeat(depth)}${node.kind}${node.relation ? ` on ${node.relation}` : ''}`;
+    label.title = `${node.actualRows.toLocaleString()} rows, planner expected ${node.estimatedRows.toLocaleString()}`;
+    row.appendChild(label);
+
+    const bar = document.createElement('span');
+    bar.className = 'plan-bar';
+    const fill = document.createElement('span');
+    fill.className = 'plan-fill';
+    // Anything non-zero stays visible; a bar you cannot see reads as no bar.
+    fill.style.width = `${Math.max(share * 100, 1)}%`;
+    bar.appendChild(fill);
+    row.appendChild(bar);
+
+    const ms = document.createElement('span');
+    ms.className = 'plan-ms';
+    ms.textContent = `${node.selfMs.toFixed(1)} ms`;
+    row.appendChild(ms);
+
+    return row;
   }
 })();

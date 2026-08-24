@@ -187,6 +187,7 @@ function readThresholds(): Thresholds {
     destructiveRows: config.get<number>('destructiveRowThreshold', 1000),
     largeTable: config.get<number>('largeTableThreshold', 100_000),
     sampleSize: config.get<number>('sampleSize', 20),
+    explainAnalyze: config.get<boolean>('explainAnalyze', false),
   };
 }
 
