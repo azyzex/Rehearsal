@@ -15,6 +15,7 @@ import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvic
 import { splitStatements } from './parser/splitter';
 import { MigrationFile, findMigrations } from './migrations/discover';
 import { readLedger } from './migrations/ledger';
+import { healthReport } from './analysis/healthReport';
 
 export function activate(context: vscode.ExtensionContext): void {
   const connections = new ConnectionManager(context.workspaceState);
@@ -51,6 +52,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('dryrun.pendingMigrations', () =>
       pendingMigrations(context, connections, output),
+    ),
+
+    vscode.commands.registerCommand('dryrun.schemaHealth', () =>
+      schemaHealth(connections, output),
     ),
 
     vscode.commands.registerCommand('dryrun.disconnect', async () => {
@@ -211,6 +216,35 @@ async function exploreSchema(
   } catch (error) {
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
+  }
+}
+
+/**
+ * Writes the schema health report.
+ *
+ * A markdown document rather than a panel: it can be pasted into the pull
+ * request that adds the index, it is readable by someone without this
+ * extension, and it diffs — running it again next month and looking at what
+ * changed says more than any view of the present.
+ */
+async function schemaHealth(
+  connections: ConnectionManager,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  try {
+    const connection = await connections.acquire();
+    const health = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Dry Run: reading the catalogue…' },
+      () => connection.adapter.schemaHealth(),
+    );
+
+    const document = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: healthReport(health, { connection: connection.identity.display }),
+    });
+    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+  } catch (error) {
+    reportError(error, output, connections);
   }
 }
 

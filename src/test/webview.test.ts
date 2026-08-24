@@ -26,7 +26,9 @@ const PANELS = path.join(ROOT, 'src', 'panel');
 /** The script files each panel loads, read out of its HTML. */
 function scriptsFor(controller: string): string[] {
   const source = fs.readFileSync(path.join(PANELS, controller), 'utf8');
-  return [...source.matchAll(/media\('([^']+\.js)'\)/g)].map((match) => match[1]!);
+  // Either quote style: these calls sit inside a template literal holding HTML,
+  // and the formatter rewrites the quotes there without asking.
+  return [...source.matchAll(/media\(['"]([^'"]+\.js)['"]\)/g)].map((match) => match[1]!);
 }
 
 /** Removes // and block comments, so prose about a call is not counted as one. */

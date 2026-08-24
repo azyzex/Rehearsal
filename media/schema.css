@@ -791,3 +791,36 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
   font-size: 0.88em;
   line-height: 1.5;
 }
+
+/* Colouring the diagram by a measurement.
+   The diagram already says what the schema is; what it cannot say is where the
+   weight sits. That is one number per table, which is exactly what a colour
+   scale is for — the answer arrives before you have read a single name.
+   --heat runs 0..1 by rank, so a power-law distribution still separates. */
+.table.overlaid {
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-charts-orange, #d18616) calc(var(--heat, 0) * 100%),
+    var(--vscode-panel-border, rgba(127, 127, 127, 0.35))
+  );
+}
+
+.table.overlaid .table-head {
+  background: color-mix(
+    in srgb,
+    var(--vscode-charts-orange, #d18616) calc(18% + var(--heat, 0) * 52%),
+    transparent
+  );
+}
+
+.table.overlaid .table-meta {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.overlay-note {
+  padding: 5px 12px;
+  font-size: 11px;
+  opacity: 0.85;
+  border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+}

@@ -55,6 +55,8 @@
     exportDiagram: /** @type {HTMLButtonElement} */ (document.getElementById('export-diagram')),
     newTable: /** @type {HTMLButtonElement} */ (document.getElementById('new-table')),
     connection: /** @type {HTMLElement} */ (document.getElementById('connection')),
+    overlay: /** @type {HTMLSelectElement} */ (document.getElementById('overlay')),
+    overlayNote: /** @type {HTMLElement} */ (document.getElementById('overlay-note')),
   };
 
   // How many columns to draw before collapsing the rest into a "+N more" line.
@@ -90,6 +92,18 @@
       el.connection.textContent = message.connection || '';
       populateSchemaFilter();
       build();
+      return;
+    }
+
+    if (message.type === 'health') {
+      health = message.health;
+      applyOverlay();
+      return;
+    }
+
+    if (message.type === 'healthFailed') {
+      el.overlayNote.hidden = false;
+      el.overlayNote.textContent = `Could not read the statistics: ${message.message}`;
     }
   });
 
@@ -377,6 +391,10 @@
     }
 
     el.tables.replaceChildren(fragment);
+
+    // Cards are rebuilt from scratch on every layout, so the overlay has to be
+    // put back or it silently disappears the first time anything re-renders.
+    applyOverlay();
   }
 
   function renderColumn(column, fkColumns) {
@@ -699,6 +717,8 @@
     build();
   });
 
+  el.overlay.addEventListener('change', () => setOverlay(el.overlay.value));
+
   el.fit.addEventListener('click', fit);
   el.relayout.addEventListener('click', () => {
     // Explicitly throws away a hand-made arrangement, which is the only reason
@@ -954,6 +974,178 @@
     for (const card of el.tables.querySelectorAll('.table')) {
       card.classList.toggle('opened', card.dataset.table === name);
     }
+  }
+
+// ---- overlays ----------------------------------------------------------
+
+  /**
+   * Colouring the diagram by a measurement.
+   *
+   * The diagram already says what the schema is. What it cannot say is where
+   * the weight sits — which of forty tables holds ninety per cent of the rows,
+   * which one has not been vacuumed since March, which foreign key has nothing
+   * behind it. Those are all one number per table, and one number per table is
+   * exactly what a colour scale is for: the answer arrives before you have
+   * read a single name.
+   *
+   * Scaled by rank rather than by value. Table sizes are almost always a power
+   * law — one table with forty million rows and thirty with a few thousand —
+   * and a linear scale on that paints one table red and everything else the
+   * same shade of nothing.
+   */
+
+  /** @type {string} */
+  let overlay = 'none';
+  /** @type {any} */
+  let health = null;
+  let healthRequested = false;
+
+  const OVERLAYS = {
+    rows: {
+      label: 'rows',
+      needsHealth: false,
+      value: (table) => table.rows,
+      format: (value) => `${abbreviate(value)} rows`,
+    },
+    bytes: {
+      label: 'total size on disk',
+      needsHealth: false,
+      value: (table) => table.bytes,
+      format: (value) => bytes(value),
+    },
+    dead: {
+      label: 'dead rows waiting to be vacuumed',
+      needsHealth: true,
+      value: (table, entry) => (entry ? entry.deadRows : 0),
+      format: (value) => `${abbreviate(value)} dead`,
+    },
+    stale: {
+      label: 'rows changed since the planner last looked',
+      needsHealth: true,
+      value: (table, entry) => (entry ? entry.modifiedSinceAnalyze : 0),
+      format: (value) => `${abbreviate(value)} unanalysed`,
+    },
+    fk: {
+      label: 'foreign keys with no index behind them',
+      needsHealth: true,
+      value: (table) => unindexedCount(table.qualified),
+      format: (value) => (value === 1 ? '1 unindexed key' : `${value} unindexed keys`),
+    },
+  };
+
+  function setOverlay(next) {
+    overlay = next;
+
+    if (next !== 'none' && OVERLAYS[next] && OVERLAYS[next].needsHealth && !health) {
+      if (!healthRequested) {
+        healthRequested = true;
+        vscode.postMessage({ type: 'health' });
+      }
+      el.overlayNote.hidden = false;
+      el.overlayNote.textContent = 'Reading the statistics…';
+      return;
+    }
+
+    applyOverlay();
+  }
+
+  function applyOverlay() {
+    const definition = OVERLAYS[overlay];
+
+    if (!definition) {
+      for (const node of nodes.values()) {
+        if (node.el) {
+          node.el.classList.remove('overlaid');
+          node.el.style.removeProperty('--heat');
+          restoreMeta(node);
+        }
+      }
+      el.overlayNote.hidden = true;
+      return;
+    }
+
+    const entries = [...nodes.values()].map((node) => ({
+      node,
+      value: Number(definition.value(node.table, healthFor(node.table.qualified)) || 0),
+    }));
+
+    // Rank rather than magnitude: with a power-law distribution a linear scale
+    // paints one table red and leaves everything else indistinguishable.
+    const ordered = [...entries].filter((entry) => entry.value > 0).sort((a, b) => a.value - b.value);
+    const rankOf = new Map(ordered.map((entry, index) => [entry.node, index]));
+    const span = Math.max(ordered.length - 1, 1);
+
+    let highest = null;
+    for (const entry of entries) {
+      const card = entry.node.el;
+      if (!card) {
+        continue;
+      }
+      if (entry.value <= 0) {
+        card.classList.remove('overlaid');
+        card.style.removeProperty('--heat');
+        restoreMeta(entry.node);
+        continue;
+      }
+      card.classList.add('overlaid');
+      card.style.setProperty('--heat', String(rankOf.get(entry.node) / span));
+      setMeta(entry.node, definition.format(entry.value));
+      if (!highest || entry.value > highest.value) {
+        highest = entry;
+      }
+    }
+
+    el.overlayNote.hidden = false;
+    el.overlayNote.textContent = describeOverlay(definition, ordered.length, highest);
+  }
+
+  function describeOverlay(definition, coloured, highest) {
+    if (coloured === 0) {
+      return `Nothing to colour: no table has any ${definition.label}.`;
+    }
+
+    const parts = [
+      `Shaded by ${definition.label}, darkest first.`,
+      highest
+        ? `${highest.node.table.qualified} leads with ${definition.format(highest.value)}.`
+        : '',
+    ];
+
+    // The window the statistics cover is not a footnote. "Never scanned" and
+    // "not scanned since the server came up an hour ago" are the same number.
+    if (definition.needsHealth && health && health.statsSince) {
+      parts.push(`Statistics collected since ${new Date(health.statsSince).toLocaleString()}.`);
+    }
+    return parts.filter(Boolean).join(' ');
+  }
+
+  function healthFor(qualified) {
+    if (!health) {
+      return null;
+    }
+    const bare = qualified.includes('.') ? qualified.slice(qualified.indexOf('.') + 1) : qualified;
+    return health.tables.find((table) => table.table === bare || table.table === qualified) ?? null;
+  }
+
+  function unindexedCount(qualified) {
+    if (!health) {
+      return 0;
+    }
+    const bare = qualified.includes('.') ? qualified.slice(qualified.indexOf('.') + 1) : qualified;
+    return health.unindexedForeignKeys.filter(
+      (key) => key.table === bare || key.table === qualified,
+    ).length;
+  }
+
+  function setMeta(node, text) {
+    const meta = node.el?.querySelector('.table-meta');
+    if (meta) {
+      meta.textContent = text;
+    }
+  }
+
+  function restoreMeta(node) {
+    setMeta(node, `${abbreviate(node.table.rows)} · ${bytes(node.table.bytes)}`);
   }
 
   // ---- bridge ------------------------------------------------------------

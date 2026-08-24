@@ -99,6 +99,21 @@ and replaces the warning with a count. It also reports drift the other way: a
 migration the database has run that is not in your checkout usually means this
 is not the environment you thought it was.
 
+**See where the weight sits.** The diagram will colour itself by a measurement:
+rows, size on disk, dead rows waiting on vacuum, rows changed since the planner
+last looked, or foreign keys with no index behind them. Shaded by rank rather
+than by value, because table sizes are almost always a power law and a linear
+scale paints one table red and everything else the same shade of nothing.
+
+**Read the schema's own health.** `Dry Run: Schema Health Report` writes a
+markdown document: foreign keys with nothing behind them (with the
+`CREATE INDEX CONCURRENTLY` that fixes each one), indexes another index already
+covers, indexes nothing has read, and tables whose statistics the planner can no
+longer trust. Every section leads with the window the statistics cover — "this
+index has never been scanned" and "this index has not been scanned since the
+server woke up ninety seconds ago" are the same number, and only one of them is
+a reason to drop anything.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
@@ -226,6 +241,7 @@ Press `F5` to launch the extension host, then:
 | `Dry Run: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
 | `Dry Run: Explore Schema` | Draw the database, and edit it |
 | `Dry Run: Preview Pending Migrations` | Measure what your ORM has queued up |
+| `Dry Run: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
 | `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |

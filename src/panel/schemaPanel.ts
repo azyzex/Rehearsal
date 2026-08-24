@@ -132,7 +132,11 @@ export class SchemaPanel {
       type: 'changeset',
       readOnly: true,
       source: options.file,
-      changes: options.labels.map((label, index) => ({ index, label, sql: '' })),
+      changes: options.labels.map((label, index) => ({
+        index,
+        label,
+        sql: '',
+      })),
       diff: diffSchemas(this.baseline, projected, options.edits),
       projected,
       sql: '',
@@ -196,6 +200,10 @@ export class SchemaPanel {
           await this.newTable();
           break;
 
+        case 'health':
+          await this.sendHealth();
+          break;
+
         case 'findPath':
           this.findPath(String(message.from), String(message.to));
           break;
@@ -227,7 +235,10 @@ export class SchemaPanel {
   private async preview(): Promise<void> {
     const adapter = this.requireAdapter();
     if (this.session.isEmpty) {
-      this.post({ type: 'error', message: 'There are no pending changes to preview.' });
+      this.post({
+        type: 'error',
+        message: 'There are no pending changes to preview.',
+      });
       return;
     }
 
@@ -299,7 +310,7 @@ export class SchemaPanel {
     await this.host?.refresh();
   }
 
-/**
+  /**
    * Saves the rows the pending changes would destroy, as SQL that puts them
    * back.
    *
@@ -351,10 +362,43 @@ export class SchemaPanel {
     }
   }
 
+  /**
+   * The health of the schema, for the diagram overlays.
+   *
+   * Fetched only when an overlay that needs it is chosen. Two of the six —
+   * rows and size — are already in the snapshot, and making every user pay
+   * four catalogue queries on open for an overlay most never pick would be a
+   * slower panel in exchange for nothing.
+   */
+  private async sendHealth(): Promise<void> {
+    try {
+      const health = await this.requireAdapter().schemaHealth();
+      this.post({
+        type: 'health',
+        health: {
+          statsSince: health.statsSince ? health.statsSince.toISOString() : null,
+          unusedIndexes: health.unusedIndexes,
+          redundantIndexes: health.redundantIndexes,
+          unindexedForeignKeys: health.unindexedForeignKeys,
+          tables: health.tables.map((table) => ({
+            ...table,
+            lastVacuum: table.lastVacuum ? table.lastVacuum.toISOString() : null,
+            lastAnalyze: table.lastAnalyze ? table.lastAnalyze.toISOString() : null,
+          })),
+        },
+      });
+    } catch (error) {
+      this.post({ type: 'healthFailed', message: errorMessage(error) });
+    }
+  }
+
   private async exportSql(): Promise<void> {
     const state = this.session.state();
     if (!state.sql.trim()) {
-      this.post({ type: 'error', message: 'There are no pending changes to export.' });
+      this.post({
+        type: 'error',
+        message: 'There are no pending changes to export.',
+      });
       return;
     }
 
@@ -365,7 +409,9 @@ export class SchemaPanel {
         `${state.changes.length === 1 ? 'change' : 'changes'}.\n` +
         `-- Review it, keep it, run it through your migration tool.\n\n${state.sql}\n`,
     });
-    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.Beside,
+    });
   }
 
   /**
@@ -392,7 +438,9 @@ export class SchemaPanel {
         `${toMermaid(this.baseline)}\n` +
         '```\n',
     });
-    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.Beside,
+    });
   }
 
   /**
@@ -524,6 +572,14 @@ export class SchemaPanel {
       <option value="2">2 hops</option>
       <option value="3">3 hops</option>
     </select>
+    <select id="overlay" title="Colour the tables by a measurement">
+      <option value="none">No overlay</option>
+      <option value="rows">Colour by rows</option>
+      <option value="bytes">Colour by size</option>
+      <option value="dead">Colour by dead rows</option>
+      <option value="stale">Colour by stale statistics</option>
+      <option value="fk">Foreign keys with no index</option>
+    </select>
     <button id="fit" type="button" title="Fit the whole schema in view">Fit</button>
     <button id="relayout" type="button" title="Lay the diagram out again">Re-layout</button>
     <button id="new-table" type="button" title="Add a table to the pending changes">+ Table</button>
@@ -555,6 +611,7 @@ export class SchemaPanel {
   <div id="changes-body"></div>
 </section>
 
+<div id="overlay-note" class="overlay-note" hidden></div>
 <footer id="legend">
   <span><i class="swatch pk"></i> primary key</span>
   <span><i class="swatch fk"></i> foreign key</span>
@@ -625,7 +682,10 @@ export function formatValue(value: unknown): string {
     return '∅';
   }
   if (value instanceof Date) {
-    return value.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+    return value
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d+Z$/, '');
   }
   if (Buffer.isBuffer(value)) {
     return `<${value.length} bytes>`;

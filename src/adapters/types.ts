@@ -2,7 +2,7 @@
  * Engine-agnostic contract. Nothing above `adapters/` may contain Postgres-specific SQL.
  */
 
-export type Engine = 'postgres' | 'mysql' | 'mongo';
+export type Engine = "postgres" | "mysql" | "mongo";
 
 export interface ConnectionConfig {
   /** Full connection string. Never persisted anywhere by this extension. */
@@ -111,7 +111,8 @@ export interface IndexInfo {
 
 export interface ConstraintInfo {
   readonly name: string;
-  readonly type: 'primary key' | 'foreign key' | 'unique' | 'check' | 'exclusion' | 'other';
+  readonly type:
+    "primary key" | "foreign key" | "unique" | "check" | "exclusion" | "other";
   readonly definition: string;
 }
 
@@ -155,13 +156,17 @@ export interface CascadeNode {
   readonly table: string;
   readonly rows: number;
   /** How the parent reaches it. Absent on the root. */
-  readonly via?: { readonly constraint: string; readonly action: CascadeAction };
+  readonly via?: {
+    readonly constraint: string;
+    readonly action: CascadeAction;
+  };
   readonly children: readonly CascadeNode[];
   /** Set when the walk stopped early rather than finishing. */
   readonly truncated?: string;
 }
 
-export type CascadeAction = 'cascade' | 'set null' | 'set default' | 'restrict' | 'no action';
+export type CascadeAction =
+  "cascade" | "set null" | "set default" | "restrict" | "no action";
 
 /**
  * What an index would do to a query, measured rather than guessed.
@@ -175,7 +180,7 @@ export type CascadeAction = 'cascade' | 'set null' | 'set default' | 'restrict' 
  * on a large table blocks writes for as long as it takes.
  */
 export interface IndexExperiment {
-  readonly method: 'hypothetical' | 'built';
+  readonly method: "hypothetical" | "built";
   readonly before: QueryPlan;
   readonly after: QueryPlan;
   /** Whether the planner reached for the new index. The only question that matters. */
@@ -193,13 +198,79 @@ export interface IndexExperiment {
 export class HypotheticalIndexUnavailableError extends Error {
   constructor() {
     super(
-      'Testing an index without building it needs the hypopg extension: ' +
-        'CREATE EXTENSION hypopg; The alternative is to build the index for real ' +
-        'inside a transaction that is rolled back, which measures the same thing ' +
-        'but takes a lock while it builds.',
+      "Testing an index without building it needs the hypopg extension: " +
+        "CREATE EXTENSION hypopg; The alternative is to build the index for real " +
+        "inside a transaction that is rolled back, which measures the same thing " +
+        "but takes a lock while it builds.",
     );
-    this.name = 'HypotheticalIndexUnavailableError';
+    this.name = "HypotheticalIndexUnavailableError";
   }
+}
+
+/**
+ * The state of the schema itself, as opposed to what a statement would do to it.
+ *
+ * Every number here comes from the statistics collector, which means every
+ * number here is measured over a window rather than for all time. That window
+ * is reported alongside them and is not a footnote: "this index has never been
+ * scanned" and "this index has not been scanned since the server restarted
+ * ninety minutes ago" are the same row of `pg_stat_user_indexes` and completely
+ * different facts.
+ */
+export interface SchemaHealth {
+  /** When the statistics being read were last reset. Null when unknown. */
+  readonly statsSince: Date | null;
+  readonly unusedIndexes: readonly UnusedIndex[];
+  readonly redundantIndexes: readonly RedundantIndex[];
+  readonly unindexedForeignKeys: readonly UnindexedForeignKey[];
+  readonly tables: readonly TableHealth[];
+}
+
+export interface UnusedIndex {
+  readonly table: string;
+  readonly index: string;
+  /** Scans since the statistics window began. */
+  readonly scans: number;
+  readonly bytes: number;
+  readonly definition: string;
+}
+
+/**
+ * An index whose columns are a leading subset of another index on the same
+ * table. Anything the shorter one answers, the longer one answers too.
+ */
+export interface RedundantIndex {
+  readonly table: string;
+  readonly index: string;
+  readonly coveredBy: string;
+  readonly bytes: number;
+}
+
+/**
+ * A foreign key with no index on the referencing side.
+ *
+ * Deleting a parent row makes the database look for children, and with no index
+ * that is a sequential scan of the child table per deleted row — while holding
+ * a lock. It is also why a delete that "should be instant" takes minutes.
+ */
+export interface UnindexedForeignKey {
+  readonly constraint: string;
+  readonly table: string;
+  readonly columns: readonly string[];
+  readonly referencedTable: string;
+  /** Rows in the referencing table, which is what decides whether this matters. */
+  readonly rows: number;
+}
+
+export interface TableHealth {
+  readonly table: string;
+  readonly liveRows: number;
+  readonly deadRows: number;
+  /** Rows changed since the planner's statistics were last refreshed. */
+  readonly modifiedSinceAnalyze: number;
+  readonly lastVacuum: Date | null;
+  readonly lastAnalyze: Date | null;
+  readonly bytes: number;
 }
 
 export type PrimaryKeyValue = Record<string, unknown>;
@@ -223,7 +294,11 @@ export interface DatabaseAdapter {
    * editor generates predicates containing `$1`, so a counter unable to take
    * parameters would fail on exactly the statements it generated.
    */
-  countRows(table: string, where?: string, params?: readonly unknown[]): Promise<number>;
+  countRows(
+    table: string,
+    where?: string,
+    params?: readonly unknown[],
+  ): Promise<number>;
   countNonNull(table: string, column: string): Promise<number>;
   countViolating(table: string, predicate: string): Promise<number>;
   /** Rows in `table` whose `columns` do not match any row in the referenced table. */
@@ -242,9 +317,17 @@ export interface DatabaseAdapter {
    * Rows that would fail to cast to `newType`. Returns null when the cast
    * cannot be tested at all — reported as unverifiable rather than as zero.
    */
-  countCastFailures(table: string, column: string, newType: string): Promise<number | null>;
+  countCastFailures(
+    table: string,
+    column: string,
+    newType: string,
+  ): Promise<number | null>;
   tableStats(table: string): Promise<TableStats>;
-  sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]>;
+  sampleRows(
+    table: string,
+    pks: PrimaryKeyValue[],
+    limit: number,
+  ): Promise<Row[]>;
   primaryKeyColumns(table: string): Promise<string[]>;
   /** Columns in declaration order, for drawing the table. */
   tableColumns(table: string): Promise<ColumnInfo[]>;
@@ -256,7 +339,11 @@ export interface DatabaseAdapter {
    * One table in full, with a sample of real rows.  matches any column
    * cast to text, case-insensitively — for finding one row among many.
    */
-  tableDetail(table: string, sampleLimit: number, filter?: string): Promise<TableDetail>;
+  tableDetail(
+    table: string,
+    sampleLimit: number,
+    filter?: string,
+  ): Promise<TableDetail>;
 
   /**
    * Rows matching a predicate.
@@ -265,7 +352,12 @@ export interface DatabaseAdapter {
    * hundred are orphaned. Read-only and bounded. `orderBy` exists for
    * duplicates, whose groups are invisible unless their members sit together.
    */
-  rowsMatching(table: string, where: string, limit: number, orderBy?: string): Promise<Row[]>;
+  rowsMatching(
+    table: string,
+    where: string,
+    limit: number,
+    orderBy?: string,
+  ): Promise<Row[]>;
 
   /**
    * Sessions holding a lock on `table` right now.
@@ -282,7 +374,11 @@ export interface DatabaseAdapter {
    * ON DELETE CASCADE removes rows from tables the statement never names, and
    * the only way to know how many is to walk the foreign keys and count.
    */
-  cascadeImpact(table: string, where: string, params: readonly unknown[]): Promise<CascadeNode>;
+  cascadeImpact(
+    table: string,
+    where: string,
+    params: readonly unknown[],
+  ): Promise<CascadeNode>;
 
   /**
    * Applies previewed statements for real, in one transaction. The only write
@@ -296,7 +392,18 @@ export interface DatabaseAdapter {
    * the visual editor generates carry them, and a planner has to be given the
    * same values it would really run with.
    */
-  explain(sql: string, analyze: boolean, params?: readonly unknown[]): Promise<QueryPlan>;
+  explain(
+    sql: string,
+    analyze: boolean,
+    params?: readonly unknown[],
+  ): Promise<QueryPlan>;
+
+  /**
+   * The health of the schema itself: indexes nothing reads, indexes another
+   * index already covers, foreign keys with no index behind them, and how
+   * stale each table's statistics are.
+   */
+  schemaHealth(): Promise<SchemaHealth>;
 
   /** Whether indexes can be tested without building them. */
   supportsHypotheticalIndexes(): Promise<boolean>;
@@ -324,6 +431,6 @@ export class TransactionControlError extends Error {
       `Dry Run refuses to execute transaction-control statements inside a preview ` +
         `(found: ${statement}). Committing would defeat the entire point of the preview.`,
     );
-    this.name = 'TransactionControlError';
+    this.name = "TransactionControlError";
   }
 }

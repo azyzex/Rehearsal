@@ -20,6 +20,11 @@ import {
   TransactionControlError,
   IndexExperiment,
   HypotheticalIndexUnavailableError,
+  SchemaHealth,
+  UnusedIndex,
+  RedundantIndex,
+  UnindexedForeignKey,
+  TableHealth,
 } from './types';
 import { executionMs, indexNames, totalCost } from './planShape';
 import { CommittableStatement, CommittedResult, runCommittedOn } from './commit';
@@ -117,7 +122,9 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       await client.query('BEGIN');
       try {
-        await client.query(`SET LOCAL statement_timeout = ${Math.floor(config.statementTimeoutMs)}`);
+        await client.query(
+          `SET LOCAL statement_timeout = ${Math.floor(config.statementTimeoutMs)}`,
+        );
         await client.query(`SET LOCAL lock_timeout = ${Math.floor(config.lockTimeoutMs)}`);
         return await fn(tx);
       } finally {
@@ -153,11 +160,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   // ---- read-only probes -------------------------------------------------
 
-  async countRows(
-    table: string,
-    where?: string,
-    params: readonly unknown[] = [],
-  ): Promise<number> {
+  async countRows(table: string, where?: string, params: readonly unknown[] = []): Promise<number> {
     const clause = where && where.trim().length > 0 ? ` WHERE ${where}` : '';
     const { rows } = await this.probe(
       `SELECT COUNT(*)::bigint AS n FROM ${qualify(table)}${clause}`,
@@ -236,7 +239,10 @@ export class PostgresAdapter implements DatabaseAdapter {
     );
 
     const row = rows[0];
-    return { groups: Number(row?.['groups'] ?? 0), rows: Number(row?.['rows'] ?? 0) };
+    return {
+      groups: Number(row?.['groups'] ?? 0),
+      rows: Number(row?.['rows'] ?? 0),
+    };
   }
 
   async countCastFailures(table: string, column: string, newType: string): Promise<number | null> {
@@ -494,7 +500,9 @@ export class PostgresAdapter implements DatabaseAdapter {
     return {
       tables,
       foreignKeys,
-      schemas: [...schemas].sort((a, b) => (a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b))),
+      schemas: [...schemas].sort((a, b) =>
+        a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b),
+      ),
     };
   }
 
@@ -629,7 +637,9 @@ export class PostgresAdapter implements DatabaseAdapter {
       pid: Number(row['pid']),
       state: String(row['state'] ?? 'unknown'),
       applicationName: String(row['application_name'] ?? ''),
-      query: String(row['query'] ?? '').replace(/\s+/g, ' ').slice(0, 200),
+      query: String(row['query'] ?? '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 200),
       seconds: Math.max(0, Number(row['seconds'] ?? 0)),
       lockMode: String(row['lock_mode'] ?? ''),
     }));
@@ -729,7 +739,12 @@ export class PostgresAdapter implements DatabaseAdapter {
 
         const nested =
           key.action === 'cascade'
-            ? await walk(key.fromTable, childPredicate, depth + 1, new Set([...seen, key.fromTable]))
+            ? await walk(
+                key.fromTable,
+                childPredicate,
+                depth + 1,
+                new Set([...seen, key.fromTable]),
+              )
             : [];
 
         children.push({
@@ -822,7 +837,203 @@ export class PostgresAdapter implements DatabaseAdapter {
     return { raw: rows[0]?.['QUERY PLAN'] };
   }
 
-// ---- index experiments -------------------------------------------------
+  // ---- schema health -----------------------------------------------------
+
+  /**
+   * Four questions about the schema, asked in four queries.
+   *
+   * Split rather than joined into one: each reads a different catalogue, the
+   * results are shown in different places, and a single query that answered all
+   * four would be unreadable and no faster.
+   */
+  async schemaHealth(): Promise<SchemaHealth> {
+    // Postgres caches the statistics view within a backend, and this adapter
+    // holds one connection for the life of the session. Without this, asking a
+    // second time returns the first answer — an index scanned since the last
+    // check would still be listed as unread, which is the one number here
+    // people act on.
+    await this.probe('SELECT pg_stat_clear_snapshot()');
+
+    const [since, unused, redundant, foreignKeys, tables] = [
+      await this.statsResetAt(),
+      await this.unusedIndexes(),
+      await this.redundantIndexes(),
+      await this.unindexedForeignKeys(),
+      await this.tableHealth(),
+    ];
+
+    return {
+      statsSince: since,
+      unusedIndexes: unused,
+      redundantIndexes: redundant,
+      unindexedForeignKeys: foreignKeys,
+      tables,
+    };
+  }
+
+  /**
+   * When the statistics being read began accumulating.
+   *
+   * `stats_reset` is null on a database whose statistics have never been reset,
+   * in which case the server's start time is the honest answer — and on a
+   * platform that suspends idle computes, that can be minutes ago.
+   */
+  private async statsResetAt(): Promise<Date | null> {
+    const { rows } = await this.probe(
+      `SELECT COALESCE(
+                (SELECT stats_reset FROM pg_stat_database WHERE datname = current_database()),
+                pg_postmaster_start_time()
+              ) AS since`,
+    );
+    const since = rows[0]?.['since'];
+    return since instanceof Date ? since : null;
+  }
+
+  private async unusedIndexes(): Promise<UnusedIndex[]> {
+    const { rows } = await this.probe(
+      // Primary keys and unique constraints are excluded because they are not
+      // there to be read: they enforce a rule, and dropping one because nothing
+      // scanned it would drop the rule with it.
+      `SELECT s.relname       AS table_name,
+              s.indexrelname  AS index_name,
+              s.idx_scan      AS scans,
+              pg_relation_size(s.indexrelid)::bigint AS bytes,
+              pg_get_indexdef(s.indexrelid) AS definition
+         FROM pg_stat_user_indexes s
+         JOIN pg_index i ON i.indexrelid = s.indexrelid
+        WHERE NOT i.indisprimary
+          AND NOT i.indisunique
+          AND i.indisvalid
+          AND s.schemaname NOT IN ('pg_catalog', 'information_schema')
+          AND s.idx_scan = 0
+        ORDER BY bytes DESC`,
+    );
+
+    return rows.map((row) => ({
+      table: String(row['table_name']),
+      index: String(row['index_name']),
+      scans: Number(row['scans'] ?? 0),
+      bytes: Number(row['bytes'] ?? 0),
+      definition: String(row['definition'] ?? ''),
+    }));
+  }
+
+  /**
+   * Indexes another index already covers.
+   *
+   * A btree on (a) answers nothing that a btree on (a, b) does not, so the
+   * shorter one is pure write overhead. Compared on the leading columns, which
+   * is what "covers" means to the planner.
+   */
+  private async redundantIndexes(): Promise<RedundantIndex[]> {
+    const { rows } = await this.probe(
+      `WITH indexes AS (
+         SELECT i.indexrelid,
+                i.indrelid,
+                i.indexrelid::regclass::text AS index_name,
+                i.indrelid::regclass::text   AS table_name,
+                string_to_array(i.indkey::text, ' ')::int2[] AS columns,
+                i.indisunique,
+                i.indisprimary
+           FROM pg_index i
+           JOIN pg_class c ON c.oid = i.indrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE i.indisvalid
+            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND i.indexprs IS NULL
+            AND i.indpred IS NULL
+       )
+       SELECT short.table_name,
+              short.index_name AS redundant,
+              long.index_name  AS covered_by,
+              pg_relation_size(short.indexrelid)::bigint AS bytes
+         FROM indexes short
+         JOIN indexes long
+           ON long.indrelid = short.indrelid
+          AND long.indexrelid <> short.indexrelid
+          AND array_length(long.columns, 1) > array_length(short.columns, 1)
+          AND long.columns[1:array_length(short.columns, 1)] = short.columns
+        WHERE NOT short.indisprimary
+          AND NOT short.indisunique
+        ORDER BY bytes DESC`,
+    );
+
+    return rows.map((row) => ({
+      table: String(row['table_name']),
+      index: String(row['redundant']),
+      coveredBy: String(row['covered_by']),
+      bytes: Number(row['bytes'] ?? 0),
+    }));
+  }
+
+  private async unindexedForeignKeys(): Promise<UnindexedForeignKey[]> {
+    const { rows } = await this.probe(
+      `SELECT c.conname AS constraint_name,
+              c.conrelid::regclass::text  AS table_name,
+              c.confrelid::regclass::text AS referenced_table,
+              (SELECT array_agg(a.attname::text ORDER BY k.ord)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+              ) AS columns,
+              GREATEST(rel.reltuples, 0)::bigint AS rows_estimate
+         FROM pg_constraint c
+         JOIN pg_class rel ON rel.oid = c.conrelid
+         JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE c.contype = 'f'
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND NOT EXISTS (
+                SELECT 1 FROM pg_index i
+                 WHERE i.indrelid = c.conrelid
+                   AND i.indisvalid
+                   -- An index serves the key when the key's columns are its
+                   -- leading ones, in order. Anything else the planner ignores.
+                   AND (string_to_array(i.indkey::text, ' ')::int2[])
+                       [1:array_length(c.conkey, 1)] = c.conkey::int2[]
+              )
+        ORDER BY rows_estimate DESC`,
+    );
+
+    return rows.map((row) => ({
+      constraint: String(row['constraint_name']),
+      table: String(row['table_name']),
+      referencedTable: String(row['referenced_table']),
+      columns: (row['columns'] as string[] | null) ?? [],
+      rows: Number(row['rows_estimate'] ?? 0),
+    }));
+  }
+
+  private async tableHealth(): Promise<TableHealth[]> {
+    const { rows } = await this.probe(
+      // Live rows come from pg_class rather than from n_live_tup. The two
+      // usually agree, but n_live_tup can sit at zero after a bulk load until
+      // something touches the table again, and reltuples is what the planner
+      // itself reads — so this stays consistent with every other row count in
+      // the extension.
+      `SELECT t.relname AS table_name,
+              GREATEST(c.reltuples, 0)::bigint AS live_rows,
+              t.n_dead_tup::bigint AS dead_rows,
+              t.n_mod_since_analyze::bigint AS modified,
+              GREATEST(t.last_vacuum, t.last_autovacuum)   AS vacuumed,
+              GREATEST(t.last_analyze, t.last_autoanalyze) AS analyzed,
+              pg_total_relation_size(t.relid)::bigint AS bytes
+         FROM pg_stat_user_tables t
+         JOIN pg_class c ON c.oid = t.relid
+        WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY bytes DESC`,
+    );
+
+    return rows.map((row) => ({
+      table: String(row['table_name']),
+      liveRows: Number(row['live_rows'] ?? 0),
+      deadRows: Number(row['dead_rows'] ?? 0),
+      modifiedSinceAnalyze: Number(row['modified'] ?? 0),
+      lastVacuum: row['vacuumed'] instanceof Date ? (row['vacuumed'] as Date) : null,
+      lastAnalyze: row['analyzed'] instanceof Date ? (row['analyzed'] as Date) : null,
+      bytes: Number(row['bytes'] ?? 0),
+    }));
+  }
+
+  // ---- index experiments -------------------------------------------------
 
   async supportsHypotheticalIndexes(): Promise<boolean> {
     const { rows } = await this.probe(`SELECT 1 FROM pg_extension WHERE extname = 'hypopg'`);
@@ -879,10 +1090,9 @@ export class PostgresAdapter implements DatabaseAdapter {
       const before = await explain();
 
       try {
-        const created = await client.query(
-          'SELECT indexname FROM hypopg_create_index($1)',
-          [indexSql],
-        );
+        const created = await client.query('SELECT indexname FROM hypopg_create_index($1)', [
+          indexSql,
+        ]);
         const name = String(created.rows[0]?.['indexname'] ?? '');
         const after = await explain();
 
