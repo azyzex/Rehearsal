@@ -183,7 +183,12 @@ export interface DatabaseAdapter {
   runCommitted(
     statements: readonly { sql: string; params: readonly unknown[] }[],
   ): Promise<{ applied: number; rowCounts: readonly (number | null)[] }>;
-  explain(sql: string, analyze: boolean): Promise<QueryPlan>;
+  /**
+   * A plan for the statement. Takes bound parameters because the statements
+   * the visual editor generates carry them, and a planner has to be given the
+   * same values it would really run with.
+   */
+  explain(sql: string, analyze: boolean, params?: readonly unknown[]): Promise<QueryPlan>;
 }
 
 /** Thrown when a caller tries to smuggle transaction control into a preview. */

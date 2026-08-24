@@ -602,13 +602,17 @@ export class PostgresAdapter implements DatabaseAdapter {
    * inside a rolled-back transaction. This method runs outside one, and
    * therefore refuses.
    */
-  async explain(sql: string, analyze: boolean): Promise<QueryPlan> {
+  async explain(
+    sql: string,
+    analyze: boolean,
+    params: readonly unknown[] = [],
+  ): Promise<QueryPlan> {
     if (analyze) {
       throw new Error(
         'EXPLAIN ANALYZE executes the statement for real. Run it through withRollback instead.',
       );
     }
-    const { rows } = await this.probe(`EXPLAIN (FORMAT JSON) ${sql}`);
+    const { rows } = await this.probe(`EXPLAIN (FORMAT JSON) ${sql}`, params);
     return { raw: rows[0]?.['QUERY PLAN'] };
   }
 
