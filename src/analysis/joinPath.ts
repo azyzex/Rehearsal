@@ -1,0 +1,174 @@
+import { SchemaSnapshot } from '../adapters/types';
+
+/**
+ * How do I get from this table to that one?
+ *
+ * Every developer answers this by hand, repeatedly, by opening a schema
+ * diagram and tracing relationships with a finger. The database already knows
+ * the answer — the foreign keys *are* the graph — so it may as well be walked.
+ *
+ * Shortest path by number of joins, breadth-first. Foreign keys are followed in
+ * both directions, because a join does not care which side declared the
+ * constraint: `orders` reaches `users` whether the key points that way or the
+ * other. When several paths are the same length the first one found wins, which
+ * is stable because the edge list is in a fixed order.
+ */
+
+export interface JoinStep {
+  readonly from: string;
+  readonly to: string;
+  /** `from`'s columns, in the same order as `toColumns`. */
+  readonly fromColumns: readonly string[];
+  readonly toColumns: readonly string[];
+  /** The constraint that made this step possible. */
+  readonly via: string;
+}
+
+export interface JoinPath {
+  readonly from: string;
+  readonly to: string;
+  readonly steps: readonly JoinStep[];
+  /** Tables along the way, in order, including both ends. */
+  readonly tables: readonly string[];
+  /** A runnable SELECT that walks it. */
+  readonly sql: string;
+}
+
+export function findJoinPath(
+  snapshot: SchemaSnapshot,
+  from: string,
+  to: string,
+): JoinPath | undefined {
+  if (from === to) {
+    // Asking for the route from a table to itself is only an interesting
+    // question when the table references itself — a category hierarchy, an
+    // employee's manager. The useful answer there is the self-join, not "you
+    // are already there", and a shortest-path search cannot give it because it
+    // refuses to revisit a table.
+    const loop = snapshot.foreignKeys.find((fk) => fk.fromTable === from && fk.toTable === from);
+    const steps: JoinStep[] = loop
+      ? [
+          {
+            from,
+            to,
+            fromColumns: loop.fromColumns,
+            toColumns: loop.toColumns,
+            via: loop.name,
+          },
+        ]
+      : [];
+
+    return {
+      from,
+      to,
+      steps,
+      tables: steps.length > 0 ? [from, to] : [from],
+      sql: toSelect(from, steps),
+    };
+  }
+
+  // Adjacency in both directions, since a join is symmetric even though a
+  // foreign key is not.
+  const neighbours = new Map<string, JoinStep[]>();
+  const link = (step: JoinStep): void => {
+    const list = neighbours.get(step.from) ?? [];
+    list.push(step);
+    neighbours.set(step.from, list);
+  };
+
+  for (const fk of snapshot.foreignKeys) {
+    link({
+      from: fk.fromTable,
+      to: fk.toTable,
+      fromColumns: fk.fromColumns,
+      toColumns: fk.toColumns,
+      via: fk.name,
+    });
+    link({
+      from: fk.toTable,
+      to: fk.fromTable,
+      fromColumns: fk.toColumns,
+      toColumns: fk.fromColumns,
+      via: fk.name,
+    });
+  }
+
+  const previous = new Map<string, JoinStep>();
+  const seen = new Set<string>([from]);
+  let frontier = [from];
+
+  while (frontier.length > 0) {
+    const next: string[] = [];
+
+    for (const table of frontier) {
+      for (const step of neighbours.get(table) ?? []) {
+        if (seen.has(step.to)) {
+          continue;
+        }
+        seen.add(step.to);
+        previous.set(step.to, step);
+
+        if (step.to === to) {
+          return build(from, to, previous);
+        }
+        next.push(step.to);
+      }
+    }
+
+    frontier = next;
+  }
+
+  return undefined;
+}
+
+function build(from: string, to: string, previous: Map<string, JoinStep>): JoinPath {
+  const steps: JoinStep[] = [];
+  let cursor = to;
+
+  while (cursor !== from) {
+    const step = previous.get(cursor);
+    if (!step) {
+      break;
+    }
+    steps.unshift(step);
+    cursor = step.from;
+  }
+
+  const tables = [from, ...steps.map((step) => step.to)];
+  return { from, to, steps, tables, sql: toSelect(from, steps) };
+}
+
+/**
+ * The path as a SELECT.
+ *
+ * Aliased by position rather than by name, because a path can revisit a table
+ * — `users → orders → users` is a real shape when a table has two foreign keys
+ * into the same place — and unaliased self-joins are ambiguous.
+ */
+function toSelect(from: string, steps: readonly JoinStep[]): string {
+  const alias = (index: number): string => `t${index}`;
+  const lines = [`SELECT *`, `  FROM ${quote(from)} AS ${alias(0)}`];
+
+  steps.forEach((step, index) => {
+    const left = alias(index);
+    const right = alias(index + 1);
+    const on = step.fromColumns
+      .map((column, position) => {
+        const target = step.toColumns[position] ?? step.toColumns[0] ?? column;
+        return `${left}.${quoteIdent(column)} = ${right}.${quoteIdent(target)}`;
+      })
+      .join(' AND ');
+
+    lines.push(`  JOIN ${quote(step.to)} AS ${right} ON ${on}`);
+  });
+
+  return lines.join('\n');
+}
+
+function quote(table: string): string {
+  return table.split('.').map(quoteIdent).join('.');
+}
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}

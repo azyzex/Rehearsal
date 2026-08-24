@@ -63,6 +63,10 @@
         renderDrawer();
         break;
 
+      case 'joinPath':
+        renderJoinPath(message);
+        break;
+
       case 'changeset':
         readOnly = Boolean(message.readOnly);
         source = message.source || '';
@@ -175,6 +179,7 @@
         ),
       );
     }
+    wrap.appendChild(renderPathSection());
     wrap.appendChild(renderDataSection());
 
     openDrawer(wrap);
@@ -314,6 +319,71 @@
       ),
     );
     return section;
+  }
+
+  /**
+   * Route-finding, from the open table to any other.
+   *
+   * The answer is a JOIN you can copy, because knowing that users reaches
+   * products through orders and order_items is only half of what you wanted;
+   * the other half is not having to write it out.
+   */
+  function renderPathSection() {
+    const section = document.createElement('div');
+    section.className = 'drawer-section';
+    section.id = 'path-section';
+    section.appendChild(text('h3', '', 'Find a route to'));
+
+    const form = document.createElement('div');
+    form.className = 'form-row';
+
+    const target = document.createElement('select');
+    target.id = 'path-target';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'another table…';
+    target.appendChild(blank);
+
+    for (const name of tableNames()) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      target.appendChild(option);
+    }
+
+    target.addEventListener('change', () => {
+      if (target.value) {
+        vscode.postMessage({ type: 'findPath', from: detail.table, to: target.value });
+      }
+    });
+
+    form.appendChild(target);
+    section.appendChild(form);
+    section.appendChild(text('div', 'path-result hint', ''));
+    return section;
+  }
+
+  function tableNames() {
+    const baseline = host.baseline();
+    return baseline ? baseline.tables.map((t) => t.qualified) : [];
+  }
+
+  function renderJoinPath(message) {
+    const result = document.querySelector('.path-result');
+    if (!result) {
+      return;
+    }
+
+    if (!message.found) {
+      result.textContent =
+        'No route: nothing connects these two through a foreign key.';
+      return;
+    }
+
+    result.replaceChildren();
+    const joins = `${message.joins} ${message.joins === 1 ? 'join' : 'joins'}`;
+    result.appendChild(text('div', '', `${joins}: ${message.tables.join(' → ')}`));
+    result.appendChild(text('pre', 'definition', message.sql));
   }
 
   function renderListSection(title, lines) {

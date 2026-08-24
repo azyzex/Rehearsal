@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 242 tests, all against a real Postgres.
+> **Status: working, not yet published.** 253 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
@@ -46,7 +46,13 @@ as they would become, with the changed cells highlighted.
 **Explore the schema.** `Dry Run: Explore Schema` draws the whole database —
 every table, every relationship, laid out so that the shape of the schema is
 visible before you have read a name. Drag tables where you want them, search
-across table and column names, click one to isolate its relationships.
+across table and column names, click one to isolate its relationships, and use
+focus mode to show only what sits within a few joins of it.
+
+**Find a route.** Open a table and pick another: it traces the shortest path
+through the foreign keys and hands you the JOIN. Knowing that `users` reaches
+`products` through `orders` and `order_items` is only half of what you wanted;
+the other half is not having to write it out.
 
 **Change it visually.** Click a table to open it: columns, indexes, constraints,
 and the first rows of real data. Rename a column, drop one, add one, flip its

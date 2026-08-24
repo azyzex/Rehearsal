@@ -4,6 +4,7 @@ import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
+import { findJoinPath } from '../analysis/joinPath';
 import { toMermaid } from './mermaid';
 
 /**
@@ -189,6 +190,10 @@ export class SchemaPanel {
           await this.exportDiagram();
           break;
 
+        case 'findPath':
+          this.findPath(String(message.from), String(message.to));
+          break;
+
         default:
           break;
       }
@@ -310,6 +315,29 @@ export class SchemaPanel {
         '```\n',
     });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
+  }
+
+  /**
+   * How to get from one table to another.
+   *
+   * The foreign keys are already a graph, so the question every developer
+   * answers by tracing a diagram with a finger can just be walked.
+   */
+  private findPath(from: string, to: string): void {
+    if (!this.baseline) {
+      return;
+    }
+
+    const path = findJoinPath(this.baseline, from, to);
+    this.post({
+      type: 'joinPath',
+      from,
+      to,
+      found: Boolean(path),
+      tables: path?.tables ?? [],
+      joins: path?.steps.length ?? 0,
+      sql: path?.sql ?? '',
+    });
   }
 
   private postChangeset(): void {
