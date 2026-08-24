@@ -20,6 +20,13 @@
   let findings = new Map();
   /** @type {Set<number>} */
   const expanded = new Set();
+  /**
+   * Per-statement state for the rows behind a blocking count. Fetched only
+   * when asked, so each entry is one of: absent, 'loading', null (asked and
+   * nothing came back), or the offenders themselves.
+   * @type {Map<number, any>}
+   */
+  const offenders = new Map();
   /** @type {number | null} */
   let current = null;
   let running = false;
@@ -78,6 +85,7 @@
         statements = message.statements;
         findings = new Map();
         expanded.clear();
+        offenders.clear();
         current = null;
         running = true;
         diagram = null;
@@ -92,6 +100,11 @@
 
       case 'finding':
         findings.set(message.finding.statementIndex, message.finding);
+        render();
+        break;
+
+      case 'offenders':
+        offenders.set(message.statementIndex, message.offenders);
         render();
         break;
 
@@ -209,6 +222,7 @@
     // Ordered by what changes a decision: whether it will queue, then what it
     // silently takes with it, then how to do it more safely.
     for (const section of [
+      renderOffenders(finding),
       renderQueueWarning(finding),
       renderCascade(finding.cascade),
       renderRewrites(finding),
@@ -864,6 +878,206 @@
    * decision stays with the reader. Copying it is one click; running it is
    * their business.
    */
+  /** Which statements have rows worth showing. Mirrors analysis/offenders.ts. */
+  const OFFENDER_KINDS = new Set([
+    'set_not_null',
+    'add_foreign_key',
+    'add_unique',
+    'add_check',
+    'drop_column',
+  ]);
+
+  /**
+   * The rows behind the count.
+   *
+   * "12 rows have no email" tells you that you are blocked. It does not tell
+   * you which twelve, and that is the only part you can act on. They are
+   * fetched on demand because a migration touching several large tables would
+   * otherwise pay for rows nobody opens.
+   */
+  function renderOffenders(finding) {
+    const kind = finding.classification && finding.classification.kind;
+    if (!OFFENDER_KINDS.has(kind)) {
+      return null;
+    }
+
+    const index = finding.statementIndex;
+    const state = offenders.has(index) ? offenders.get(index) : undefined;
+
+    const box = document.createElement('div');
+    box.className = 'offenders';
+
+    if (state === undefined || state === 'loading') {
+      const button = document.createElement('button');
+      button.className = 'expand';
+      button.type = 'button';
+      button.disabled = state === 'loading';
+      button.textContent = state === 'loading' ? 'Fetching them…' : 'Show me which rows';
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        offenders.set(index, 'loading');
+        vscode.postMessage({ type: 'showOffenders', index });
+        render();
+      });
+      box.appendChild(button);
+      return box;
+    }
+
+    if (state === null) {
+      const note = document.createElement('div');
+      note.className = 'unavailable';
+      note.textContent = 'Could not fetch the rows. The Dry Run output channel has the reason.';
+      box.appendChild(note);
+      return box;
+    }
+
+    const head = document.createElement('div');
+    head.className = 'offenders-head';
+    head.textContent = offenderHeadline(state);
+    box.appendChild(head);
+
+    if (state.rows.length > 0) {
+      box.appendChild(offenderTable(state));
+      if (state.total > state.rows.length) {
+        const more = document.createElement('div');
+        more.className = 'offenders-more';
+        more.textContent = 'Showing ' + state.rows.length + ' of ' + formatCount(state.total) + '.';
+        box.appendChild(more);
+      }
+    }
+
+    if (state.fix) {
+      box.appendChild(offenderFix(index, state.fix));
+    }
+    return box;
+  }
+
+  function offenderHeadline(state) {
+    const where = state.column ? state.table + '.' + state.column : state.table;
+    if (state.total === 0) {
+      return 'Nothing in ' + where + ' is in the way.';
+    }
+    const n = formatCount(state.total);
+    switch (state.kind) {
+      case 'null':
+        return n + ' in ' + where + (state.total === 1 ? ' is empty.' : ' are empty.');
+      case 'orphan':
+        return n + ' in ' + where + ' point at something that does not exist.';
+      case 'duplicate':
+        return n + ' in ' + where + ' share a value with another row.';
+      case 'violation':
+        return n + ' in ' + where + ' would fail the new rule.';
+      default:
+        return n + ' in ' + where + '.';
+    }
+  }
+
+  function offenderTable(state) {
+    const container = document.createElement('div');
+    container.className = 'sample';
+
+    const columns = Object.keys(state.rows[0]);
+    const table = document.createElement('table');
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const column of columns) {
+      headRow.appendChild(th(column));
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const row of state.rows) {
+      const tr = document.createElement('tr');
+      for (const column of columns) {
+        // The column at issue is the reason the row is here, so it is marked.
+        tr.appendChild(td(row[column], column === state.column ? 'offending' : ''));
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    container.appendChild(table);
+    return container;
+  }
+
+  /**
+   * The generated fix, offered the way a rewrite is: as an edit to the file,
+   * never as something run against the database.
+   */
+  function offenderFix(index, fix) {
+    const card = document.createElement('div');
+    card.className = 'rewrite';
+
+    const title = document.createElement('div');
+    title.className = 'rewrite-title';
+    title.textContent = fix.title;
+    card.appendChild(title);
+
+    const why = document.createElement('div');
+    why.className = 'rewrite-why';
+    why.textContent = fix.note;
+    card.appendChild(why);
+
+    const sql = document.createElement('pre');
+    sql.className = 'rewrite-sql';
+    sql.textContent = fix.sql + ';';
+    card.appendChild(sql);
+
+    if (fix.needsEditing) {
+      const warn = document.createElement('div');
+      warn.className = 'rewrite-warn';
+      warn.textContent = 'Fill in the placeholder first. It will not run as written.';
+      card.appendChild(warn);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'rewrite-actions';
+
+    const copy = document.createElement('button');
+    copy.className = 'tiny';
+    copy.type = 'button';
+    copy.textContent = 'Copy';
+    copy.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void navigator.clipboard?.writeText(fix.sql + ';');
+      copy.textContent = 'Copied';
+      setTimeout(() => {
+        copy.textContent = 'Copy';
+      }, 1200);
+    });
+    actions.appendChild(copy);
+
+    // Inserting rather than replacing: the fix clears the way for the original
+    // statement, it does not stand in for it.
+    const insert = document.createElement('button');
+    insert.className = 'tiny';
+    insert.type = 'button';
+    insert.textContent = 'Insert above the statement';
+    insert.addEventListener('click', (event) => {
+      event.stopPropagation();
+      // Looked up by index rather than by position: the two agree today, and
+      // a silent off-by-one here would rewrite the wrong statement.
+      const target = statements.find((entry) => entry.index === index);
+      if (!target) {
+        return;
+      }
+      vscode.postMessage({
+        type: 'applyRewrite',
+        index,
+        statements: [fix.sql, target.sql.trim().replace(/;$/, '')],
+      });
+    });
+    actions.appendChild(insert);
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function formatCount(n) {
+    return n.toLocaleString() + (n === 1 ? ' row' : ' rows');
+  }
+
   function renderRewrites(finding) {
     if (!finding.rewrites || finding.rewrites.length === 0) {
       return null;

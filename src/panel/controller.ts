@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Diagram } from '../analysis/impact';
 import { Finding, Severity } from '../analysis/types';
+import { Offenders } from '../analysis/offenders';
 import { SplitStatement } from '../parser/splitter';
 
 /**
@@ -18,6 +19,13 @@ import { SplitStatement } from '../parser/splitter';
 export interface PanelHost {
   /** Called when the user asks to stop an in-flight analysis. */
   onCancel(): void;
+  /**
+   * Called when the user asks to see the rows behind a count.
+   *
+   * Fetched on demand rather than with every finding: a migration touching
+   * several large tables would otherwise pay for rows nobody looks at.
+   */
+  onShowOffenders(statementIndex: number): void | Promise<void>;
 }
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -114,6 +122,23 @@ export class PreviewPanel {
     void this.panel.webview.postMessage({ type: 'diagram', diagram });
   }
 
+  /**
+   * The rows behind a count, once they have been fetched.
+   *
+   * Values are formatted here rather than in the webview: a timestamp arrives
+   * from the driver as a Date and a bytea as a Buffer, and neither survives
+   * the structured clone into something a table cell can show.
+   */
+  showOffenders(statementIndex: number, offenders: Offenders | null): void {
+    void this.panel.webview.postMessage({
+      type: 'offenders',
+      statementIndex,
+      offenders: offenders
+        ? { ...offenders, rows: offenders.rows.map((row) => mapValues(row)) }
+        : null,
+    });
+  }
+
   finish(summary?: string): void {
     void this.panel.webview.postMessage({ type: 'done', summary });
   }
@@ -133,6 +158,10 @@ export class PreviewPanel {
     }
     if (message.type === 'cancel') {
       this.host?.onCancel();
+      return;
+    }
+    if (message.type === 'showOffenders' && typeof message.index === 'number') {
+      void this.host?.onShowOffenders(message.index);
       return;
     }
     if (

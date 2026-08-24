@@ -220,6 +220,15 @@ export interface DatabaseAdapter {
   tableDetail(table: string, sampleLimit: number, filter?: string): Promise<TableDetail>;
 
   /**
+   * Rows matching a predicate.
+   *
+   * The rows behind a blocking count: which twelve have no email, which two
+   * hundred are orphaned. Read-only and bounded. `orderBy` exists for
+   * duplicates, whose groups are invisible unless their members sit together.
+   */
+  rowsMatching(table: string, where: string, limit: number, orderBy?: string): Promise<Row[]>;
+
+  /**
    * Sessions holding a lock on `table` right now.
    *
    * The difference between "this takes one second" and "this takes one second

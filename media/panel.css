@@ -771,3 +771,31 @@ footer {
   background: var(--vscode-list-hoverBackground);
   border-color: var(--vscode-focusBorder);
 }
+
+/* The rows behind a blocking count.
+   Bordered on the leading edge rather than boxed: it belongs to the row above
+   it, and a second full box would read as a second finding. */
+.offenders {
+  margin: 8px 0 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--vscode-charts-orange, #d18616);
+}
+
+.offenders-head {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--vscode-foreground);
+}
+
+.offenders-more {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* The column that put the row in this list. Everything else is context. */
+.sample td.offending {
+  background: var(--vscode-inputValidation-warningBackground, rgba(209, 134, 22, 0.18));
+  font-weight: 600;
+}

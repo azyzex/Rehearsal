@@ -750,6 +750,27 @@ export class PostgresAdapter implements DatabaseAdapter {
     };
   }
 
+  /**
+   * Rows matching a predicate.
+   *
+   * The rows behind a blocking count. A read, capped, under the ordinary
+   * statement timeout — this runs against a table someone is about to migrate,
+   * and an unbounded scan there is the very thing the tool exists to warn
+   * about.
+   */
+  async rowsMatching(
+    table: string,
+    where: string,
+    limit: number,
+    orderBy?: string,
+  ): Promise<Row[]> {
+    const order = orderBy ? ` ORDER BY ${orderBy}` : '';
+    const { rows } = await this.probe(
+      `SELECT * FROM ${qualify(table)} WHERE ${where}${order} LIMIT ${Math.max(1, Math.floor(limit))}`,
+    );
+    return rows;
+  }
+
   async sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]> {
     if (pks.length === 0) {
       return [];

@@ -113,4 +113,44 @@ describe('webview scripts', () => {
       );
     }
   });
+
+  it('every message a webview sends is handled by its panel', () => {
+    // The two halves of a feature land in different files, and a message with
+    // no case on the other side is silent in both directions: the button works,
+    // the panel does nothing, and nothing anywhere says why.
+    for (const [panel, scripts] of Object.entries(panels)) {
+      const controller = stripComments(fs.readFileSync(path.join(PANELS, panel), 'utf8'));
+
+      for (const script of scripts) {
+        const source = stripComments(fs.readFileSync(path.join(MEDIA, script), 'utf8'));
+        for (const match of source.matchAll(/postMessage\(\{\s*type:\s*'(\w+)'/g)) {
+          const type = match[1]!;
+          assert.ok(
+            controller.includes(`'${type}'`),
+            `${script} sends { type: '${type}' }, which ${panel} never handles`,
+          );
+        }
+      }
+    }
+  });
+
+  it('every message the preview panel sends is handled by its webview', () => {
+    // The same gap the other way round: a measurement is computed, posted, and
+    // dropped on the floor.
+    const controller = stripComments(fs.readFileSync(path.join(PANELS, 'controller.ts'), 'utf8'));
+    const script = stripComments(fs.readFileSync(path.join(MEDIA, 'panel.js'), 'utf8'));
+
+    const sent = new Set(
+      [...controller.matchAll(/postMessage\(\{\s*type:\s*'(\w+)'/g)].map((m) => m[1]!),
+    );
+    assert.ok(sent.size > 0, 'found no outgoing messages at all — the regex has rotted');
+
+    for (const type of sent) {
+      assert.match(
+        script,
+        new RegExp(`case '${type}':`),
+        `controller.ts sends { type: '${type}' }, which panel.js never handles`,
+      );
+    }
+  });
 });

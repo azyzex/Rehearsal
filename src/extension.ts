@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { buildDiagram } from './analysis/impact';
 import { editsFromClassifications } from './edit/fromSql';
+import { findOffenders } from './analysis/offenders';
+import { classify } from './parser/classifier';
 import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
 import { Finding, Severity, Thresholds } from './analysis/types';
@@ -80,7 +82,10 @@ async function preview(
   const panel = PreviewPanel.show(context);
 
   if (statements.length === 0) {
-    panel.begin(editor.document, [], '—', { onCancel: () => undefined });
+    panel.begin(editor.document, [], '—', {
+      onCancel: () => undefined,
+      onShowOffenders: () => undefined,
+    });
     panel.finish('No statements found.');
     return;
   }
@@ -89,9 +94,26 @@ async function preview(
 
   try {
     const connection = await connections.acquire();
+    const classifications = statements.map((statement) => classify(statement.sql));
+
     panel.begin(editor.document, statements, connection.identity.display, {
       onCancel: () => {
         cancelled = true;
+      },
+      // Fetched only when asked. A migration touching several large tables
+      // would otherwise pay for rows nobody looks at.
+      onShowOffenders: async (index) => {
+        const classification = classifications[index];
+        if (!classification) {
+          return;
+        }
+        try {
+          const offenders = await findOffenders(connection.adapter, classification, 25);
+          panel.showOffenders(index, offenders ?? null);
+        } catch (error) {
+          output.appendLine(`Could not fetch the offending rows: ${errorMessage(error)}`);
+          panel.showOffenders(index, null);
+        }
       },
     });
 
