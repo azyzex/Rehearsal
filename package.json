@@ -32,6 +32,11 @@
         "category": "Dry Run"
       },
       {
+        "command": "dryrun.pendingMigrations",
+        "title": "Preview Pending Migrations",
+        "category": "Dry Run"
+      },
+      {
         "command": "dryrun.suggestIndexes",
         "title": "Would an Index Help?",
         "category": "Dry Run"

@@ -88,6 +88,17 @@ the price of a real build. Either way nothing is kept, and an index the planner
 ignores is reported as ignored — a suggestion that costs write throughput
 forever is worth refusing.
 
+**Answer the question your ORM would not.** `Dry Run: Preview Pending
+Migrations` finds your migrations — Prisma, Drizzle, or a plain folder of `.sql`
+files — asks the database which of them it has already run, and previews the
+rest. Prisma and Drizzle both hand you generated SQL and then warn about it
+without a number in the warning: *possible data loss*, *you are about to drop a
+column*. Possible how, losing what? Neither tool goes and looks, because neither
+wants to connect to production to generate a migration. This does, read-only,
+and replaces the warning with a count. It also reports drift the other way: a
+migration the database has run that is not in your checkout usually means this
+is not the environment you thought it was.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
@@ -214,6 +225,7 @@ Press `F5` to launch the extension host, then:
 |---|---|
 | `Dry Run: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
 | `Dry Run: Explore Schema` | Draw the database, and edit it |
+| `Dry Run: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |

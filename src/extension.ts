@@ -13,6 +13,8 @@ import { SchemaPanel } from './panel/schemaPanel';
 import { CandidateResult, IndexPanel } from './panel/indexPanel';
 import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvice';
 import { splitStatements } from './parser/splitter';
+import { MigrationFile, findMigrations } from './migrations/discover';
+import { readLedger } from './migrations/ledger';
 
 export function activate(context: vscode.ExtensionContext): void {
   const connections = new ConnectionManager(context.workspaceState);
@@ -45,6 +47,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('dryrun.suggestIndexes', () =>
       suggestIndexes(context, connections, output),
+    ),
+
+    vscode.commands.registerCommand('dryrun.pendingMigrations', () =>
+      pendingMigrations(context, connections, output),
     ),
 
     vscode.commands.registerCommand('dryrun.disconnect', async () => {
@@ -206,6 +212,106 @@ async function exploreSchema(
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
   }
+}
+
+/**
+ * Previews the migrations this database has not run yet.
+ *
+ * Prisma and Drizzle both generate SQL and then warn about it without a number
+ * in the warning — "possible data loss", "you are about to drop a column".
+ * Possible how, losing what? Neither tool goes and looks, because neither wants
+ * to connect to production to generate a migration. The answer is sitting in
+ * the database the whole time.
+ *
+ * So this finds the migration files, asks the database which of them it has
+ * already run, and hands the rest to the same preview everything else uses.
+ */
+async function pendingMigrations(
+  context: vscode.ExtensionContext,
+  connections: ConnectionManager,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const layout = folders
+    .map((folder) => findMigrations(folder.uri.fsPath))
+    .find((found) => found !== undefined);
+
+  if (!layout) {
+    void vscode.window.showWarningMessage(
+      'Dry Run found no migrations. It looks for prisma/migrations, a Drizzle folder ' +
+        'with meta/_journal.json, or a migrations folder of .sql files.',
+    );
+    return;
+  }
+
+  try {
+    const connection = await connections.acquire();
+    const status = await readLedger(connection.adapter, layout);
+
+    output.appendLine(
+      `${layout.tool}: ${layout.migrations.length} migrations on disk, ` +
+        `${status.appliedCount} applied to ${connection.identity.display}.`,
+    );
+
+    // Drift is worth saying out loud even when the answer to the question
+    // asked is "nothing is pending": a database holding migrations this
+    // checkout has never seen is usually not the database you thought.
+    if (status.unknownToRepo.length > 0) {
+      void vscode.window.showWarningMessage(
+        `${connection.identity.display} has run ${status.unknownToRepo.length} ` +
+          `${status.unknownToRepo.length === 1 ? 'migration' : 'migrations'} that are not in ` +
+          `this checkout: ${status.unknownToRepo.slice(0, 3).join(', ')}` +
+          `${status.unknownToRepo.length > 3 ? '…' : ''}`,
+      );
+    }
+
+    if (status.pending.length === 0) {
+      void vscode.window.showInformationMessage(
+        `Nothing pending. ${connection.identity.display} has run all ` +
+          `${layout.migrations.length} of these migrations.`,
+      );
+      return;
+    }
+
+    const picked = await pickMigration(status.pending, status.note);
+    if (!picked) {
+      return;
+    }
+
+    // Opened first so the panel has a document to reveal into when a row is
+    // clicked — the preview is anchored to a file, exactly as it is for a
+    // migration the user opened themselves.
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(picked.file));
+    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+
+    await preview(context, connections, output);
+  } catch (error) {
+    reportError(error, output, connections);
+  }
+}
+
+async function pickMigration(
+  pending: readonly MigrationFile[],
+  note: string | undefined,
+): Promise<MigrationFile | undefined> {
+  if (pending.length === 1 && !note) {
+    return pending[0];
+  }
+
+  const choice = await vscode.window.showQuickPick(
+    pending.map((migration) => ({
+      label: migration.name,
+      description: migration.tool,
+      migration,
+    })),
+    {
+      title: note
+        ? `${pending.length} migrations — ${note}`
+        : `${pending.length} pending ${pending.length === 1 ? 'migration' : 'migrations'}`,
+      placeHolder: 'Which one should Dry Run measure against your data?',
+    },
+  );
+  return choice?.migration;
 }
 
 /**
