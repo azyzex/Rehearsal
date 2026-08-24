@@ -208,10 +208,18 @@ export class SchemaPanel {
   }
 
   private async openTable(table: string, filter = ''): Promise<void> {
-    const adapter = this.requireAdapter();
     this.post({ type: 'tableLoading', table });
-    const detail = await adapter.tableDetail(table, 25, filter);
-    this.post({ type: 'tableDetail', detail: serialiseDetail(detail) });
+
+    try {
+      const adapter = this.requireAdapter();
+      const detail = await adapter.tableDetail(table, 25, filter);
+      this.post({ type: 'tableDetail', detail: serialiseDetail(detail) });
+    } catch (error) {
+      // The drawer has to be told, or it sits on "loading…" for ever. A panel
+      // that never resolves is worse than one that says it failed: the first
+      // looks like a hang, the second like an answer.
+      this.post({ type: 'tableError', table, message: errorMessage(error) });
+    }
   }
 
   private async preview(): Promise<void> {

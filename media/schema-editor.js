@@ -73,6 +73,11 @@
         host.markOpened(detail.table);
         break;
 
+      case 'tableError':
+        detail = null;
+        openDrawer(errorDrawer(message.table, message.message));
+        break;
+
       case 'joinPath':
         renderJoinPath(message);
         break;
@@ -158,6 +163,104 @@
     head.appendChild(text('span', 'drawer-sub', 'loading…'));
     wrap.appendChild(head);
     return wrap;
+  }
+
+  function errorDrawer(table, message) {
+    const wrap = document.createElement('div');
+
+    const head = document.createElement('div');
+    head.className = 'drawer-head';
+    head.appendChild(text('span', 'drawer-title', table));
+
+    const close = document.createElement('button');
+    close.className = 'drawer-close';
+    close.textContent = '✕';
+    close.title = 'Close';
+    close.addEventListener('click', closeDrawer);
+    head.appendChild(close);
+    wrap.appendChild(head);
+
+    wrap.appendChild(text('div', 'empty-hint', message));
+    return wrap;
+  }
+
+  /**
+   * A table that exists only in the pending changes.
+   *
+   * Asking the database about it returns "table not found", which is true and
+   * unhelpful — it is not missing, it has not been created yet. So this is
+   * drawn from the projection instead of a query, and offers the only two
+   * things that make sense on something that does not exist: add columns to
+   * it, or drop the change that creates it.
+   */
+  function pendingTableDrawer(table) {
+    const projectedTable = projected?.tables.find((t) => t.qualified === table);
+    const wrap = document.createElement('div');
+
+    const head = document.createElement('div');
+    head.className = 'drawer-head';
+    head.appendChild(text('span', 'drawer-title', table));
+    head.appendChild(text('span', 'drawer-sub', 'not created yet'));
+
+    const close = document.createElement('button');
+    close.className = 'drawer-close';
+    close.textContent = '✕';
+    close.title = 'Close';
+    close.addEventListener('click', closeDrawer);
+    head.appendChild(close);
+    wrap.appendChild(head);
+
+    wrap.appendChild(
+      text(
+        'div',
+        'empty-hint',
+        'This table is part of your pending changes. It has no rows, indexes or ' +
+          'constraints to read until the changes are applied.',
+      ),
+    );
+
+    const columns = document.createElement('div');
+    columns.className = 'drawer-section';
+    columns.appendChild(text('h3', '', 'Columns so far'));
+
+    for (const column of projectedTable?.columns ?? []) {
+      const row = document.createElement('div');
+      row.className = 'drawer-col';
+      row.appendChild(text('span', 'name', column.name));
+      row.appendChild(text('span', `type ${typeFamily(column.type)}`, column.type));
+      if (column.isPrimaryKey) {
+        row.appendChild(text('span', 'flag', 'PK'));
+      }
+      columns.appendChild(row);
+    }
+    wrap.appendChild(columns);
+
+    // The add-column form works unchanged: an ADD COLUMN against a table
+    // created earlier in the same changeset is exactly right, and the preview
+    // runs them in order.
+    detail = { table, columns: projectedTable?.columns ?? [] };
+    wrap.appendChild(renderAddColumnSection());
+
+    return wrap;
+  }
+
+  /** Broad family of a type, for colouring. Mirrors the diagram's own. */
+  function typeFamily(type) {
+    const t = String(type).toLowerCase();
+    if (/char|text|uuid|json|xml|name/.test(t)) return 't-text';
+    if (/int|serial|numeric|decimal|real|double|float|money/.test(t)) return 't-number';
+    if (/timestamp|date|time|interval/.test(t)) return 't-time';
+    if (/bool/.test(t)) return 't-bool';
+    return 't-other';
+  }
+
+  /** True for a table that only exists in the pending changes. */
+  function isPending(table) {
+    const baseline = host.baseline();
+    return (
+      !baseline?.tables.some((t) => t.qualified === table) &&
+      Boolean(projected?.tables.some((t) => t.qualified === table))
+    );
   }
 
   function renderDrawer() {
@@ -877,6 +980,14 @@
   });
 
   function openTable(table, filter) {
+    // A table that does not exist yet cannot be read. Asking anyway returns
+    // "table not found", which is true and unhelpful, and used to leave the
+    // drawer on "loading…" for ever.
+    if (isPending(table)) {
+      openDrawer(pendingTableDrawer(table));
+      host.markOpened(table);
+      return;
+    }
     vscode.postMessage({ type: 'openTable', table, filter: filter ?? '' });
   }
 
