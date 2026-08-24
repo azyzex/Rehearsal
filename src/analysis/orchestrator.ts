@@ -1,9 +1,12 @@
-import { DatabaseAdapter } from '../adapters/types';
+import { CascadeNode, DatabaseAdapter } from '../adapters/types';
 import { classify, Classification, StatementKind } from '../parser/classifier';
+import { maskLiterals } from '../parser/mask';
 import { SplitStatement } from '../parser/splitter';
+import { cascadeTotal, describeCascade } from './cascade';
 import { analyzeDdl } from './ddl';
 import { analyzeDml } from './dml';
-import { blastRadiusSeverity, formatCount, plural } from './severity';
+import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
+import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
 import { Finding, Sample, Thresholds } from './types';
 
 /**
@@ -52,6 +55,11 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
     return tableSizes.get(table);
   };
 
+  // Who holds a lock on each table, read once per run. Asking per statement
+  // would be both slower and less coherent: a migration is previewed as a
+  // whole, and the answer changing halfway through would be noise.
+  const blockerCache = new Map<string, readonly Blocker[]>();
+
   for (const statement of statements) {
     if (isCancelled?.()) {
       return;
@@ -62,7 +70,19 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
     try {
       const finding = await analyzeOne(adapter, statement, classification, thresholds);
       const tableRows = await sizeOf(classification.table);
-      onFinding(tableRows === undefined ? finding : { ...finding, tableRows });
+
+      // The lock outlook is separate from what the statement does to the data,
+      // and it is the half that turns a one-second migration into an outage.
+      const outlook = await lockOutlook(adapter, classification, blockerCache);
+
+      onFinding({
+        ...finding,
+        ...(tableRows === undefined ? {} : { tableRows }),
+        ...outlook,
+        ...(outlook.queuedBehind && outlook.queuedBehind.length > 0
+          ? { severity: worst([finding.severity, 'blocking']) }
+          : {}),
+      });
     } catch (error) {
       onFinding({
         statementIndex: statement.index,
@@ -106,14 +126,24 @@ async function analyzeOne(
 
     const described = describeDml(classification, rowCount, severity === 'destructive');
 
+    // What a delete takes with it that the statement never names.
+    const cascade =
+      classification.kind === 'delete' && rowCount > 0
+        ? await cascadeFor(adapter, classification, statement)
+        : undefined;
+
     return {
       ...base,
-      severity,
+      severity: cascade && cascadeTotal(cascade) > 0 ? worst([severity, 'destructive']) : severity,
       ...described,
-      detail: described.detail + noOpRewriteNote(classification, sample),
+      detail:
+        described.detail +
+        noOpRewriteNote(classification, sample) +
+        describeCascade(cascade),
       rowCount,
       sample,
       ...(plan ? { plan } : {}),
+      ...(cascade ? { cascade } : {}),
     };
   }
 
@@ -234,4 +264,109 @@ function describeError(error: unknown): string {
     return 'Another session holds a lock on this table, so the probe gave up rather than join the queue. Nothing was changed.';
   }
   return message;
+}
+
+/**
+ * Which lock this statement takes, and whether anything is in its way.
+ *
+ * The second half is the one that matters and the one nothing else reports.
+ * Postgres queues lock requests fairly: a DDL statement waiting behind a
+ * long-running reader does not just wait itself, it becomes the head of a queue
+ * that every subsequent query joins — including reads that conflict with
+ * nothing. That is how a routine ADD COLUMN takes a site down.
+ *
+ * A failure here is not a failure of the preview. `pg_stat_activity` may be
+ * restricted on a managed database, and the measurements are worth having
+ * without it, so this degrades to saying nothing rather than to an error.
+ */
+async function lockOutlook(
+  adapter: DatabaseAdapter,
+  classification: Classification,
+  cache: Map<string, readonly Blocker[]>,
+): Promise<{ lock?: LockProfile; queuedBehind?: readonly Blocker[] }> {
+  const profile = lockProfileFor(classification.kind, {
+    concurrently: classification.concurrently === true,
+  });
+
+  const table = classification.table;
+  if (!table || profile.level === 'NONE') {
+    return { lock: profile };
+  }
+
+  if (!cache.has(table)) {
+    cache.set(
+      table,
+      await adapter
+        .lockHolders(table)
+        .then((holders) =>
+          holders.map((holder) => ({
+            pid: holder.pid,
+            state: holder.state,
+            applicationName: holder.applicationName,
+            query: holder.query,
+            seconds: holder.seconds,
+            lockMode: holder.lockMode,
+          })),
+        )
+        .catch(() => []),
+    );
+  }
+
+  const queued = wouldQueue(profile, cache.get(table) ?? []);
+  return { lock: profile, ...(queued.length > 0 ? { queuedBehind: queued } : {}) };
+}
+
+/**
+ * The cascade a delete would set off.
+ *
+ * Needs the statement's WHERE clause to know which rows are going, so it only
+ * runs where that can be recovered: a generated `delete_row` carries bound
+ * parameters and an unambiguous predicate, and a hand-written DELETE has its
+ * predicate as text after the WHERE keyword.
+ *
+ * A failure is silent by design. The row count beside it is already correct and
+ * measured; a missing cascade makes the row less complete, not wrong.
+ */
+async function cascadeFor(
+  adapter: DatabaseAdapter,
+  classification: Classification,
+  statement: SplitStatement,
+): Promise<CascadeNode | undefined> {
+  const table = classification.table;
+  if (!table) {
+    return undefined;
+  }
+
+  const predicate = whereClauseOf(statement.sql);
+  if (predicate === undefined) {
+    return undefined;
+  }
+
+  return adapter
+    .cascadeImpact(table, predicate, statement.params ?? [])
+    .catch(() => undefined);
+}
+
+/**
+ * The text after a top-level WHERE, or `true` when there is none.
+ *
+ * Matching on the masked copy so a WHERE inside a string or a subquery is not
+ * mistaken for the statement's own. Anything with a USING or RETURNING clause
+ * is declined rather than guessed at — a predicate that is subtly wrong would
+ * produce a cascade count that is confidently wrong, which is worse than none.
+ */
+function whereClauseOf(sql: string): string | undefined {
+  const masked = maskLiterals(sql);
+
+  if (/\b(using|returning)\b/i.test(masked)) {
+    return undefined;
+  }
+
+  const match = /\bwhere\b/i.exec(masked);
+  if (!match) {
+    return 'true'; // no WHERE: every row goes
+  }
+
+  const predicate = sql.slice(match.index + match[0].length).replace(/;\s*$/, '').trim();
+  return predicate.length > 0 ? predicate : undefined;
 }

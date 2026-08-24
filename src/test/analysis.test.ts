@@ -144,6 +144,25 @@ describe('analysis', () => {
       assert.doesNotMatch(finding.detail, /without altering/);
     });
 
+    it('measures a statement that joins another table in', async () => {
+      // `USING` puts a second table in scope, so the RETURNING list has to be
+      // qualified. Unqualified, Postgres rejects `id` as ambiguous and the
+      // preview shows a parser error where a row count belongs.
+      const finding = await one(
+        `UPDATE users SET tier = 'joined' FROM orgs WHERE orgs.id = users.org_id AND orgs.id = 1`,
+      );
+
+      assert.equal(finding.error, undefined, 'no parser error');
+      assert.ok(finding.rowCount! > 0, 'the count came back');
+      assert.equal(finding.sample!.rows[0]!.after!['tier'], 'joined');
+    });
+
+    it('measures one that is aliased', async () => {
+      const finding = await one(`UPDATE users u SET tier = 'aliased' WHERE u.id = 4`);
+      assert.equal(finding.error, undefined);
+      assert.equal(finding.rowCount, 1);
+    });
+
     it('says plainly when a statement matches nothing', async () => {
       const finding = await one(`UPDATE users SET tier = 'free' WHERE tier = 'nonexistent'`);
       assert.equal(finding.rowCount, 0);

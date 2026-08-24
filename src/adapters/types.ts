@@ -132,6 +132,37 @@ export interface TableDetail {
   readonly matched?: number;
 }
 
+/** A session already holding a lock on a table. */
+export interface LockHolder {
+  readonly pid: number;
+  /** `active`, `idle in transaction`, and so on. */
+  readonly state: string;
+  readonly applicationName: string;
+  readonly query: string;
+  /** How long it has been in that state. */
+  readonly seconds: number;
+  readonly lockMode: string;
+}
+
+/**
+ * One table in a cascade, and what a delete would take from it.
+ *
+ * `ON DELETE CASCADE` removes rows from tables the statement never mentions,
+ * and `ON DELETE SET NULL` quietly blanks columns instead. Both are invisible
+ * in the statement text and only countable against the real data.
+ */
+export interface CascadeNode {
+  readonly table: string;
+  readonly rows: number;
+  /** How the parent reaches it. Absent on the root. */
+  readonly via?: { readonly constraint: string; readonly action: CascadeAction };
+  readonly children: readonly CascadeNode[];
+  /** Set when the walk stopped early rather than finishing. */
+  readonly truncated?: string;
+}
+
+export type CascadeAction = 'cascade' | 'set null' | 'set default' | 'restrict' | 'no action';
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -148,7 +179,12 @@ export interface DatabaseAdapter {
   withRollback<T>(fn: (tx: Transaction) => Promise<T>): Promise<T>;
 
   // Read-only probes. These never modify anything and run outside a transaction.
-  countRows(table: string, where?: string): Promise<number>;
+  /**
+   * Rows matching `where`, which may carry bound placeholders. The visual
+   * editor generates predicates containing `$1`, so a counter unable to take
+   * parameters would fail on exactly the statements it generated.
+   */
+  countRows(table: string, where?: string, params?: readonly unknown[]): Promise<number>;
   countNonNull(table: string, column: string): Promise<number>;
   countViolating(table: string, predicate: string): Promise<number>;
   /** Rows in `table` whose `columns` do not match any row in the referenced table. */
@@ -182,6 +218,23 @@ export interface DatabaseAdapter {
    * cast to text, case-insensitively — for finding one row among many.
    */
   tableDetail(table: string, sampleLimit: number, filter?: string): Promise<TableDetail>;
+
+  /**
+   * Sessions holding a lock on `table` right now.
+   *
+   * The difference between "this takes one second" and "this takes one second
+   * once the fourteen-minute report ahead of it finishes, with every query that
+   * arrives in the meantime queued behind you".
+   */
+  lockHolders(table: string): Promise<LockHolder[]>;
+
+  /**
+   * Rows in each table that a delete from `table` would cascade to.
+   *
+   * ON DELETE CASCADE removes rows from tables the statement never names, and
+   * the only way to know how many is to walk the foreign keys and count.
+   */
+  cascadeImpact(table: string, where: string, params: readonly unknown[]): Promise<CascadeNode>;
 
   /**
    * Applies previewed statements for real, in one transaction. The only write

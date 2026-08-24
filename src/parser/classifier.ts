@@ -66,7 +66,36 @@ export interface Classification {
   readonly hasWhere?: boolean;
   /** True when the statement already ends in RETURNING, which changes sampling. */
   readonly hasReturning?: boolean;
+  /**
+   * The alias the target table was given, if any.
+   *
+   * Needed to qualify a `RETURNING` list. `DELETE FROM accounts USING users`
+   * puts two tables in scope, so a bare `RETURNING id` is ambiguous and the
+   * statement fails — and it fails inside the preview, where the user sees an
+   * unhelpful error instead of a row count.
+   */
+  readonly alias?: string;
 }
+
+/**
+ * Words that can follow a table name without being an alias.
+ *
+ * `DELETE FROM accounts USING users` has no alias; reading `USING` as one
+ * produces `USING.id` in the RETURNING list, which is worse than the ambiguity
+ * it was meant to fix.
+ */
+const NOT_AN_ALIAS = new Set([
+  'USING',
+  'WHERE',
+  'SET',
+  'RETURNING',
+  'FROM',
+  'VALUES',
+  'SELECT',
+  'ON',
+  'DEFAULT',
+  'AS',
+]);
 
 const IDENT = String.raw`(?:"(?:[^"]|"")*"|[A-Za-z_-￿][A-Za-z0-9_$-￿]*)`;
 const QUALIFIED = String.raw`${IDENT}(?:\s*\.\s*${IDENT})*`;
@@ -90,21 +119,27 @@ export function classify(sql: string): Classification {
     return classifyAlter(sql, masked, ident(cap(alter, 1)!), actionSpan[0]);
   }
 
-  const update = re(String.raw`^\s*UPDATE\s+(?:ONLY\s+)?(${QUALIFIED})`).exec(masked);
+  const update = re(
+    String.raw`^\s*UPDATE\s+(?:ONLY\s+)?(${QUALIFIED})(?:\s+(?:AS\s+)?(${IDENT}))?`,
+  ).exec(masked);
   if (update) {
     return {
       kind: 'update',
       table: ident(cap(update, 1)!),
+      ...aliasOf(cap(update, 2)),
       hasWhere: hasTopLevelKeyword(masked, 'where'),
       hasReturning: hasTopLevelKeyword(masked, 'returning'),
     };
   }
 
-  const del = re(String.raw`^\s*DELETE\s+FROM\s+(?:ONLY\s+)?(${QUALIFIED})`).exec(masked);
+  const del = re(
+    String.raw`^\s*DELETE\s+FROM\s+(?:ONLY\s+)?(${QUALIFIED})(?:\s+(?:AS\s+)?(${IDENT}))?`,
+  ).exec(masked);
   if (del) {
     return {
       kind: 'delete',
       table: ident(cap(del, 1)!),
+      ...aliasOf(cap(del, 2)),
       hasWhere: hasTopLevelKeyword(masked, 'where'),
       hasReturning: hasTopLevelKeyword(masked, 'returning'),
     };
@@ -335,4 +370,19 @@ function ident(raw: string): string {
         : p;
     })
     .join('.');
+}
+
+/**
+ * The captured word after a table name, when it really is an alias.
+ *
+ * `DELETE FROM accounts USING users` has none, and reading `USING` as one
+ * would put `USING.id` in a RETURNING list — a worse failure than the
+ * ambiguity it exists to prevent.
+ */
+function aliasOf(candidate: string | undefined): { alias?: string } {
+  if (!candidate) {
+    return {};
+  }
+  const name = ident(candidate);
+  return NOT_AN_ALIAS.has(name.toUpperCase()) ? {} : { alias: name };
 }

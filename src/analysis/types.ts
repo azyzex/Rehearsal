@@ -1,5 +1,7 @@
 import { Classification, StatementKind } from '../parser/classifier';
 import { Row } from '../adapters/types';
+import { CascadeNode } from '../adapters/types';
+import { Blocker, LockProfile } from './locks';
 import { AnalysedPlan } from './plan';
 
 export type Severity = 'safe' | 'caution' | 'blocking' | 'destructive';
@@ -89,6 +91,16 @@ export interface Finding {
   readonly sample?: Sample;
   /** The query plan, when plan capture is turned on and it succeeded. */
   readonly plan?: AnalysedPlan;
+  /** Which lock the statement takes, and what that blocks. */
+  readonly lock?: LockProfile;
+  /**
+   * Sessions that would make this statement wait — and therefore make
+   * everything arriving after it wait too. Empty is the common case and the
+   * one worth saying nothing about.
+   */
+  readonly queuedBehind?: readonly Blocker[];
+  /** What a delete would take with it through ON DELETE CASCADE. */
+  readonly cascade?: CascadeNode;
   /**
    * True when any number in `detail` is an estimate rather than a measurement.
    * The panel renders these differently — an estimate must never carry the

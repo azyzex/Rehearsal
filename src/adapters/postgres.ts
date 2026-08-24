@@ -4,7 +4,10 @@ import {
   ConstraintInfo,
   ConnectionConfig,
   DatabaseAdapter,
+  CascadeAction,
+  CascadeNode,
   ForeignKeyInfo,
+  LockHolder,
   PrimaryKeyValue,
   QueryPlan,
   QueryResult,
@@ -147,10 +150,15 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   // ---- read-only probes -------------------------------------------------
 
-  async countRows(table: string, where?: string): Promise<number> {
+  async countRows(
+    table: string,
+    where?: string,
+    params: readonly unknown[] = [],
+  ): Promise<number> {
     const clause = where && where.trim().length > 0 ? ` WHERE ${where}` : '';
     const { rows } = await this.probe(
       `SELECT COUNT(*)::bigint AS n FROM ${qualify(table)}${clause}`,
+      params,
     );
     return readCount(rows);
   }
@@ -586,6 +594,162 @@ export class PostgresAdapter implements DatabaseAdapter {
     };
   }
 
+  /**
+   * Who is holding a lock on this table right now.
+   *
+   * `idle in transaction` sessions are included deliberately, and are usually
+   * the worst offenders: they are doing nothing at all and still holding
+   * everything they touched. A migration queued behind one waits for a human
+   * to notice.
+   */
+  async lockHolders(table: string): Promise<LockHolder[]> {
+    const { rows } = await this.probe(
+      `SELECT a.pid,
+              a.state,
+              COALESCE(a.application_name, '') AS application_name,
+              COALESCE(a.query, '') AS query,
+              EXTRACT(EPOCH FROM (now() - COALESCE(
+                CASE WHEN a.state = 'idle in transaction' THEN a.state_change ELSE a.query_start END,
+                a.backend_start
+              )))::float8 AS seconds,
+              l.mode AS lock_mode
+         FROM pg_locks l
+         JOIN pg_stat_activity a ON a.pid = l.pid
+        WHERE l.relation = to_regclass($1)
+          AND l.granted
+          AND a.pid <> pg_backend_pid()
+        ORDER BY seconds DESC`,
+      [table],
+    );
+
+    return rows.map((row) => ({
+      pid: Number(row['pid']),
+      state: String(row['state'] ?? 'unknown'),
+      applicationName: String(row['application_name'] ?? ''),
+      query: String(row['query'] ?? '').replace(/\s+/g, ' ').slice(0, 200),
+      seconds: Math.max(0, Number(row['seconds'] ?? 0)),
+      lockMode: String(row['lock_mode'] ?? ''),
+    }));
+  }
+
+  /**
+   * Walks the cascade a delete would set off.
+   *
+   * Breadth-first over the foreign keys that point *at* each table, counting
+   * the rows that would go at every level. The counting query is built by
+   * nesting `IN (SELECT …)` rather than by materialising ids, because the
+   * interesting cases involve hundreds of thousands of rows and shipping their
+   * keys back and forth would be slower than the delete.
+   *
+   * Bounded: cascades can be deep and cyclic, and a preview that takes longer
+   * than the statement it is previewing is not a preview.
+   */
+  async cascadeImpact(
+    table: string,
+    where: string,
+    params: readonly unknown[],
+  ): Promise<CascadeNode> {
+    const MAX_DEPTH = 4;
+    const MAX_TABLES = 25;
+
+    const keys = await this.probe(
+      `SELECT c.conname AS name,
+              src.relname AS from_table,
+              tgt.relname AS to_table,
+              c.confdeltype AS action,
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.conrelid AND att.attnum = k.attnum) AS from_columns,
+              (SELECT array_agg(att.attname::text ORDER BY k.ord)
+                 FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute att
+                   ON att.attrelid = c.confrelid AND att.attnum = k.attnum) AS to_columns
+         FROM pg_constraint c
+         JOIN pg_class src ON src.oid = c.conrelid
+         JOIN pg_class tgt ON tgt.oid = c.confrelid
+        WHERE c.contype = 'f'`,
+    );
+
+    const referencing = new Map<string, ReferencingKey[]>();
+    for (const row of keys.rows) {
+      const target = String(row['to_table']);
+      const list = referencing.get(target) ?? [];
+      list.push({
+        name: String(row['name']),
+        fromTable: String(row['from_table']),
+        fromColumns: (row['from_columns'] as string[] | null) ?? [],
+        toColumns: (row['to_columns'] as string[] | null) ?? [],
+        action: cascadeAction(String(row['action'])),
+      });
+      referencing.set(target, list);
+    }
+
+    const rootRows = await this.countRows(table, where, params);
+    let budget = MAX_TABLES;
+
+    const walk = async (
+      current: string,
+      predicate: string,
+      depth: number,
+      seen: ReadonlySet<string>,
+    ): Promise<CascadeNode[]> => {
+      if (depth >= MAX_DEPTH) {
+        return [];
+      }
+
+      const children: CascadeNode[] = [];
+
+      for (const key of referencing.get(bareName(current)) ?? []) {
+        // A cycle would otherwise walk forever, and a table reached twice would
+        // be double counted.
+        if (seen.has(key.fromTable) || budget <= 0) {
+          continue;
+        }
+        budget--;
+
+        // Rows in the child whose key points at a row the parent is losing.
+        const childPredicate =
+          `(${key.fromColumns.map(quoteIdent).join(', ')}) IN ` +
+          `(SELECT ${key.toColumns.map(quoteIdent).join(', ')} FROM ${qualify(current)} WHERE ${predicate})`;
+
+        let rows = 0;
+        try {
+          rows = await this.countRows(key.fromTable, childPredicate, params);
+        } catch {
+          continue; // a cross-schema or unusual key; skip rather than guess
+        }
+
+        if (rows === 0) {
+          continue;
+        }
+
+        const nested =
+          key.action === 'cascade'
+            ? await walk(key.fromTable, childPredicate, depth + 1, new Set([...seen, key.fromTable]))
+            : [];
+
+        children.push({
+          table: key.fromTable,
+          rows,
+          via: { constraint: key.name, action: key.action },
+          children: nested,
+        });
+      }
+
+      return children;
+    };
+
+    const children = await walk(table, where, 0, new Set([bareName(table)]));
+
+    return {
+      table,
+      rows: rootRows,
+      children,
+      ...(budget <= 0 ? { truncated: `stopped after ${MAX_TABLES} related tables` } : {}),
+    };
+  }
+
   async sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]> {
     if (pks.length === 0) {
       return [];
@@ -699,6 +863,31 @@ function constraintType(code: string): ConstraintInfo['type'] {
       return 'exclusion';
     default:
       return 'other';
+  }
+}
+
+/** A foreign key pointing at a table, as the cascade walk needs it. */
+interface ReferencingKey {
+  name: string;
+  fromTable: string;
+  fromColumns: string[];
+  toColumns: string[];
+  action: CascadeAction;
+}
+
+/** pg_constraint.confdeltype is a single character. */
+function cascadeAction(code: string): CascadeAction {
+  switch (code) {
+    case 'c':
+      return 'cascade';
+    case 'n':
+      return 'set null';
+    case 'd':
+      return 'set default';
+    case 'r':
+      return 'restrict';
+    default:
+      return 'no action';
   }
 }
 

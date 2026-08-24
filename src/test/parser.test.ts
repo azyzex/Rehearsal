@@ -119,6 +119,23 @@ describe('classify', () => {
     );
   });
 
+  it('captures a table alias, which the RETURNING list needs', () => {
+    // Without this, `DELETE FROM accounts USING users ... RETURNING id` is
+    // ambiguous and the preview fails with a parser error instead of a count.
+    assert.equal(classify('UPDATE users u SET a = 1').alias, 'u');
+    assert.equal(classify('UPDATE users AS u SET a = 1').alias, 'u');
+    assert.equal(classify('DELETE FROM accounts a USING users WHERE a.x = 1').alias, 'a');
+  });
+
+  it('does not mistake a keyword for an alias', () => {
+    // `DELETE FROM accounts USING users` has no alias. Reading USING as one
+    // produces `USING.id`, which is a worse failure than the ambiguity.
+    assert.equal(classify('DELETE FROM accounts USING users WHERE x').alias, undefined);
+    assert.equal(classify('DELETE FROM carts WHERE abandoned').alias, undefined);
+    assert.equal(classify(`UPDATE users SET tier = 'free'`).alias, undefined);
+    assert.equal(classify('DELETE FROM carts RETURNING id').alias, undefined);
+  });
+
   it('notices an existing RETURNING clause', () => {
     assert.equal(classify(`DELETE FROM carts WHERE x RETURNING id`).hasReturning, true);
     assert.equal(classify(`DELETE FROM carts WHERE x`).hasReturning, false);

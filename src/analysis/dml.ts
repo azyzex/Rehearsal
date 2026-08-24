@@ -86,7 +86,13 @@ export async function analyzeDml(
 
     await tx.savepoint(SAVEPOINT);
 
-    const keyList = pkColumns.map(quoteIdent).join(', ');
+    // Qualified by the target table, because USING and FROM put a second
+    // table in scope and a bare column name is then ambiguous — which fails
+    // the statement and shows the user a parser error instead of a count.
+    const target = classification.alias ?? table!;
+    const keyList = pkColumns
+      .map((column) => `${quoteIdent(bareName(target))}.${quoteIdent(column)}`)
+      .join(', ');
     // `count(*) OVER ()` is evaluated across the whole CTE before LIMIT, so the
     // exact total comes back even though only a handful of rows are shipped.
     const captured = await tx.query(
@@ -275,4 +281,10 @@ async function capturePlan(
     await tx.rollbackTo(PLAN_SAVEPOINT).catch(() => undefined);
     return undefined;
   }
+}
+
+/** The table name without its schema, which is how a column is qualified. */
+function bareName(table: string): string {
+  const parts = table.split('.');
+  return (parts[parts.length - 1] ?? table).replace(/^"|"$/g, '');
 }
