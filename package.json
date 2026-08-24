@@ -1,7 +1,7 @@
 {
   "name": "dryrun",
   "displayName": "Dry Run",
-  "description": "See what a SQL statement will actually do to your data, before you run it for real.",
+  "description": "See what a database change will actually do to your data, before you do it.",
   "version": "0.0.1",
   "publisher": "azizguenni",
   "private": true,
@@ -11,6 +11,7 @@
     "node": ">=20"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "main": "./dist/extension.js",
@@ -153,5 +154,21 @@
     "eslint": "^9.18.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.20.0"
+  },
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "sql",
+    "migration",
+    "database",
+    "erd",
+    "schema",
+    "diagram",
+    "preview",
+    "safety"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/azyzex/Rehearsal.git"
   }
 }
