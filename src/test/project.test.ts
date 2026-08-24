@@ -148,6 +148,55 @@ describe('projectSchema', () => {
     assert.equal(columns(after, 'users').includes('temp'), false);
   });
 
+  it('adds a new table to the picture', () => {
+    const after = project([
+      {
+        kind: 'create_table',
+        table: 'invoices',
+        columns: [
+          { name: 'id', type: 'bigserial', nullable: false, primaryKey: true },
+          { name: 'total', type: 'integer', nullable: false },
+        ],
+      },
+    ]);
+
+    const created = after.tables.find((t) => t.qualified === 'invoices')!;
+    assert.ok(created, 'the after-diagram has somewhere to draw it');
+    assert.deepEqual(created.columns.map((c) => c.name), ['id', 'total']);
+    assert.equal(created.columns[0]!.isPrimaryKey, true);
+    assert.equal(created.rows, 0);
+  });
+
+  it('lets a new table be edited before it exists', () => {
+    // The order the visual editor produces: create it, then add to it. Both
+    // are pending, so the second has to see the first.
+    const after = project([
+      {
+        kind: 'create_table',
+        table: 'invoices',
+        columns: [{ name: 'id', type: 'bigserial', nullable: false, primaryKey: true }],
+      },
+      { kind: 'add_column', table: 'invoices', column: 'note', type: 'text', nullable: true },
+    ]);
+
+    assert.deepEqual(
+      after.tables.find((t) => t.qualified === 'invoices')!.columns.map((c) => c.name),
+      ['id', 'note'],
+    );
+  });
+
+  it('does not duplicate a table that already exists', () => {
+    // The preview reports the real conflict; the picture should not show two.
+    const after = project([
+      {
+        kind: 'create_table',
+        table: 'users',
+        columns: [{ name: 'id', type: 'integer', nullable: false }],
+      },
+    ]);
+    assert.equal(after.tables.filter((t) => t.qualified === 'users').length, 1);
+  });
+
   it('ignores an edit against a table that is not there', () => {
     const after = project([{ kind: 'drop_column', table: 'nope', column: 'x' }]);
     assert.equal(after.tables.length, 2);

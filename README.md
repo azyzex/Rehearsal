@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 268 tests, all against a real Postgres.
+> **Status: working, not yet published.** 290 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
@@ -63,8 +63,8 @@ the other half is not having to write it out.
 
 **Change it visually.** Click a table to open it: columns, indexes, constraints,
 and the first rows of real data. Rename a column, drop one, add one, flip its
-nullability, edit a cell, delete a row. Each becomes a *pending change* — not a
-write. Then:
+nullability, change its type, edit a cell, delete a row. Add a table, drop one,
+rename one. Each becomes a *pending change* — not a write. Then:
 
 - **Now / After changes** flips the diagram between the schema as it is and the
   schema your changes ask for.

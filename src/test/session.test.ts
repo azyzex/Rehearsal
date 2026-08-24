@@ -230,6 +230,40 @@ describe('edit session', () => {
     assert.equal(Number(rows[0].n), 33, 'and running it twice still committed nothing');
   });
 
+  it('creates a table for real, and it is usable afterwards', async () => {
+    session = await freshSession();
+    session.add({
+      kind: 'create_table',
+      table: 'invoices_from_ui',
+      columns: [
+        { name: 'id', type: 'bigserial', nullable: false, primaryKey: true },
+        { name: 'note', type: 'text', nullable: true },
+        { name: 'total_cents', type: 'integer', nullable: false },
+      ],
+    });
+
+    const result = await preview(session);
+    assert.equal(result.destructive, false, 'creating a table destroys nothing');
+
+    await session.apply(adapter, {
+      token: result.token,
+      destructive: false,
+      confirmedDestructive: false,
+    });
+
+    // The generated CREATE TABLE has never been executed before this test.
+    // bigserial with an inline PRIMARY KEY has to actually produce a usable
+    // table, not merely parse.
+    await verifier.query(`INSERT INTO invoices_from_ui (total_cents) VALUES (500)`);
+    const { rows } = await verifier.query(`SELECT id, note, total_cents FROM invoices_from_ui`);
+    assert.equal(rows.length, 1);
+    assert.equal(Number(rows[0].id), 1, 'the serial handed out a value');
+    assert.equal(rows[0].note, null);
+
+    const detail = await adapter.tableDetail('invoices_from_ui', 5);
+    assert.deepEqual(detail.primaryKey, ['id'], 'and the key really is one');
+  });
+
   it('previews several changes in the order they would run', async () => {
     session = await freshSession();
     session.add({

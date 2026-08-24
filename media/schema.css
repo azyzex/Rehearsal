@@ -10,6 +10,11 @@
   --s-pk: var(--vscode-charts-yellow, #d7a72a);
   --s-fk: var(--vscode-charts-blue, #4a9eff);
   --s-line: var(--vscode-descriptionForeground);
+  --s-danger: var(--vscode-editorError-foreground, #f85149);
+  --s-warn: var(--vscode-editorWarning-foreground, #d29922);
+  --s-ok: var(--vscode-charts-green, #2ea043);
+  /* Highlight for a traced join route. */
+  --s-route: var(--vscode-charts-purple, #b180d7);
 }
 
 * {
@@ -371,7 +376,7 @@ button:focus {
 
 /* Tables and columns that the pending changes touch. */
 .table.will-add { border-color: var(--vscode-charts-green, #2ea043); }
-.table.will-drop { border-color: var(--dryrun-destructive, #f85149); opacity: 0.6; }
+.table.will-drop { border-color: var(--s-danger); opacity: 0.6; }
 .table.will-alter { border-color: var(--vscode-charts-blue, #4a9eff); }
 
 .col.will-add .col-name { color: var(--vscode-charts-green, #2ea043); }
@@ -467,18 +472,43 @@ button:focus {
   opacity: 1;
 }
 
+/*
+ * Small inline buttons.
+ *
+ * The label is legible at rest, always. A red-on-red button that only becomes
+ * readable once you hover it is worse than no colour at all: the one action
+ * you most need to read before clicking is the one you cannot.
+ *
+ * So danger is carried by the text and the border while idle, and fills in on
+ * hover — colour signals the weight, hover confirms the target, and the word
+ * is readable throughout.
+ */
 .mini {
   font-size: 0.75em;
-  padding: 1px 6px;
+  padding: 1px 7px;
   border: 1px solid var(--s-border);
   border-radius: 3px;
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.mini.danger { color: var(--dryrun-destructive, #f85149); }
-.mini:hover { background: var(--vscode-list-hoverBackground); }
+.mini:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.mini.danger {
+  color: var(--s-danger);
+  border-color: color-mix(in srgb, var(--s-danger) 45%, transparent);
+}
+
+.mini.danger:hover {
+  background: var(--s-danger);
+  border-color: var(--s-danger);
+  color: var(--vscode-editor-background);
+}
 
 .definition {
   font-family: var(--vscode-editor-font-family);
@@ -585,10 +615,17 @@ button.primary {
 
 button.primary:hover { background: var(--vscode-button-hoverBackground); }
 
-button.danger {
-  background: var(--dryrun-destructive, #f85149);
+/* The solid fill is for Apply only. Scoped by id so it can never leak onto
+   the small inline buttons, which is how Drop ended up red text on red. */
+#apply.danger {
+  background: var(--s-danger);
   color: #fff;
   border-color: transparent;
+  font-weight: 600;
+}
+
+#apply.danger:hover {
+  background: color-mix(in srgb, var(--s-danger) 85%, black);
 }
 
 #changes-body {
@@ -640,11 +677,117 @@ button.danger {
 .verdict-badge.safe { color: var(--vscode-charts-green, #2ea043); }
 .verdict-badge.caution { color: var(--vscode-editorWarning-foreground, #d29922); }
 .verdict-badge.blocking,
-.verdict-badge.destructive { color: var(--dryrun-destructive, #f85149); }
+.verdict-badge.destructive { color: var(--s-danger); }
 
 .verdict .detail { font-size: 0.85em; flex: 1; }
 
 .summary-line {
   padding: 5px 0 8px;
   font-size: 0.88em;
+}
+
+/* ---- locating and routing ---- */
+
+/*
+ * A table you asked to be shown.
+ *
+ * The pulse matters more than it sounds: on a diagram of twenty-one cards,
+ * quietly centring the view leaves you hunting for what moved. Something has
+ * to say "this one".
+ */
+@keyframes dryrun-locate {
+  0%   { box-shadow: 0 0 0 0 var(--s-fk); }
+  60%  { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.table.locating {
+  animation: dryrun-locate 900ms ease-out 2;
+  border-color: var(--s-fk);
+}
+
+/* The table whose drawer is open, so the two halves stay tied together. */
+.table.opened {
+  border-color: var(--s-fk);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-fk) 55%, transparent);
+}
+
+/* A traced join route: the tables on it, and the hops between them. */
+.table.on-route {
+  border-color: var(--s-route);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-route) 45%, transparent);
+  opacity: 1;
+}
+
+.route-step {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--s-route);
+  color: var(--vscode-editor-background);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.edge.route {
+  stroke: var(--s-route);
+  stroke-width: 2.4;
+  opacity: 1;
+}
+
+.edge-head.route {
+  fill: var(--s-route);
+  opacity: 1;
+}
+
+/* ---- readability ---- */
+
+.mini + .mini {
+  margin-left: 3px;
+}
+
+/*
+ * Row actions used to appear only on hover, which hides what a row can do
+ * until you have already guessed it can do something. They are always present
+ * now and merely quieter until the row is under the cursor.
+ */
+.row-actions {
+  display: flex;
+  gap: 3px;
+  opacity: 0.55;
+  transition: opacity 100ms ease;
+}
+
+.drawer-col:hover .row-actions,
+.data-row:hover .row-actions {
+  opacity: 1;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--s-border);
+  flex-wrap: wrap;
+}
+
+/* Column types, coloured by family so a card can be skimmed rather than read. */
+.col-type.t-text, .type.t-text { color: var(--vscode-charts-blue, #4a9eff); }
+.col-type.t-number, .type.t-number { color: var(--vscode-charts-green, #2ea043); }
+.col-type.t-time, .type.t-time { color: var(--vscode-charts-purple, #b180d7); }
+.col-type.t-bool, .type.t-bool { color: var(--vscode-charts-orange, #d18616); }
+.col-type.t-other, .type.t-other { color: var(--vscode-descriptionForeground); }
+
+.empty-hint {
+  padding: 18px 12px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.88em;
+  line-height: 1.5;
 }

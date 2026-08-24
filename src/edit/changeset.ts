@@ -31,7 +31,8 @@ export type SchemaEditKind =
   | 'add_check'
   | 'drop_constraint'
   | 'rename_table'
-  | 'drop_table';
+  | 'drop_table'
+  | 'create_table';
 
 export type DataEditKind = 'update_row' | 'delete_row' | 'insert_row';
 
@@ -129,6 +130,19 @@ export interface DropTable {
   readonly table: string;
 }
 
+export interface NewColumn {
+  readonly name: string;
+  readonly type: string;
+  readonly nullable: boolean;
+  readonly primaryKey?: boolean;
+}
+
+export interface CreateTable {
+  readonly kind: 'create_table';
+  readonly table: string;
+  readonly columns: readonly NewColumn[];
+}
+
 export interface UpdateRow {
   readonly kind: 'update_row';
   readonly table: string;
@@ -162,7 +176,8 @@ export type SchemaEdit =
   | AddCheck
   | DropConstraint
   | RenameTable
-  | DropTable;
+  | DropTable
+  | CreateTable;
 
 export type DataEdit = UpdateRow | DeleteRow | InsertRow;
 export type Edit = SchemaEdit | DataEdit;
@@ -266,6 +281,8 @@ export function describeEdit(edit: Edit): string {
       return `Rename ${edit.table} to ${edit.to}`;
     case 'drop_table':
       return `Drop the table ${edit.table}`;
+    case 'create_table':
+      return `Create the table ${edit.table} with ${edit.columns.length} ${edit.columns.length === 1 ? 'column' : 'columns'}`;
     case 'update_row':
       return `Update one row in ${edit.table} (${describeKey(edit.key)})`;
     case 'delete_row':
@@ -384,6 +401,9 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
 
     case 'drop_table':
       return make(`DROP TABLE ${quoteQualified(edit.table)}`);
+
+    case 'create_table':
+      return make(createTableSql(edit));
 
     case 'update_row': {
       const params: unknown[] = [];
@@ -544,4 +564,37 @@ function literalForDisplay(value: unknown): string {
     return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
   }
   return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * The column list of a CREATE TABLE.
+ *
+ * Kept out of `toStatement` because it is the one edit whose SQL is built from
+ * a list rather than a fixed shape, and inlining it made that function hard to
+ * read for the sake of one case.
+ */
+export function createTableSql(edit: CreateTable): string {
+  if (edit.columns.length === 0) {
+    throw new Error('A table needs at least one column.');
+  }
+
+  const keys = edit.columns.filter((column) => column.primaryKey).map((column) => column.name);
+
+  const definitions = edit.columns.map((column) => {
+    const parts = [quoteIdentifier(column.name), checkTypeName(column.type)];
+    // A single-column key is declared inline; a composite one needs its own
+    // clause, and mixing the two forms produces two primary keys and an error.
+    if (column.primaryKey && keys.length === 1) {
+      parts.push('PRIMARY KEY');
+    } else if (!column.nullable) {
+      parts.push('NOT NULL');
+    }
+    return parts.join(' ');
+  });
+
+  if (keys.length > 1) {
+    definitions.push(`PRIMARY KEY (${keys.map(quoteIdentifier).join(', ')})`);
+  }
+
+  return `CREATE TABLE ${quoteQualified(edit.table)} (${definitions.join(', ')})`;
 }

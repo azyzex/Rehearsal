@@ -190,6 +190,10 @@ export class SchemaPanel {
           await this.exportDiagram();
           break;
 
+        case 'newTable':
+          await this.newTable();
+          break;
+
         case 'findPath':
           this.findPath(String(message.from), String(message.to));
           break;
@@ -340,6 +344,40 @@ export class SchemaPanel {
     });
   }
 
+  /**
+   * Asks for a name and adds a table with a sensible starting shape.
+   *
+   * An id column by default, because a table without a primary key cannot be
+   * edited row by row later — the drawer has nothing to write a WHERE against
+   * — and discovering that after you have put data in it is a bad afternoon.
+   */
+  private async newTable(): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      title: 'New table',
+      prompt: 'Name for the new table',
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'A table needs a name.';
+        if (this.baseline?.tables.some((t) => t.qualified === trimmed || t.name === trimmed)) {
+          return `There is already a table called ${trimmed}.`;
+        }
+        return undefined;
+      },
+    });
+
+    if (!name?.trim()) {
+      return;
+    }
+
+    this.session.add({
+      kind: 'create_table',
+      table: name.trim(),
+      columns: [{ name: 'id', type: 'bigserial', nullable: false, primaryKey: true }],
+    });
+    this.clearPreview();
+    this.postChangeset();
+  }
+
   private postChangeset(): void {
     const state = this.session.state();
     this.post({
@@ -414,6 +452,7 @@ export class SchemaPanel {
     </select>
     <button id="fit" type="button" title="Fit the whole schema in view">Fit</button>
     <button id="relayout" type="button" title="Lay the diagram out again">Re-layout</button>
+    <button id="new-table" type="button" title="Add a table to the pending changes">+ Table</button>
     <button id="export-diagram" type="button" title="Export as a Mermaid diagram GitHub can render">Export</button>
   </div>
 </header>

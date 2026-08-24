@@ -53,6 +53,7 @@
     relayout: /** @type {HTMLButtonElement} */ (document.getElementById('relayout')),
     focus: /** @type {HTMLSelectElement} */ (document.getElementById('focus')),
     exportDiagram: /** @type {HTMLButtonElement} */ (document.getElementById('export-diagram')),
+    newTable: /** @type {HTMLButtonElement} */ (document.getElementById('new-table')),
     connection: /** @type {HTMLElement} */ (document.getElementById('connection')),
   };
 
@@ -680,6 +681,8 @@
     applyHighlight();
   });
 
+  el.newTable.addEventListener('click', () => vscode.postMessage({ type: 'newTable' }));
+
   el.exportDiagram.addEventListener('click', () =>
     vscode.postMessage({ type: 'exportDiagram' }),
   );
@@ -842,6 +845,16 @@
     return `${n < 10 && unit > 0 ? n.toFixed(1) : Math.round(n)} ${units[unit]}`;
   }
 
+  /** Broad family of a type, for colouring. Skimming beats reading. */
+  function typeFamily(type) {
+    const t = String(type).toLowerCase();
+    if (/char|text|uuid|json|xml|name/.test(t)) return 't-text';
+    if (/int|serial|numeric|decimal|real|double|float|money/.test(t)) return 't-number';
+    if (/timestamp|date|time|interval/.test(t)) return 't-time';
+    if (/bool/.test(t)) return 't-bool';
+    return 't-other';
+  }
+
   function shortType(type) {
     return type
       .replace('character varying', 'varchar')
@@ -849,6 +862,98 @@
       .replace('timestamp without time zone', 'timestamp')
       .replace('double precision', 'float8')
       .replace('integer', 'int');
+  }
+
+
+  /**
+   * Brings a table into view and says which one it is.
+   *
+   * Centring alone is not enough on a diagram of twenty-one cards: the view
+   * moves, and you are left hunting for what changed. The pulse is what makes
+   * it an answer rather than a rearrangement.
+   */
+  function locateTable(name) {
+    const node = nodes.get(name);
+    if (!node) {
+      return false;
+    }
+
+    const frame = el.stage.getBoundingClientRect();
+    view.scale = Math.max(view.scale, 0.75);
+    view.x = frame.width / 2 - (node.x + node.width / 2) * view.scale;
+    view.y = frame.height / 2 - (node.y + node.height / 2) * view.scale;
+    apply();
+
+    const card = node.el;
+    if (card) {
+      card.classList.remove('locating');
+      // Reading offsetWidth forces the style to settle, so removing and adding
+      // the class actually restarts the animation instead of being coalesced
+      // into no change at all.
+      void card.offsetWidth;
+      card.classList.add('locating');
+      setTimeout(() => card.classList.remove('locating'), 2000);
+    }
+    return true;
+  }
+
+  /**
+   * Paints a traced join route onto the diagram.
+   *
+   * The path finder answers in SQL, which is the half you can run. This is the
+   * half you can see: which tables it goes through, in what order, and which
+   * relationships it uses to get there.
+   */
+  function highlightRoute(tables) {
+    for (const card of el.tables.querySelectorAll('.table')) {
+      card.classList.remove('on-route');
+      const badge = card.querySelector('.route-step');
+      if (badge) {
+        badge.remove();
+      }
+    }
+    for (const line of el.edges.querySelectorAll('.edge, .edge-head')) {
+      line.classList.remove('route');
+    }
+
+    if (!tables || tables.length === 0) {
+      return;
+    }
+
+    tables.forEach((name, position) => {
+      const node = nodes.get(name);
+      if (!node?.el) {
+        return;
+      }
+      node.el.classList.add('on-route');
+
+      // Numbered, because "which one is first" is the question a route answers
+      // and a uniform highlight does not.
+      const badge = document.createElement('span');
+      badge.className = 'route-step';
+      badge.textContent = String(position + 1);
+      node.el.appendChild(badge);
+    });
+
+    const hops = new Set();
+    for (let i = 0; i < tables.length - 1; i++) {
+      hops.add(`${tables[i]}|${tables[i + 1]}`);
+      hops.add(`${tables[i + 1]}|${tables[i]}`);
+    }
+
+    for (const line of el.edges.querySelectorAll('.edge, .edge-head')) {
+      const key = `${line.dataset.from}|${line.dataset.to}`;
+      if (hops.has(key)) {
+        line.classList.add('route');
+      }
+    }
+  }
+
+  /** Marks the table whose drawer is open, so the two halves stay tied. */
+  function markOpened(name) {
+    for (const card of el.tables.querySelectorAll('.table')) {
+      card.classList.toggle('opened', card.dataset.table === name);
+    }
   }
 
   // ---- bridge ------------------------------------------------------------
@@ -899,6 +1004,18 @@
      */
     postMessage(message) {
       vscode.postMessage(message);
+    },
+    /** Centres the view on a table and pulses it. Returns false if unknown. */
+    locate(name) {
+      return locateTable(name);
+    },
+    /** Paints a traced join route across the diagram. */
+    highlightRoute(tables) {
+      highlightRoute(tables);
+    },
+    /** Marks which table currently has its drawer open. */
+    markOpened(name) {
+      markOpened(name);
     },
   };
 })();

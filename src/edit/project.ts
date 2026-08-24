@@ -171,6 +171,34 @@ export function projectSchema(before: SchemaSnapshot, edits: readonly Edit[]): S
         break;
       }
 
+      case 'create_table': {
+        if (table) {
+          break; // already there; the preview will report the real conflict
+        }
+        const [schema, name] = edit.table.includes('.')
+          ? (edit.table.split('.') as [string, string])
+          : (['public', edit.table] as [string, string]);
+
+        tables = [
+          ...tables,
+          {
+            schema,
+            name,
+            qualified: edit.table,
+            rows: 0,
+            bytes: 0,
+            partitioned: false,
+            columns: edit.columns.map((column) => ({
+              name: column.name,
+              type: column.type,
+              nullable: column.nullable,
+              isPrimaryKey: column.primaryKey === true,
+            })),
+          },
+        ];
+        break;
+      }
+
       case 'drop_table': {
         if (!table) break;
         tables = tables.filter((candidate) => candidate.qualified !== table.qualified);

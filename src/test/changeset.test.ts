@@ -84,6 +84,57 @@ describe('generated DDL', () => {
     );
   });
 
+  it('creates a table with a single-column key declared inline', () => {
+    assert.equal(
+      sqlFor({
+        kind: 'create_table',
+        table: 'invoices',
+        columns: [
+          { name: 'id', type: 'bigserial', nullable: false, primaryKey: true },
+          { name: 'note', type: 'text', nullable: true },
+          { name: 'total', type: 'integer', nullable: false },
+        ],
+      }),
+      'CREATE TABLE "invoices" ("id" bigserial PRIMARY KEY, "note" text, "total" integer NOT NULL)',
+    );
+  });
+
+  it('gives a composite key its own clause', () => {
+    // Declaring PRIMARY KEY inline on two columns produces two primary keys,
+    // which is an error rather than a composite one.
+    assert.equal(
+      sqlFor({
+        kind: 'create_table',
+        table: 'order_coupons',
+        columns: [
+          { name: 'order_id', type: 'bigint', nullable: false, primaryKey: true },
+          { name: 'coupon_id', type: 'integer', nullable: false, primaryKey: true },
+        ],
+      }),
+      'CREATE TABLE "order_coupons" ("order_id" bigint NOT NULL, "coupon_id" integer NOT NULL, ' +
+        'PRIMARY KEY ("order_id", "coupon_id"))',
+    );
+  });
+
+  it('refuses a table with no columns', () => {
+    assert.throws(
+      () => sqlFor({ kind: 'create_table', table: 'empty', columns: [] }),
+      /at least one column/,
+    );
+  });
+
+  it('refuses a bad type inside a new table too', () => {
+    assert.throws(
+      () =>
+        sqlFor({
+          kind: 'create_table',
+          table: 't',
+          columns: [{ name: 'c', type: 'text); DROP TABLE users; --', nullable: true }],
+        }),
+      /Unsupported type/,
+    );
+  });
+
   it('qualifies schema-qualified tables correctly', () => {
     assert.equal(
       sqlFor({ kind: 'drop_column', table: 'billing.invoices', column: 'note' }),

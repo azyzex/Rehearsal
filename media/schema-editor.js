@@ -70,6 +70,7 @@
       case 'tableDetail':
         detail = message.detail;
         renderDrawer();
+        host.markOpened(detail.table);
         break;
 
       case 'joinPath':
@@ -137,7 +138,17 @@
   function closeDrawer() {
     ui.drawer.hidden = true;
     detail = null;
+    host.markOpened(null);
+    host.highlightRoute([]);
   }
+
+  // Esc closes the drawer. Reaching for the small ✕ every time is the kind of
+  // friction that makes people stop opening it.
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !ui.drawer.hidden) {
+      closeDrawer();
+    }
+  });
 
   function loadingDrawer(table) {
     const wrap = document.createElement('div');
@@ -175,6 +186,7 @@
     head.appendChild(close);
     wrap.appendChild(head);
 
+    wrap.appendChild(renderTableActions());
     wrap.appendChild(renderColumnsSection());
     wrap.appendChild(renderAddColumnSection());
     if (detail.indexes.length) {
@@ -192,6 +204,62 @@
     wrap.appendChild(renderDataSection());
 
     openDrawer(wrap);
+  }
+
+  /**
+   * What you can do to the table as a whole.
+   *
+   * Separated from the column list because these are a different scale of
+   * action, and because "where is this on the diagram" is the question you have
+   * the moment a drawer opens over a diagram of twenty-one cards.
+   */
+  function renderTableActions() {
+    const bar = document.createElement('div');
+    bar.className = 'drawer-actions';
+
+    bar.appendChild(
+      miniButton('Show on diagram', () => {
+        if (!host.locate(detail.table)) {
+          // Focus mode or a schema filter can have hidden it entirely, and
+          // silently doing nothing would read as a broken button.
+          window.alert(
+            `${detail.table} is not currently drawn — the schema filter or focus ` +
+              `mode is hiding it.`,
+          );
+        }
+      }),
+    );
+
+    bar.appendChild(
+      miniButton('Rename table', () => {
+        const to = window.prompt(`Rename ${detail.table} to:`, detail.table);
+        if (to && to.trim() && to.trim() !== detail.table) {
+          addEdit({ kind: 'rename_table', table: detail.table, to: to.trim() });
+        }
+      }),
+    );
+
+    bar.appendChild(
+      miniButton(
+        'Drop table',
+        () => {
+          // Typing the name is not ceremony. Dropping a table is the single most
+          // destructive thing in here, and a button that does it on one click is
+          // a button someone eventually hits by accident.
+          const typed = window.prompt(
+            `Drop ${detail.table} and all ${Number(detail.rows).toLocaleString()} rows?\n\n` +
+              `Type the table name to confirm.`,
+          );
+          if (typed?.trim() === detail.table) {
+            addEdit({ kind: 'drop_table', table: detail.table });
+            closeDrawer();
+          }
+        },
+        true,
+      ),
+    );
+
+    return bar;
   }
 
   function renderColumnsSection() {
@@ -412,6 +480,24 @@
     const joins = `${message.joins} ${message.joins === 1 ? 'join' : 'joins'}`;
     result.appendChild(text('div', '', `${joins}: ${message.tables.join(' → ')}`));
     result.appendChild(text('pre', 'definition', message.sql));
+
+    // The SQL is the half you can run; the diagram is the half you can see.
+    // Numbered stops on the cards, and the hops between them lit up.
+    host.highlightRoute(message.tables);
+
+    const actions = document.createElement('div');
+    actions.className = 'form-row';
+    actions.appendChild(
+      miniButton('Copy SQL', () => {
+        void navigator.clipboard?.writeText(message.sql);
+      }),
+    );
+    actions.appendChild(
+      miniButton('Clear route', () => {
+        host.highlightRoute([]);
+      }),
+    );
+    result.appendChild(actions);
   }
 
   function renderListSection(title, lines) {
