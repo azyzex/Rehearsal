@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 267 tests, all against a real Postgres.
+> **Status: working, not yet published.** 268 tests, all against a real Postgres.
 > The demo recording and the marketplace listing are the remaining work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,

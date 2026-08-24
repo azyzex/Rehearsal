@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { Client } from 'pg';
 import { PostgresAdapter } from '../adapters/postgres';
-import { DEFAULT_THRESHOLDS } from '../analysis/types';
+import { analyzeStatements } from '../analysis/orchestrator';
+import { DEFAULT_THRESHOLDS, Finding } from '../analysis/types';
+import { PlanNode } from '../analysis/plan';
+import { splitStatements } from '../parser/splitter';
 import { APPLICATION_NAME } from '../constants';
 import { EditSession } from '../edit/session';
 import { PostgresFixture, startPostgres } from './support/pgFixture';
@@ -193,6 +196,40 @@ describe('edit session', () => {
     );
   });
 
+  it('plans the statement against the table the statement actually saw', async () => {
+    // The bug this pins: capturing the plan while the statement's effects were
+    // still in place meant EXPLAIN ANALYZE re-ran against an already-modified
+    // table. A DELETE whose rows had gone matched nothing the second time, so
+    // the plan described an empty statement sitting next to a row count of
+    // 33 — the two halves of the same row disagreeing.
+    const findings: Finding[] = [];
+    await analyzeStatements({
+      adapter,
+      statements: splitStatements(`DELETE FROM users WHERE tier = 'pro'`),
+      thresholds: { ...DEFAULT_THRESHOLDS, explainAnalyze: true },
+      onFinding: (finding) => findings.push(finding),
+    });
+
+    const finding = findings[0]!;
+    assert.equal(finding.rowCount, 33);
+
+    const plan = finding.plan!;
+    assert.ok(plan, 'a plan was captured');
+
+    // The scan the plan describes must have seen the same rows the statement
+    // did, not zero.
+    const scanned = deepest(plan.root);
+    assert.ok(
+      scanned.actualRows >= 33,
+      `the plan saw ${scanned.actualRows} rows; the statement affected 33`,
+    );
+
+    const { rows } = await verifier.query(
+      `SELECT COUNT(*)::int AS n FROM users WHERE tier = 'pro'`,
+    );
+    assert.equal(Number(rows[0].n), 33, 'and running it twice still committed nothing');
+  });
+
   it('previews several changes in the order they would run', async () => {
     session = await freshSession();
     session.add({
@@ -210,6 +247,11 @@ describe('edit session', () => {
     assert.equal(result.findings[1]!.statementIndex, 1);
   });
 });
+
+/** The bottom-most node, which is the one that reads the table. */
+function deepest(node: PlanNode): PlanNode {
+  return node.children.length > 0 ? deepest(node.children[0]!) : node;
+}
 
 describe('tableDetail', () => {
   let fixture: PostgresFixture;

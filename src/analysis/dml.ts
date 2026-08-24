@@ -44,6 +44,7 @@ export interface DmlResult {
 }
 
 const SAVEPOINT = 'dryrun_stmt';
+const PLAN_SAVEPOINT = 'dryrun_plan';
 
 export async function analyzeDml(
   adapter: DatabaseAdapter,
@@ -113,15 +114,6 @@ export async function analyzeDml(
         ? new Map<string, Row>()
         : await fetchByKeys(tx, table!, pkColumns, keys);
 
-    // The plan, when it was asked for. It goes here — after the statement has
-    // run and before the savepoint is rolled back — so it measures the same
-    // conditions the statement actually met. It runs the statement a second
-    // time, which is why it is off by default.
-    let plan: AnalysedPlan | undefined;
-    if (thresholds.explainAnalyze) {
-      plan = await capturePlan(tx, sql, params, thresholds);
-    }
-
     // Step 4: undo just this statement.
     await tx.rollbackTo(SAVEPOINT);
 
@@ -130,6 +122,19 @@ export async function analyzeDml(
       classification.kind === 'insert'
         ? new Map<string, Row>()
         : await fetchByKeys(tx, table!, pkColumns, keys);
+
+    // The plan, when it was asked for.
+    //
+    // It has to run *after* the rollback, in a savepoint of its own. Capturing
+    // it while the statement's effects were still in place measured a different
+    // execution than the one being reported: a DELETE whose rows had already
+    // gone matched nothing the second time, so the plan described an empty
+    // statement while the row count beside it said 150,000. It now sees exactly
+    // the table the real statement saw.
+    let plan: AnalysedPlan | undefined;
+    if (thresholds.explainAnalyze) {
+      plan = await capturePlan(tx, sql, params, thresholds);
+    }
 
     const rows: SampleRow[] = keys.map((key) => {
       const id = keyOf(key, pkColumns);
@@ -250,10 +255,14 @@ async function capturePlan(
   thresholds: Thresholds,
 ): Promise<AnalysedPlan | undefined> {
   try {
+    // Its own savepoint: ANALYZE really executes, and its effects must not
+    // survive into the before/after that has already been read.
+    await tx.savepoint(PLAN_SAVEPOINT);
     const { rows } = await tx.query(
       `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${stripTrailingSemicolon(sql)}`,
       params,
     );
+    await tx.rollbackTo(PLAN_SAVEPOINT);
 
     const node = parsePlan(rows[0]?.['QUERY PLAN']);
     return node
@@ -263,6 +272,7 @@ async function capturePlan(
         })
       : undefined;
   } catch {
+    await tx.rollbackTo(PLAN_SAVEPOINT).catch(() => undefined);
     return undefined;
   }
 }
