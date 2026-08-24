@@ -889,5 +889,16 @@
     onTableActivate(handler) {
       onActivate = handler;
     },
+    /**
+     * Sends a message to the extension.
+     *
+     * `acquireVsCodeApi()` may be called exactly once per webview, and this
+     * file has already called it. A second call throws, which would take out
+     * whichever script ran second in its entirety — so the handle is shared
+     * rather than re-acquired.
+     */
+    postMessage(message) {
+      vscode.postMessage(message);
+    },
   };
 })();

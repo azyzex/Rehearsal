@@ -15,8 +15,17 @@
  */
 
 (function () {
-  const vscode = acquireVsCodeApi();
   const host = window.__dryrunSchema;
+
+  // NOT acquireVsCodeApi(). It may be called exactly once per webview, and
+  // schema.js has already called it — a second call throws, and because it
+  // would throw on the first line of this file, nothing below would run at
+  // all. That is precisely what happened: the diagram worked perfectly while
+  // every part of the editor was silently dead, including the click handler
+  // that opens this drawer.
+  const vscode = {
+    postMessage: (message) => host.postMessage(message),
+  };
 
   /** @type {any} */
   let detail = null;
@@ -784,6 +793,24 @@
   function openTable(table, filter) {
     vscode.postMessage({ type: 'openTable', table, filter: filter ?? '' });
   }
+
+  // ---- failure reporting -------------------------------------------------
+
+  /**
+   * A thrown error in here used to be invisible.
+   *
+   * The diagram lives in another file and keeps working, so a failure in this
+   * one looks exactly like a feature that was never built: you click a table
+   * and nothing happens, with nothing in any log the user would think to open.
+   * Now it says so, in the panel, where it cannot be missed.
+   */
+  window.addEventListener('error', (event) => {
+    const status = document.getElementById('status');
+    if (status) {
+      status.hidden = false;
+      status.textContent = 'The editor failed to start: ' + (event.message || 'unknown error');
+    }
+  });
 
   // ---- helpers -----------------------------------------------------------
 
