@@ -14,7 +14,8 @@ import { describe, it } from 'node:test';
 const SRC = path.resolve(__dirname, '..', '..', 'src');
 
 const ALLOWED = new Set([
-  path.join('parser', 'transactionControl.ts'), // the detector itself
+  path.join('parser', 'transactionControl.ts'), // the detector that refuses it
+  path.join('adapters', 'commit.ts'), // the single, deliberate write path
 ]);
 
 function sourceFiles(dir: string, base = dir): string[] {

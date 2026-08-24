@@ -14,6 +14,7 @@ import {
   Transaction,
   TransactionControlError,
 } from './types';
+import { CommittableStatement, CommittedResult, runCommittedOn } from './commit';
 import { findTransactionControl } from '../parser/transactionControl';
 
 /**
@@ -118,6 +119,27 @@ export class PostgresAdapter implements DatabaseAdapter {
           /* connection lost: the server discards the transaction for us */
         });
       }
+    });
+  }
+
+  /**
+   * Applies previously-previewed statements for real.
+   *
+   * The only write path in the adapter. It delegates to `commit.ts`, which is
+   * the sole file exempt from the no-commit rule, so that this capability lives
+   * somewhere it can be read in one sitting rather than being spread out.
+   */
+  async runCommitted(statements: readonly CommittableStatement[]): Promise<CommittedResult> {
+    return this.serialize(async () => {
+      const config = this.config!;
+      return runCommittedOn(
+        this.requireClient(),
+        {
+          statementTimeoutMs: config.statementTimeoutMs,
+          lockTimeoutMs: config.lockTimeoutMs,
+        },
+        statements,
+      );
     });
   }
 

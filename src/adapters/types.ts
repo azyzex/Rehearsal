@@ -146,6 +146,14 @@ export interface DatabaseAdapter {
   foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]>;
   /** The whole database: every table, column and relationship. */
   schemaSnapshot(): Promise<SchemaSnapshot>;
+
+  /**
+   * Applies previewed statements for real, in one transaction. The only write
+   * path on the adapter; see adapters/commit.ts for why it is isolated.
+   */
+  runCommitted(
+    statements: readonly { sql: string; params: readonly unknown[] }[],
+  ): Promise<{ applied: number; rowCounts: readonly (number | null)[] }>;
   explain(sql: string, analyze: boolean): Promise<QueryPlan>;
 }
 

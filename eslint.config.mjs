@@ -28,7 +28,11 @@ export default tseslint.config(
   },
   {
     // The detector and its tests exist precisely to talk about COMMIT.
-    files: ['src/parser/transactionControl.ts', 'src/test/**/*.ts'],
+    files: [
+      'src/parser/transactionControl.ts',
+      'src/adapters/commit.ts',
+      'src/test/**/*.ts',
+    ],
     rules: { 'no-restricted-syntax': 'off' },
   },
 );
