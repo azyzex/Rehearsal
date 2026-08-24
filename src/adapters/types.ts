@@ -101,6 +101,33 @@ export interface SchemaSnapshot {
   readonly schemas: readonly string[];
 }
 
+export interface IndexInfo {
+  readonly name: string;
+  readonly columns: readonly string[];
+  readonly unique: boolean;
+  readonly primary: boolean;
+  readonly definition: string;
+}
+
+export interface ConstraintInfo {
+  readonly name: string;
+  readonly type: 'primary key' | 'foreign key' | 'unique' | 'check' | 'exclusion' | 'other';
+  readonly definition: string;
+}
+
+/** Everything the table drawer shows: structure, rules, and actual rows. */
+export interface TableDetail {
+  readonly table: string;
+  readonly columns: readonly ColumnInfo[];
+  readonly indexes: readonly IndexInfo[];
+  readonly constraints: readonly ConstraintInfo[];
+  readonly primaryKey: readonly string[];
+  readonly rows: number;
+  /** True when `rows` is the planner's estimate because counting timed out. */
+  readonly rowsEstimated: boolean;
+  readonly sample: readonly Row[];
+}
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -146,6 +173,8 @@ export interface DatabaseAdapter {
   foreignKeys(tables: readonly string[]): Promise<ForeignKeyInfo[]>;
   /** The whole database: every table, column and relationship. */
   schemaSnapshot(): Promise<SchemaSnapshot>;
+  /** One table in full, with a sample of real rows. */
+  tableDetail(table: string, sampleLimit: number): Promise<TableDetail>;
 
   /**
    * Applies previewed statements for real, in one transaction. The only write

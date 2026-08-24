@@ -1,6 +1,7 @@
 import { Client } from 'pg';
 import {
   ColumnInfo,
+  ConstraintInfo,
   ConnectionConfig,
   DatabaseAdapter,
   ForeignKeyInfo,
@@ -10,6 +11,7 @@ import {
   Row,
   SchemaSnapshot,
   SchemaTable,
+  TableDetail,
   TableStats,
   Transaction,
   TransactionControlError,
@@ -485,6 +487,87 @@ export class PostgresAdapter implements DatabaseAdapter {
     };
   }
 
+  /**
+   * One table in full: structure, the rules on it, and actual rows.
+   *
+   * The row count is exact where that is affordable and the planner's estimate
+   * where it is not. Counting 600,000 rows is a second or so; on a table where
+   * it would blow the statement timeout the estimate is used instead and
+   * labelled as one, rather than the drawer showing nothing.
+   */
+  async tableDetail(table: string, sampleLimit: number): Promise<TableDetail> {
+    const [columns, primaryKey] = await Promise.all([
+      this.tableColumns(table),
+      this.primaryKeyColumns(table),
+    ]);
+
+    if (columns.length === 0) {
+      throw new Error(`Table not found: ${table}`);
+    }
+
+    const indexesResult = await this.probe(
+      `SELECT i.relname AS name,
+              ix.indisunique AS "unique",
+              ix.indisprimary AS "primary",
+              pg_get_indexdef(ix.indexrelid) AS definition,
+              (SELECT array_agg(a.attname::text ORDER BY k.ord)
+                 FROM unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute a
+                   ON a.attrelid = ix.indrelid AND a.attnum = k.attnum) AS columns
+         FROM pg_index ix
+         JOIN pg_class i ON i.oid = ix.indexrelid
+        WHERE ix.indrelid = to_regclass($1)
+        ORDER BY ix.indisprimary DESC, i.relname`,
+      [table],
+    );
+
+    const constraintsResult = await this.probe(
+      `SELECT conname AS name, contype AS type, pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = to_regclass($1)
+        ORDER BY contype, conname`,
+      [table],
+    );
+
+    // Ordered by primary key so the sample is stable between openings; an
+    // unordered LIMIT can return different rows each time, which makes the
+    // drawer look like it is showing changing data when nothing has changed.
+    const order = primaryKey.length > 0 ? ` ORDER BY ${primaryKey.map(quoteIdent).join(', ')}` : '';
+    const sampleResult = await this.probe(
+      `SELECT * FROM ${qualify(table)}${order} LIMIT ${Math.max(1, Math.floor(sampleLimit))}`,
+    );
+
+    let rows: number;
+    let rowsEstimated = false;
+    try {
+      rows = await this.countRows(table);
+    } catch {
+      rows = (await this.tableStats(table)).estimatedRows;
+      rowsEstimated = true;
+    }
+
+    return {
+      table,
+      columns,
+      primaryKey,
+      rows,
+      rowsEstimated,
+      sample: sampleResult.rows,
+      indexes: indexesResult.rows.map((row) => ({
+        name: String(row['name']),
+        columns: (row['columns'] as string[] | null) ?? [],
+        unique: Boolean(row['unique']),
+        primary: Boolean(row['primary']),
+        definition: String(row['definition']),
+      })),
+      constraints: constraintsResult.rows.map((row) => ({
+        name: String(row['name']),
+        type: constraintType(String(row['type'])),
+        definition: String(row['definition']),
+      })),
+    };
+  }
+
   async sampleRows(table: string, pks: PrimaryKeyValue[], limit: number): Promise<Row[]> {
     if (pks.length === 0) {
       return [];
@@ -577,6 +660,24 @@ function bareName(table: string): string {
   const parts = table.split('.');
   const last = parts[parts.length - 1] ?? table;
   return last.trim().replace(/^"|"$/g, '');
+}
+
+/** pg_constraint.contype is a single character; this is what each one means. */
+function constraintType(code: string): ConstraintInfo['type'] {
+  switch (code) {
+    case 'p':
+      return 'primary key';
+    case 'f':
+      return 'foreign key';
+    case 'u':
+      return 'unique';
+    case 'c':
+      return 'check';
+    case 'x':
+      return 'exclusion';
+    default:
+      return 'other';
+  }
 }
 
 function readCount(rows: readonly Row[]): number {

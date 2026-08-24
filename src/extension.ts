@@ -34,18 +34,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
 
-    vscode.commands.registerCommand('dryrun.exploreSchema', async () => {
-      const panel = SchemaPanel.show(context);
-      try {
-        const connection = await connections.acquire();
-        panel.loading(connection.identity.display);
-        const snapshot = await connection.adapter.schemaSnapshot();
-        panel.show(snapshot, connection.identity.display);
-      } catch (error) {
-        reportError(error, output, connections);
-        panel.fail(errorMessage(error));
-      }
-    }),
+    vscode.commands.registerCommand('dryrun.exploreSchema', () =>
+      exploreSchema(context, connections, output),
+    ),
 
     vscode.commands.registerCommand('dryrun.disconnect', async () => {
       await connections.close();
@@ -128,6 +119,42 @@ async function preview(
     }
 
     panel.finish(summarize(findings, statements.length, cancelled));
+  } catch (error) {
+    reportError(error, output, connections);
+    panel.fail(errorMessage(error));
+  }
+}
+
+/**
+ * Opens the schema explorer and keeps it fed.
+ *
+ * The panel holds no connection of its own: it asks through the host, which
+ * means there is still exactly one connection and the editing session cannot
+ * outlive it.
+ */
+async function exploreSchema(
+  context: vscode.ExtensionContext,
+  connections: ConnectionManager,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const load = async (panel: SchemaPanel): Promise<void> => {
+    const connection = await connections.acquire();
+    panel.loading(connection.identity.display);
+    const snapshot = await connection.adapter.schemaSnapshot();
+    panel.show(snapshot, connection.identity.display);
+  };
+
+  const panel = SchemaPanel.show(context, {
+    adapter: () => connections.current?.adapter,
+    thresholds: readThresholds,
+    refresh: async () => {
+      await load(panel).catch((error) => reportError(error, output, connections));
+    },
+    report: (error) => reportError(error, output, connections),
+  });
+
+  try {
+    await load(panel);
   } catch (error) {
     reportError(error, output, connections);
     panel.fail(errorMessage(error));

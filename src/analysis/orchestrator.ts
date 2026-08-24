@@ -95,6 +95,7 @@ async function analyzeOne(
       statement.sql,
       classification,
       thresholds,
+      statement.params ?? [],
     );
 
     const severity = blastRadiusSeverity(

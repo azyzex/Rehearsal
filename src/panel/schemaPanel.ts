@@ -1,33 +1,55 @@
 import * as vscode from 'vscode';
-import { SchemaSnapshot } from '../adapters/types';
+import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
+import { Thresholds } from '../analysis/types';
+import { Edit } from '../edit/changeset';
+import { EditSession } from '../edit/session';
 
 /**
- * The schema explorer.
+ * The schema explorer, and the visual editor living inside it.
  *
- * The whole database drawn as tables and relationships — the canvas that the
- * change preview is eventually laid on top of. On its own it answers "what is
- * in here and how does it hang together", which is the question every developer
- * has on their first day and again every time they touch an unfamiliar corner.
+ * The whole database drawn as tables and relationships; click one to open it,
+ * edit it, and watch the pending changes accumulate. Nothing is written until
+ * the changes have been previewed and then explicitly applied.
  *
- * Everything it draws is read-only catalog data. It opens no transaction and
- * touches no row.
+ * The controller owns the session and does all the talking to the database.
+ * The webview holds no connection and issues no SQL — it sends intent and
+ * renders what comes back.
  */
+
+export interface SchemaHost {
+  /** The live connection, or undefined when there is not one. */
+  adapter(): DatabaseAdapter | undefined;
+  thresholds(): Thresholds;
+  /** Re-reads the schema after changes have been applied. */
+  refresh(): Promise<void>;
+  report(error: unknown): void;
+}
+
 export class SchemaPanel {
   private static current: SchemaPanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly session = new EditSession();
+  private host: SchemaHost | undefined;
+  private previewToken: string | undefined;
+  private previewDestructive = false;
 
-  static show(context: vscode.ExtensionContext): SchemaPanel {
+  static show(context: vscode.ExtensionContext, host: SchemaHost): SchemaPanel {
     if (SchemaPanel.current) {
+      SchemaPanel.current.host = host;
       SchemaPanel.current.panel.reveal(vscode.ViewColumn.Active);
       return SchemaPanel.current;
     }
-    SchemaPanel.current = new SchemaPanel(context);
+    SchemaPanel.current = new SchemaPanel(context, host);
     return SchemaPanel.current;
   }
 
-  private constructor(private readonly context: vscode.ExtensionContext) {
+  private constructor(
+    private readonly context: vscode.ExtensionContext,
+    host: SchemaHost,
+  ) {
+    this.host = host;
     this.panel = vscode.window.createWebviewPanel(
       'dryrun.schema',
       'Database Schema',
@@ -45,19 +67,193 @@ export class SchemaPanel {
     };
 
     this.panel.webview.html = this.render();
+    this.disposables.push(
+      this.panel.webview.onDidReceiveMessage((message) => void this.onMessage(message)),
+    );
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
   loading(connection: string): void {
-    void this.panel.webview.postMessage({ type: 'loading', connection });
+    this.post({ type: 'loading', connection });
   }
 
   show(snapshot: SchemaSnapshot, connection: string): void {
-    void this.panel.webview.postMessage({ type: 'schema', snapshot, connection });
+    this.session.setBaseline(snapshot);
+    this.post({ type: 'schema', snapshot, connection });
+    this.postChangeset();
   }
 
   fail(message: string): void {
-    void this.panel.webview.postMessage({ type: 'failed', message });
+    this.post({ type: 'failed', message });
+  }
+
+  // ---- message handling --------------------------------------------------
+
+  private async onMessage(message: { type?: string; [key: string]: unknown }): Promise<void> {
+    try {
+      switch (message.type) {
+        case 'openTable':
+          await this.openTable(String(message.table));
+          break;
+
+        case 'addEdit':
+          // Any edit invalidates the previous preview: what was measured is no
+          // longer what would run.
+          this.session.add(message.edit as Edit);
+          this.clearPreview();
+          this.postChangeset();
+          break;
+
+        case 'removeEdit':
+          this.session.removeAt(Number(message.index));
+          this.clearPreview();
+          this.postChangeset();
+          break;
+
+        case 'clearEdits':
+          this.session.clear();
+          this.clearPreview();
+          this.postChangeset();
+          break;
+
+        case 'previewChanges':
+          await this.preview();
+          break;
+
+        case 'applyChanges':
+          await this.apply(Boolean(message.confirmed));
+          break;
+
+        case 'exportSql':
+          await this.exportSql();
+          break;
+
+        default:
+          break;
+      }
+    } catch (error) {
+      this.host?.report(error);
+      this.post({ type: 'error', message: errorMessage(error) });
+    }
+  }
+
+  private async openTable(table: string): Promise<void> {
+    const adapter = this.requireAdapter();
+    this.post({ type: 'tableLoading', table });
+    const detail = await adapter.tableDetail(table, 25);
+    this.post({ type: 'tableDetail', detail: serialiseDetail(detail) });
+  }
+
+  private async preview(): Promise<void> {
+    const adapter = this.requireAdapter();
+    if (this.session.isEmpty) {
+      this.post({ type: 'error', message: 'There are no pending changes to preview.' });
+      return;
+    }
+
+    this.post({ type: 'previewStarted' });
+
+    const result = await this.session.preview(adapter, this.host!.thresholds());
+    this.previewToken = result.token;
+    this.previewDestructive = result.destructive;
+
+    this.post({
+      type: 'preview',
+      findings: result.findings.map(serialiseFinding),
+      summary: result.summary,
+      destructive: result.destructive,
+      blocking: result.blocking,
+      canApply: true,
+    });
+  }
+
+  private async apply(confirmed: boolean): Promise<void> {
+    const adapter = this.requireAdapter();
+
+    if (!this.previewToken) {
+      this.post({
+        type: 'error',
+        message: 'Preview these changes before applying them.',
+      });
+      return;
+    }
+
+    // A second confirmation, in the editor rather than the webview, for
+    // anything that destroys data. The webview asked once; this is the one the
+    // user cannot click through without reading.
+    if (this.previewDestructive && confirmed) {
+      const choice = await vscode.window.showWarningMessage(
+        'These changes destroy data that cannot be recovered. Apply them?',
+        { modal: true },
+        'Apply',
+      );
+      if (choice !== 'Apply') {
+        this.post({ type: 'applyCancelled' });
+        return;
+      }
+    }
+
+    const result = await this.session.apply(adapter, {
+      token: this.previewToken,
+      destructive: this.previewDestructive,
+      confirmedDestructive: confirmed,
+    });
+
+    this.session.clear();
+    this.clearPreview();
+    this.post({ type: 'applied', applied: result.applied });
+
+    // The picture is now out of date in a way the projection cannot fix.
+    await this.host?.refresh();
+  }
+
+  private async exportSql(): Promise<void> {
+    const state = this.session.state();
+    if (!state.sql.trim()) {
+      this.post({ type: 'error', message: 'There are no pending changes to export.' });
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument({
+      language: 'sql',
+      content:
+        `-- Generated by Dry Run from ${state.changes.length} visual ` +
+        `${state.changes.length === 1 ? 'change' : 'changes'}.\n` +
+        `-- Review it, keep it, run it through your migration tool.\n\n${state.sql}\n`,
+    });
+    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
+  }
+
+  private postChangeset(): void {
+    const state = this.session.state();
+    this.post({
+      type: 'changeset',
+      changes: state.changes.map((change) => ({
+        index: change.index,
+        label: change.label,
+        sql: change.sql,
+      })),
+      diff: state.diff,
+      projected: state.projected,
+      sql: state.sql,
+    });
+  }
+
+  private clearPreview(): void {
+    this.previewToken = undefined;
+    this.previewDestructive = false;
+  }
+
+  private requireAdapter(): DatabaseAdapter {
+    const adapter = this.host?.adapter();
+    if (!adapter) {
+      throw new Error('Not connected to a database.');
+    }
+    return adapter;
+  }
+
+  private post(message: unknown): void {
+    void this.panel.webview.postMessage(message);
   }
 
   private render(): string {
@@ -86,6 +282,10 @@ export class SchemaPanel {
   <div class="left">
     <span class="dot" aria-hidden="true"></span>
     <span id="stats">Reading the schema…</span>
+    <span id="view-toggle" class="toggle" hidden>
+      <button id="view-before" class="seg active" type="button">Now</button>
+      <button id="view-after" class="seg" type="button">After changes</button>
+    </span>
   </div>
   <div class="right">
     <input id="search" type="search" placeholder="Find a table or column" spellcheck="false">
@@ -95,22 +295,39 @@ export class SchemaPanel {
   </div>
 </header>
 
-<div id="stage">
-  <div id="canvas">
-    <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div id="tables"></div>
+<div id="body">
+  <div id="stage">
+    <div id="canvas">
+      <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="tables"></div>
+    </div>
+    <div id="status" class="status">Connecting…</div>
   </div>
-  <div id="status" class="status">Connecting…</div>
+
+  <aside id="drawer" hidden></aside>
 </div>
+
+<section id="changes" hidden>
+  <header class="changes-head">
+    <span id="changes-title">Pending changes</span>
+    <span class="spacer"></span>
+    <button id="export" type="button">Export SQL</button>
+    <button id="discard" type="button">Discard</button>
+    <button id="preview" type="button" class="primary">Preview</button>
+    <button id="apply" type="button" class="danger" hidden>Apply</button>
+  </header>
+  <div id="changes-body"></div>
+</section>
 
 <footer id="legend">
   <span><i class="swatch pk"></i> primary key</span>
   <span><i class="swatch fk"></i> foreign key</span>
-  <span>Drag to pan · scroll to zoom · click a table to isolate it</span>
+  <span>Drag to move · scroll to zoom · click a table to open it</span>
   <span id="connection"></span>
 </footer>
 
 <script nonce="${nonce}" src="${media('schema.js')}"></script>
+<script nonce="${nonce}" src="${media('schema-editor.js')}"></script>
 </body>
 </html>`;
   }
@@ -121,4 +338,62 @@ export class SchemaPanel {
       disposable.dispose();
     }
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Postgres values become display strings before crossing into the webview. */
+function serialiseDetail(detail: {
+  table: string;
+  columns: readonly unknown[];
+  indexes: readonly unknown[];
+  constraints: readonly unknown[];
+  primaryKey: readonly string[];
+  rows: number;
+  rowsEstimated: boolean;
+  sample: readonly Record<string, unknown>[];
+}): unknown {
+  return {
+    ...detail,
+    sample: detail.sample.map((row) =>
+      Object.fromEntries(Object.entries(row).map(([key, value]) => [key, formatValue(value)])),
+    ),
+    // The raw values are kept alongside the display ones, because editing a row
+    // needs the real key, not its rendering.
+    sampleRaw: detail.sample.map((row) =>
+      Object.fromEntries(Object.entries(row).map(([key, value]) => [key, toJsonSafe(value)])),
+    ),
+  };
+}
+
+function serialiseFinding(finding: unknown): unknown {
+  return JSON.parse(JSON.stringify(finding, (_key, value) => toJsonSafe(value)));
+}
+
+function toJsonSafe(value: unknown): unknown {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Buffer.isBuffer(value)) {
+    return `<${value.length} bytes>`;
+  }
+  return value;
+}
+
+export function formatValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '∅';
+  }
+  if (value instanceof Date) {
+    return value.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+  }
+  if (Buffer.isBuffer(value)) {
+    return `<${value.length} bytes>`;
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }

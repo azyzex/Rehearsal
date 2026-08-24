@@ -18,6 +18,13 @@
 
   /** @type {any} */
   let snapshot = null;
+  /**
+   * The schema as the database actually has it, kept aside so the before/after
+   * switch has something to return to. `snapshot` is whichever of the two is
+   * currently being drawn.
+   */
+  /** @type {any} */
+  let baselineSnapshot = null;
   /** @type {Map<string, any>} */
   let nodes = new Map();
   /** @type {any[]} */
@@ -72,6 +79,7 @@
 
     if (message.type === 'schema') {
       snapshot = message.snapshot;
+      baselineSnapshot = message.snapshot;
       el.connection.textContent = message.connection || '';
       populateSchemaFilter();
       build();
@@ -772,4 +780,33 @@
       .replace('double precision', 'float8')
       .replace('integer', 'int');
   }
+
+  // ---- bridge ------------------------------------------------------------
+
+  /**
+   * The small surface the editor half needs.
+   *
+   * The diagram and the editor live in separate files because they are separate
+   * concerns — one draws a schema, the other accumulates changes to it — and
+   * this is the whole of what passes between them. Keeping it to four functions
+   * is what stops the editor reaching into the layout and the layout growing
+   * opinions about editing.
+   */
+  window.__dryrunSchema = {
+    /** Draws a different snapshot: used to flip between now and after. */
+    render(next) {
+      snapshot = next;
+      build();
+    },
+    /** The schema as the database actually has it. */
+    baseline() {
+      return baselineSnapshot;
+    },
+    tablesEl() {
+      return el.tables;
+    },
+    shortType(type) {
+      return shortType(type);
+    },
+  };
 })();

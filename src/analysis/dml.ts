@@ -47,6 +47,7 @@ export async function analyzeDml(
   sql: string,
   classification: Classification,
   thresholds: Thresholds,
+  params: readonly unknown[] = [],
 ): Promise<DmlResult> {
   const table = classification.table;
 
@@ -68,7 +69,7 @@ export async function analyzeDml(
 
   return adapter.withRollback(async (tx) => {
     if (!canSample) {
-      const result = await tx.query(sql);
+      const result = await tx.query(sql, params);
       return {
         rowCount: result.rowCount ?? 0,
         sample: {
@@ -92,6 +93,7 @@ export async function analyzeDml(
        SELECT count(*) OVER () AS dryrun_total, *
          FROM dryrun_affected
         LIMIT ${Math.max(1, Math.floor(thresholds.sampleSize))}`,
+      params,
     );
 
     const rowCount = captured.rows.length > 0 ? Number(captured.rows[0]!['dryrun_total']) : 0;
