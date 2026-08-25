@@ -132,6 +132,16 @@ an ORM might have given it: `phone_number`, `phoneNumber`, `PhoneNumber`,
 `phone-number`. Finding nothing is reported as *finding nothing by text search*,
 never as safe.
 
+**Find the drift between two environments.** `Dry Run: Compare With Another
+Database` reads both schemas and writes what the second one is missing or has
+extra: tables, columns, types, nullability, defaults, foreign keys. Phrased as
+work to do rather than as a set of differences, because "these differ" is not
+actionable and "add this column to staging" is. Foreign keys are compared by
+what they connect rather than by name, since constraint names drift between
+environments for no interesting reason. The second connection is opened for the
+comparison, read-only, and closed again; the string is never saved and its
+password never reaches the report.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
@@ -265,6 +275,7 @@ Press `F5` to launch the extension host, then:
 | `Dry Run: Explore Schema` | Draw the database, and edit it |
 | `Dry Run: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Dry Run: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
+| `Dry Run: Compare With Another Database` | Drift between two environments |
 | `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |

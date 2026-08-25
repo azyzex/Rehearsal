@@ -427,10 +427,16 @@ export class PostgresAdapter implements DatabaseAdapter {
               a.attname AS name,
               format_type(a.atttypid, a.atttypmod) AS type,
               NOT a.attnotnull AS nullable,
+              -- Carried here as well as in tableColumns, because comparing two
+              -- databases reads snapshots, and a default that drifts between
+              -- environments is exactly the kind of thing that only breaks in
+              -- one of them.
+              pg_get_expr(ad.adbin, ad.adrelid) AS default_expression,
               COALESCE(pk.is_primary, false) AS is_primary
          FROM pg_attribute a
          JOIN pg_class c ON c.oid = a.attrelid
          JOIN pg_namespace n ON n.oid = c.relnamespace
+         LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
          LEFT JOIN LATERAL (
            SELECT true AS is_primary
              FROM pg_index i
@@ -481,6 +487,10 @@ export class PostgresAdapter implements DatabaseAdapter {
         type: String(row['type']),
         nullable: Boolean(row['nullable']),
         isPrimaryKey: Boolean(row['is_primary']),
+        defaultExpression:
+          row['default_expression'] === null || row['default_expression'] === undefined
+            ? undefined
+            : String(row['default_expression']),
       });
       columnsByTable.set(key, list);
     }

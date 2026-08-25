@@ -32,6 +32,11 @@
         "category": "Dry Run"
       },
       {
+        "command": "dryrun.compareSchemas",
+        "title": "Compare With Another Database",
+        "category": "Dry Run"
+      },
+      {
         "command": "dryrun.schemaHealth",
         "title": "Schema Health Report",
         "category": "Dry Run"

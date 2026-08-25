@@ -18,6 +18,9 @@ import { splitStatements } from './parser/splitter';
 import { MigrationFile, findMigrations } from './migrations/discover';
 import { readLedger } from './migrations/ledger';
 import { healthReport } from './analysis/healthReport';
+import { compareSchemas, comparisonReport } from './analysis/compare';
+import { PostgresAdapter } from './adapters/postgres';
+import { APPLICATION_NAME } from './constants';
 
 export function activate(context: vscode.ExtensionContext): void {
   const connections = new ConnectionManager(context.workspaceState);
@@ -58,6 +61,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('dryrun.schemaHealth', () =>
       schemaHealth(connections, output),
+    ),
+
+    vscode.commands.registerCommand('dryrun.compareSchemas', () =>
+      compareWithAnother(connections, output),
     ),
 
     vscode.commands.registerCommand('dryrun.disconnect', async () => {
@@ -248,6 +255,98 @@ async function exploreSchema(
   } catch (error) {
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
+  }
+}
+
+/**
+ * Compares the connected database with another one.
+ *
+ * The question is nearly always the same: staging and production are supposed
+ * to be the same shape, and something is happening in one of them that does not
+ * happen in the other. The answer is usually a column somebody added by hand, or
+ * a NOT NULL applied to one and forgotten on the other.
+ *
+ * The second connection is opened for the length of the comparison and closed
+ * again. It is read the same way as the first — a catalogue query, no writes,
+ * no transaction left open — and its connection string is never stored.
+ */
+async function compareWithAnother(
+  connections: ConnectionManager,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const other = await vscode.window.showInputBox({
+    title: 'Compare with another database',
+    prompt: 'Connection string for the database to compare against. It is not saved.',
+    placeHolder: 'postgresql://user:password@host/database',
+    password: true,
+    ignoreFocusOut: true,
+  });
+
+  if (!other || other.trim().length === 0) {
+    return;
+  }
+
+  const second = new PostgresAdapter();
+
+  try {
+    const connection = await connections.acquire();
+
+    const { left, right } = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Dry Run: reading both schemas…' },
+      async () => {
+        const reference = await connection.adapter.schemaSnapshot();
+
+        // The production guard is not applied to this one on purpose: it exists
+        // to stop writes reaching a database nobody meant to touch, and the
+        // only thing done here is a catalogue read. Refusing to *look at* a
+        // production schema would make the feature useless for the case it
+        // exists for.
+        await second.connect({
+          connectionString: other.trim(),
+          statementTimeoutMs: 30_000,
+          lockTimeoutMs: 5000,
+          applicationName: APPLICATION_NAME,
+        });
+
+        return { left: reference, right: await second.schemaSnapshot() };
+      },
+    );
+
+    const comparison = compareSchemas(left, right);
+    const document = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: comparisonReport(comparison, {
+        left: connection.identity.display,
+        right: describeConnection(other),
+      }),
+    });
+    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+
+    if (comparison.identical) {
+      void vscode.window.showInformationMessage('The two schemas match.');
+    }
+  } catch (error) {
+    reportError(error, output, connections);
+  } finally {
+    // Closed whether or not it worked. A comparison that leaves a connection
+    // open to a production database is a worse problem than the drift.
+    await second.dispose().catch(() => undefined);
+  }
+}
+
+/**
+ * A connection string with the credential taken out.
+ *
+ * This goes in a document the user may well paste into a ticket, so the
+ * password must not travel with it.
+ */
+function describeConnection(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    const database = url.pathname.replace(/^\//, '') || 'database';
+    return `${database}@${url.hostname}`;
+  } catch {
+    return 'the other database';
   }
 }
 
