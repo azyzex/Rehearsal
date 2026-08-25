@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { describeError } from '../errors';
 import { Engine } from '../adapters/types';
 import { ConnectionManager } from '../connection/manager';
 import { SavedConnections } from '../connection/saved';
@@ -229,8 +230,12 @@ export class Sidebar implements vscode.WebviewViewProvider {
   }
 }
 
+/**
+ * Kept as a name because it is used everywhere; the work moved to errors.ts
+ * after an AggregateError with an empty message rendered as an empty red box.
+ */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 export type { Engine };

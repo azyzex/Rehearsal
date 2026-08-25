@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { describeError } from '../errors';
 import { adapterFor } from '../adapters/select';
 import { analyzeStatements } from '../analysis/orchestrator';
 import { Finding, Thresholds } from '../analysis/types';
@@ -224,7 +225,7 @@ function number(value: string, name: string): number {
 }
 
 function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { describeError } from './errors';
 import { buildDiagram } from './analysis/impact';
 import { editsFromClassifications } from './edit/fromSql';
 import { findOffenders } from './analysis/offenders';
@@ -839,8 +840,12 @@ function summarize(findings: readonly Finding[], total: number, cancelled: boole
   return `${parts.join(', ')}. Out of ${total} ${total === 1 ? 'statement' : 'statements'}.`;
 }
 
+/**
+ * Kept as a name because it is used everywhere; the work moved to errors.ts
+ * after an AggregateError with an empty message rendered as an empty red box.
+ */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 function reportError(

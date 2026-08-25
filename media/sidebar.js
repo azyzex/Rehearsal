@@ -80,7 +80,15 @@
 
   function fail(message) {
     el.error.hidden = false;
-    el.error.textContent = message;
+    // Never an empty red box. Something threw and produced no words — an
+    // AggregateError does exactly that — and a coloured rectangle with nothing
+    // in it tells the reader less than nothing.
+    const text = typeof message === 'string' ? message.trim() : '';
+    el.error.textContent =
+      text.length > 0
+        ? text
+        : 'That did not work, and the error said nothing about why. The Dry Run output ' +
+          'channel may have more.';
   }
 
   function render(state) {

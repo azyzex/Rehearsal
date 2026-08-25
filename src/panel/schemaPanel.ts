@@ -1,4 +1,5 @@
 import * as os from 'node:os';
+import { describeError } from '../errors';
 import * as vscode from 'vscode';
 import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds } from '../analysis/types';
@@ -616,8 +617,12 @@ export class SchemaPanel {
   }
 }
 
+/**
+ * Kept as a name because it is used everywhere; the work moved to errors.ts
+ * after an AggregateError with an empty message rendered as an empty red box.
+ */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 /** Postgres values become display strings before crossing into the webview. */

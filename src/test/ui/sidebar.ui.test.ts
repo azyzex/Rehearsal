@@ -325,6 +325,31 @@ describe('the sidebar, rendered', () => {
     );
   });
 
+  it('never shows an empty red box', async () => {
+    // The bug a screenshot found. An AggregateError carries no message of its
+    // own, the panel set textContent to '', and the result was a coloured
+    // rectangle with nothing in it — which tells the reader less than no
+    // rectangle would have. errors.ts stops most of these from arriving empty;
+    // this is the guard for the ones that still do.
+    for (const message of ['', '   ', undefined, null]) {
+      await panel.send({ type: 'state', connected: null, saved: SAVED });
+      await panel.send({ type: 'failed', message });
+
+      assert.equal(await visible(panel.page, '#error'), true);
+      const text = ((await panel.page.textContent('#error')) ?? '').trim();
+      assert.ok(text.length > 0, `empty box for ${JSON.stringify(message)}`);
+      assert.match(text, /said nothing about why/);
+    }
+  });
+
+  it('shows a real message when there is one', async () => {
+    await panel.send({
+      type: 'failed',
+      message: 'Nothing is listening at 127.0.0.1:54329.',
+    });
+    assert.match((await panel.page.textContent('#error')) ?? '', /Nothing is listening/);
+  });
+
   it('nothing threw at any point', () => {
     assert.deepEqual(panel.problems, []);
   });
