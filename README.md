@@ -178,6 +178,37 @@ rename one. Each becomes a *pending change* — not a write. Then:
   why hand-written down migrations are usually wrong. Anything it cannot undo is
   listed at the top of the file in plain words rather than quietly omitted.
 
+## In CI
+
+The same analysis runs without an editor, which is worth having because a pull
+request is where a destructive migration is cheapest to catch — before anyone
+has deployed anything. A review that says "this looks fine" is a guess; a check
+that says "this DELETE matches 40,072 of 50,000 rows on the real database" is
+not.
+
+```
+node dist/cli.js migrations/0002_drop_phone_number.sql
+```
+
+```
+migrations/0002_drop_phone_number.sql — measured against neondb
+
+DESTRUCTIVE line 1  Will destroy data
+            40,072 rows have a value in phone_number. Dropping it cannot be undone.
+
+1 would destroy data. Out of 1 statement.
+```
+
+Exit code 1. `--fail-on blocking` also fails on anything that would lock or
+error, `--fail-on never` reports without failing, and `--format markdown` writes
+a table a pull request can render. `examples/dryrun.yml` is a GitHub Action that
+measures only the migrations a PR adds and puts the result in the job summary.
+
+Point it at a restored copy of production, or a per-PR database branch. The
+credential it needs is read-only: there is no flag that applies anything, on
+purpose — a CI job holding a connection string that can write is a worse thing
+to leave lying around than any migration it might have caught.
+
 ## How it works
 
 Postgres has transactional DDL, so a statement can be executed and then thrown

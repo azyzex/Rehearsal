@@ -1,0 +1,56 @@
+# Measure a migration against a real database before it is merged.
+#
+# The point of running this in CI rather than only in an editor is that the
+# numbers come from a database, and a pull request is where a destructive
+# migration is cheapest to catch — before anyone has deployed anything.
+#
+# Point it at a restored copy of production, or a branch of it. Neon and
+# PlanetScale can create one per pull request; that is the ideal shape, because
+# the measurements are then taken against real data and the branch is thrown
+# away afterwards.
+#
+# The credential this job needs is read-only. Dry Run has no flag that applies
+# anything, and giving CI a connection string that can write would be a much
+# worse thing to leave lying around than any migration it might catch.
+
+name: Dry Run
+
+on:
+  pull_request:
+    paths:
+      - 'migrations/**.sql'
+      - 'prisma/migrations/**/*.sql'
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Both sides of the diff, so only the migrations this PR adds are
+          # measured rather than every migration in the repository's history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run package
+
+      - name: Measure the migrations this PR adds
+        env:
+          DATABASE_URL: ${{ secrets.DRYRUN_DATABASE_URL }}
+        run: |
+          changed=$(git diff --name-only --diff-filter=A \
+            "origin/${{ github.base_ref }}...HEAD" -- '*.sql')
+
+          if [ -z "$changed" ]; then
+            echo "No new migrations."
+            exit 0
+          fi
+
+          # --fail-on destructive is the default. Use `blocking` to also fail on
+          # a statement that would lock or error, or `never` to report without
+          # ever failing the build while you are getting a feel for it.
+          node dist/cli.js $changed --format markdown | tee "$GITHUB_STEP_SUMMARY"

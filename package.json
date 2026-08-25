@@ -161,6 +161,9 @@
       }
     ]
   },
+  "bin": {
+    "dryrun": "./dist/cli.js"
+  },
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
