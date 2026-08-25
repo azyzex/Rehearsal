@@ -231,11 +231,20 @@ The extension rests on one property: everything runs inside a transaction that
 is rolled back. Each engine answers that differently, and the differences are
 enforced in code rather than described in a comment.
 
-| | Data changes | Schema changes | Preview needs |
-|---|---|---|---|
-| **Postgres** | roll back | roll back | nothing special |
-| **MySQL** | roll back | **commit silently** — refused by the adapter | nothing special |
-| **MongoDB** | roll back | **refused by the server** | a replica set |
+| | Data changes | Schema changes | Preview needs | Which rows changed |
+|---|---|---|---|---|
+| **Postgres** | roll back | roll back | nothing special | `RETURNING`, exact |
+| **MySQL** | roll back | **commit silently** — refused by the adapter | nothing special | read before and after |
+| **MongoDB** | roll back | **refused by the server** | a replica set | read before and after |
+
+The last column is the one that surprised me. Postgres learns exactly which rows
+a statement touched by appending `RETURNING` — including rows a join dragged in,
+which the `WHERE` clause alone would never reveal. Neither of the other two has
+it, so both ask the question before the fact: read the rows the filter matches,
+run the statement, read the same keys back. That is honestly worse in exactly
+one case — a joined `UPDATE` on MySQL, where the sample says so — and better in
+another, because on MongoDB the before and after rows are the same documents by
+construction rather than by inference.
 
 ## MySQL, and the thing it cannot do
 

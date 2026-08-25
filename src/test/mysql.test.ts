@@ -3,6 +3,8 @@ import type { Connection } from 'mysql2/promise';
 import { after, before, describe, it } from 'node:test';
 import { MysqlAdapter, NonTransactionalDdlError, findImplicitCommit } from '../adapters/mysql';
 import { TransactionControlError } from '../adapters/types';
+import { analyzeStatements } from '../analysis/orchestrator';
+import { Finding } from '../analysis/types';
 import { APPLICATION_NAME } from '../constants';
 import { MysqlFixture, seedMysql, startMysql } from './support/mysqlFixture';
 
@@ -244,6 +246,103 @@ describe('mysql', () => {
       const rows = await adapter.rowsMatching('users', '1 = 1', 5, '`id` DESC');
       const ids = rows.map((row) => Number(row['id']));
       assert.deepEqual(ids, [...ids].sort((a, b) => b - a));
+    });
+  });
+
+  describe('previewing a write, with no RETURNING to lean on', () => {
+    // Postgres learns which rows a statement touched by appending RETURNING.
+    // MySQL has none, so the same question is asked before the fact — and
+    // until this was written, every UPDATE and DELETE came back as a syntax
+    // error where a row count should have been.
+
+    async function preview(sql: string): Promise<Finding[]> {
+      const found: Finding[] = [];
+      await analyzeStatements({
+        adapter,
+        statements: [
+          { index: 0, sql, startOffset: 0, endOffset: sql.length, startLine: 0, endLine: 0 },
+        ],
+        thresholds: {
+          cautionRows: 10,
+          destructiveRows: 30,
+          largeTable: 100_000,
+          sampleSize: 5,
+          explainAnalyze: false,
+        },
+        onFinding: (finding) => found.push(finding),
+      });
+      return found;
+    }
+
+    it('counts an update against the real rows', async () => {
+      const [finding] = await preview(`UPDATE users SET tier = 'basic' WHERE tier = 'free'`);
+      assert.equal(finding!.kind, 'update');
+      assert.equal(finding!.error, undefined, finding!.detail);
+      assert.equal(finding!.rowCount, 67, '67 of the 100 users are on the free tier');
+    });
+
+    it('rolls it back', async () => {
+      assert.equal(await adapter.countRows('users', `tier = 'basic'`), 0);
+      assert.equal(await adapter.countRows('users', `tier = 'free'`), 67);
+    });
+
+    it('shows the rows before and after', async () => {
+      const [finding] = await preview(`UPDATE users SET tier = 'basic' WHERE id <= 3`);
+      const sample = finding!.sample;
+
+      assert.ok(sample, 'a sample came back');
+      assert.equal(sample!.rows.length, 3);
+      for (const row of sample!.rows) {
+        // The before values are whatever the fixture holds; what matters is
+        // that the two halves are the same rows and the difference is visible.
+        assert.equal(row.after!['tier'], 'basic');
+        assert.equal(row.key['id'], row.before!['id'], 'before and after are one row');
+        assert.ok(row.changed.includes('tier'));
+      }
+    });
+
+    it('shows a deleted row as gone rather than as changed', async () => {
+      const [finding] = await preview('DELETE FROM users WHERE id <= 3');
+      assert.equal(finding!.rowCount, 3);
+      for (const row of finding!.sample!.rows) {
+        assert.equal(row.after, null);
+      }
+    });
+
+    it('calls a delete with no WHERE what it is', async () => {
+      const [finding] = await preview('DELETE FROM users');
+      assert.equal(finding!.severity, 'destructive');
+      assert.equal(finding!.rowCount, 100);
+    });
+
+    it('says when an update matches rows without changing any of them', async () => {
+      // 67 rows are affected and not one of them ends up different. Reporting
+      // the 67 alone, above a table of visibly identical rows, reads as a bug
+      // in the tool — so the sample counts how many actually differ.
+      const [finding] = await preview(`UPDATE users SET tier = tier WHERE tier = 'free'`);
+
+      assert.equal(finding!.error, undefined, finding!.detail);
+      assert.equal(finding!.rowCount, 67, 'the server counts them as affected');
+      assert.equal(finding!.sample?.changedInSample, 0, 'and none of them changed');
+    });
+
+    it('shows no rows for a joined update, and says why', async () => {
+      // Its predicate names columns of the other table, so reusing it against
+      // the target alone is not an approximation — it is an error. The count
+      // still comes from the server and is still exact.
+      const [finding] = await preview(
+        `UPDATE users u JOIN orgs o ON o.id = u.org_id SET u.tier = 'pro' WHERE o.name = 'acme'`,
+      );
+
+      assert.equal(finding!.error, undefined, finding!.detail);
+      assert.ok(finding!.rowCount! > 0, 'the count is still measured');
+      assert.deepEqual(finding!.sample?.rows, [], 'and no rows are invented');
+      assert.match(finding!.sample!.unavailable!, /no RETURNING/);
+    });
+
+    it('leaves everything as it found it', async () => {
+      assert.equal(await adapter.countRows('users'), 100);
+      assert.equal(await adapter.countRows('users', `tier = 'free'`), 67);
     });
   });
 

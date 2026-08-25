@@ -34,15 +34,25 @@ export async function analyzeMysqlDml(
 ): Promise<MysqlDmlOutcome> {
   const table = classification.table;
   const limit = Math.max(1, Math.min(thresholds.sampleSize, SAMPLE_CAP));
+  const inserting = classification.kind === 'insert';
+
+  // Read before the transaction opens, not inside it. The adapter serialises
+  // everything onto one connection, so a probe issued from within
+  // `withRollback` waits for a transaction that is waiting for the probe —
+  // and the whole preview simply stops, with no error to explain it.
+  //
+  // Without a table or a key there is nothing to follow, so the count is
+  // reported alone rather than beside a sample of the wrong rows.
+  const keys = inserting || !table ? [] : await adapter.primaryKeyColumns(table);
+
+  // A joined statement gets no sample at all. Its predicate names columns of
+  // the other table — `WHERE o.name = 'acme'` — and running that against the
+  // target alone is not an approximation, it is an error. The count is still
+  // exact, because it comes from the server.
+  const joined = isJoined(statement);
+  const where = joined ? undefined : whereClauseOf(statement);
 
   return adapter.withRollback(async (tx) => {
-    const inserting = classification.kind === 'insert';
-
-    // Without a table or a key there is nothing to follow, so the count is
-    // reported alone rather than beside a sample of the wrong rows.
-    const keys = inserting || !table ? [] : await adapter.primaryKeyColumns(table);
-    const where = whereClauseOf(statement);
-
     const before =
       keys.length > 0 && where !== undefined
         ? await select(tx, table!, keys, where, limit, params)
@@ -52,7 +62,19 @@ export async function analyzeMysqlDml(
     const rowCount = result.rowCount ?? 0;
 
     if (before.length === 0) {
-      return { rowCount };
+      return joined
+        ? {
+            rowCount,
+            sample: {
+              rows: [],
+              totalAffected: rowCount,
+              unavailable:
+                'This statement joins another table. MySQL has no RETURNING, so there is ' +
+                'no way to know which rows it touched — the count above is the server’s ' +
+                'own and is exact, and the rows are not shown rather than shown wrongly.',
+            },
+          }
+        : { rowCount };
     }
 
     const after = await selectByKeys(tx, table!, keys, before, params);
@@ -76,14 +98,6 @@ export async function analyzeMysqlDml(
         rows,
         totalAffected: rowCount,
         changedInSample: rows.filter((row) => row.changed.length > 0).length,
-        ...(isJoined(statement)
-          ? {
-              unavailable:
-                'These are the rows the WHERE clause selects. This statement joins another ' +
-                'table, and MySQL has no RETURNING, so the rows it really changes may differ. ' +
-                'The count above is the server’s own and is exact.',
-            }
-          : {}),
       },
     };
   });
@@ -130,12 +144,7 @@ async function selectByKeys(
   params: readonly unknown[],
 ): Promise<Row[]> {
   const predicate = rows
-    .map(
-      (row) =>
-        `(${keys
-          .map((key) => `${quote(key)} = ${literal(row[key])}`)
-          .join(' AND ')})`,
-    )
+    .map((row) => `(${keys.map((key) => `${quote(key)} = ${literal(row[key])}`).join(' AND ')})`)
     .join(' OR ');
 
   const result = await tx.query(
