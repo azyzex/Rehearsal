@@ -43,18 +43,43 @@ export interface MongoClassification extends Classification {
 /**
  * Splits a migration into statements.
  *
- * Statements end at a semicolon or a newline that closes a balanced
- * expression, so a call spread over several lines stays one statement.
+ * A statement ends at a semicolon, or at a newline that closes a balanced
+ * expression — so a call spread over several lines stays one statement.
+ * Offsets are carried through because the panel jumps to a line when a row is
+ * clicked, and a statement with no position is a row that goes nowhere.
  */
-export function splitMongo(source: string): string[] {
-  const statements: string[] = [];
+export function splitMongo(source: string): MongoSplit[] {
+  const statements: MongoSplit[] = [];
   let current = '';
+  let start = 0;
   let depth = 0;
   let quote: string | null = null;
   let escaped = false;
 
+  const flush = (end: number): void => {
+    const text = current.trim();
+    if (text.length === 0) {
+      current = '';
+      return;
+    }
+    // The trimmed statement sits somewhere inside what was collected, and the
+    // panel highlights what it points at.
+    const leading = current.length - current.trimStart().length;
+    statements.push({
+      index: statements.length,
+      sql: text,
+      startOffset: start + leading,
+      endOffset: end,
+    });
+    current = '';
+  };
+
   for (let i = 0; i < source.length; i += 1) {
     const character = source[i]!;
+
+    if (current.length === 0 && !/\s/.test(character)) {
+      start = i;
+    }
 
     if (quote) {
       current += character;
@@ -95,20 +120,23 @@ export function splitMongo(source: string): string[] {
     }
 
     if (depth === 0 && (character === ';' || character === '\n')) {
-      if (current.trim().length > 0) {
-        statements.push(current.trim());
-      }
-      current = '';
+      flush(i);
       continue;
     }
 
     current += character;
   }
 
-  if (current.trim().length > 0) {
-    statements.push(current.trim());
-  }
+  flush(source.length);
   return statements;
+}
+
+/** One statement, with enough position for the panel to jump to it. */
+export interface MongoSplit {
+  readonly index: number;
+  readonly sql: string;
+  readonly startOffset: number;
+  readonly endOffset: number;
 }
 
 const CALL = /^db\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(['"])([^'"]+)\2\s*\])\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/;

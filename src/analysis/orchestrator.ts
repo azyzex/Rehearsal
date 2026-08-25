@@ -1,10 +1,12 @@
 import { CascadeNode, DatabaseAdapter, TriggerInfo } from '../adapters/types';
-import { classify, Classification, StatementKind } from '../parser/classifier';
+import { Classification, StatementKind } from '../parser/classifier';
+import { languageFor } from '../parser/language';
 import { maskLiterals } from '../parser/mask';
 import { SplitStatement } from '../parser/splitter';
 import { cascadeTotal, describeCascade } from './cascade';
 import { analyzeDdl } from './ddl';
 import { analyzeDml } from './dml';
+import { analyzeMongoDml } from './mongoDml';
 import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
 import { rewritesFor } from './rewrite';
 import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
@@ -80,7 +82,11 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
       return;
     }
 
-    const classification = classify(statement.sql);
+    // Which language the statement is in is the adapter's business, not this
+    // function's. Everything after this line is engine-agnostic again: an
+    // updateMany classifies as an update, and the analysis has never needed to
+    // know which database produced it.
+    const classification = languageFor(adapter.engine).classify(statement.sql);
 
     try {
       const finding = await analyzeOne(adapter, statement, classification, thresholds);
@@ -138,13 +144,19 @@ async function analyzeOne(
   };
 
   if (DML_KINDS.has(classification.kind)) {
-    const { rowCount, sample, plan } = await analyzeDml(
-      adapter,
-      statement.sql,
-      classification,
-      thresholds,
-      statement.params ?? [],
-    );
+    // Two ways to run a write and undo it, because the SQL version leans on
+    // RETURNING and savepoints and MongoDB has neither. Same question either
+    // way: how many documents change, and which ones.
+    const { rowCount, sample, plan } =
+      adapter.engine === 'mongo'
+        ? { ...(await analyzeMongoDml(adapter, statement.sql, classification, thresholds)), plan: undefined }
+        : await analyzeDml(
+            adapter,
+            statement.sql,
+            classification,
+            thresholds,
+            statement.params ?? [],
+          );
 
     const severity = blastRadiusSeverity(
       rowCount,
@@ -166,10 +178,10 @@ async function analyzeOne(
       ...described,
       detail:
         described.detail +
-        noOpRewriteNote(classification, sample) +
+        (sample ? noOpRewriteNote(classification, sample) : '') +
         describeCascade(cascade),
       rowCount,
-      sample,
+      ...(sample ? { sample } : {}),
       ...(plan ? { plan } : {}),
       ...(cascade ? { cascade } : {}),
     };

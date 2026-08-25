@@ -4,7 +4,6 @@ import { editsFromClassifications } from './edit/fromSql';
 import { findOffenders } from './analysis/offenders';
 import { describeScan, scanReferences } from './analysis/references';
 import { relative, workspaceSourceFiles } from './analysis/workspaceFiles';
-import { classify } from './parser/classifier';
 import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
 import { Finding, Severity, Thresholds } from './analysis/types';
@@ -16,7 +15,7 @@ import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/histor
 import { SchemaPanel } from './panel/schemaPanel';
 import { CandidateResult, IndexPanel } from './panel/indexPanel';
 import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvice';
-import { splitStatements } from './parser/splitter';
+import { StatementLanguage, languageFor } from './parser/language';
 import { MigrationFile, findMigrations } from './migrations/discover';
 import { readLedger } from './migrations/ledger';
 import { healthReport } from './analysis/healthReport';
@@ -109,33 +108,36 @@ async function preview(
   const offset = selection ? editor.document.offsetAt(editor.selection.start) : 0;
   const text = selection ?? editor.document.getText();
 
-  const statements = splitStatements(text).map((statement) => {
-    if (!selection) {
-      return statement;
-    }
-    // Shift line numbers so clicking a row still lands on the right line.
-    const startLine = editor.document.positionAt(offset + statement.startOffset).line;
-    const endLine = editor.document.positionAt(offset + statement.endOffset).line;
-    return { ...statement, startLine, endLine };
-  });
-
   const panel = PreviewPanel.show(context);
-
-  if (statements.length === 0) {
-    panel.begin(editor.document, [], '—', {
-      onCancel: () => undefined,
-      onShowOffenders: () => undefined,
-      onShowReferences: () => undefined,
-    });
-    panel.finish('No statements found.');
-    return;
-  }
-
   let cancelled = false;
 
   try {
+    // The connection comes first now, because how to read the file depends on
+    // which database it is: two of the three engines take SQL and one does not.
     const connection = await connections.acquire();
-    const classifications = statements.map((statement) => classify(statement.sql));
+    const language = languageFor(connection.adapter.engine);
+
+    const statements = language.split(text).map((statement) => {
+      if (!selection) {
+        return statement;
+      }
+      // Shift line numbers so clicking a row still lands on the right line.
+      const startLine = editor.document.positionAt(offset + statement.startOffset).line;
+      const endLine = editor.document.positionAt(offset + statement.endOffset).line;
+      return { ...statement, startLine, endLine };
+    });
+
+    if (statements.length === 0) {
+      panel.begin(editor.document, [], connection.identity.display, {
+        onCancel: () => undefined,
+        onShowOffenders: () => undefined,
+        onShowReferences: () => undefined,
+      });
+      panel.finish(`No ${language.noun}s found.`);
+      return;
+    }
+
+    const classifications = statements.map((statement) => language.classify(statement.sql));
 
     panel.begin(editor.document, statements, connection.identity.display, {
       onCancel: () => {
@@ -599,18 +601,19 @@ async function suggestIndexes(
     return;
   }
 
-  const found = statementAtCursor(editor);
-  if (!found) {
-    void vscode.window.showWarningMessage(
-      'Dry Run: put the cursor inside a query, or select one.',
-    );
-    return;
-  }
-
   const panel = IndexPanel.show(context);
 
   try {
+    // The connection first, because reading the statement under the cursor
+    // means knowing what language the file is in.
     const connection = await connections.acquire();
+
+    const found = statementAtCursor(editor, languageFor(connection.adapter.engine));
+    if (!found) {
+      panel.fail('Put the cursor inside a query, or select one.');
+      return;
+    }
+
     panel.begin(found.sql, connection.identity.display, {
       uri: editor.document.uri,
       line: found.startLine,
@@ -752,6 +755,7 @@ async function confirmBuildingIfNeeded(adapter: {
 /** The statement the cursor is inside, or the selection when there is one. */
 function statementAtCursor(
   editor: vscode.TextEditor,
+  language: StatementLanguage,
 ): { sql: string; startLine: number } | undefined {
   if (!editor.selection.isEmpty) {
     const sql = editor.document.getText(editor.selection).trim();
@@ -759,7 +763,7 @@ function statementAtCursor(
   }
 
   const offset = editor.document.offsetAt(editor.selection.active);
-  const statements = splitStatements(editor.document.getText());
+  const statements = language.split(editor.document.getText());
   const containing =
     statements.find(
       (statement) => offset >= statement.startOffset && offset <= statement.endOffset,

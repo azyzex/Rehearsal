@@ -123,8 +123,23 @@ describe('mongo', () => {
       `);
 
       assert.equal(statements.length, 2);
-      assert.match(statements[0]!, /^db\.users\.updateMany/);
-      assert.match(statements[1]!, /^db\.sessions\.deleteMany/);
+      assert.match(statements[0]!.sql, /^db\.users\.updateMany/);
+      assert.match(statements[1]!.sql, /^db\.sessions\.deleteMany/);
+    });
+
+    it('carries offsets, so a row in the panel can jump to the statement', () => {
+      const source = `db.a.deleteMany({})
+db.b.deleteMany({})`;
+      const statements = splitMongo(source);
+
+      assert.equal(statements.length, 2);
+      for (const statement of statements) {
+        assert.equal(
+          source.slice(statement.startOffset, statement.startOffset + statement.sql.length),
+          statement.sql,
+          'the offset points at the statement it claims to',
+        );
+      }
     });
 
     it('does not split inside a string that contains a newline or a brace', () => {
