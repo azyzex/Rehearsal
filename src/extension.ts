@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { buildDiagram } from './analysis/impact';
 import { editsFromClassifications } from './edit/fromSql';
 import { findOffenders } from './analysis/offenders';
+import { describeScan, scanReferences } from './analysis/references';
+import { relative, workspaceSourceFiles } from './analysis/workspaceFiles';
 import { classify } from './parser/classifier';
 import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
@@ -102,6 +104,7 @@ async function preview(
     panel.begin(editor.document, [], '—', {
       onCancel: () => undefined,
       onShowOffenders: () => undefined,
+      onShowReferences: () => undefined,
     });
     panel.finish('No statements found.');
     return;
@@ -130,6 +133,35 @@ async function preview(
         } catch (error) {
           output.appendLine(`Could not fetch the offending rows: ${errorMessage(error)}`);
           panel.showOffenders(index, null);
+        }
+      },
+
+      // Reads every source file in the workspace, so it happens only when
+      // someone asks the question it answers.
+      onShowReferences: async (index) => {
+        const classification = classifications[index];
+        const target = classification?.column ?? classification?.table;
+        if (!classification || !target) {
+          return;
+        }
+        try {
+          const workspace = await workspaceSourceFiles();
+          const scan = await scanReferences(target, workspace);
+          const label = classification.column
+            ? `${classification.table}.${classification.column}`
+            : String(classification.table);
+
+          panel.showReferences(index, {
+            summary: `${describeScan(scan, label)}${workspace.note ? ` ${workspace.note}` : ''}`,
+            references: scan.references.slice(0, 100).map((reference) => ({
+              ...reference,
+              file: relative(reference.file),
+            })),
+            total: scan.references.length,
+          });
+        } catch (error) {
+          output.appendLine(`Could not search the workspace: ${errorMessage(error)}`);
+          panel.showReferences(index, null);
         }
       },
     });

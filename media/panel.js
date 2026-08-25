@@ -27,6 +27,12 @@
    * @type {Map<number, any>}
    */
   const offenders = new Map();
+  /**
+   * Per-statement state for the workspace search, on the same three-state plan
+   * as the offending rows: absent, 'loading', null, or the scan.
+   * @type {Map<number, any>}
+   */
+  const references = new Map();
   /** @type {number | null} */
   let current = null;
   let running = false;
@@ -86,6 +92,7 @@
         findings = new Map();
         expanded.clear();
         offenders.clear();
+        references.clear();
         current = null;
         running = true;
         diagram = null;
@@ -105,6 +112,11 @@
 
       case 'offenders':
         offenders.set(message.statementIndex, message.offenders);
+        render();
+        break;
+
+      case 'references':
+        references.set(message.statementIndex, message.scan);
         render();
         break;
 
@@ -223,6 +235,7 @@
     // silently takes with it, then how to do it more safely.
     for (const section of [
       renderTriggers(finding),
+      renderReferences(finding),
       renderOffenders(finding),
       renderQueueWarning(finding),
       renderCascade(finding.cascade),
@@ -955,6 +968,86 @@
         'Found by reading the trigger functions one level deep. A function that calls ' +
         'another function is beyond what this can see, so an empty list is not a promise.';
       box.appendChild(caveat);
+    }
+
+    return box;
+  }
+
+  /** Statements that take something the application might still be reading. */
+  const REMOVES = new Set(['drop_column', 'drop_table', 'rename_column', 'rename_table']);
+
+  /**
+   * Where the code still uses what this removes.
+   *
+   * The database will let you drop a column the moment nothing in the database
+   * depends on it. The application is never consulted, and the application is
+   * where the outage happens — the migration succeeds, the deploy succeeds, and
+   * forty minutes later something serialises a row and finds a field missing.
+   */
+  function renderReferences(finding) {
+    const kind = finding.classification && finding.classification.kind;
+    if (!REMOVES.has(kind)) {
+      return null;
+    }
+
+    const index = finding.statementIndex;
+    const state = references.has(index) ? references.get(index) : undefined;
+
+    const box = document.createElement('div');
+    box.className = 'refs';
+
+    if (state === undefined || state === 'loading') {
+      const button = document.createElement('button');
+      button.className = 'expand';
+      button.type = 'button';
+      button.disabled = state === 'loading';
+      button.textContent =
+        state === 'loading' ? 'Searching the workspace…' : 'Where does the code use this?';
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        references.set(index, 'loading');
+        vscode.postMessage({ type: 'showReferences', index });
+        render();
+      });
+      box.appendChild(button);
+      return box;
+    }
+
+    if (state === null) {
+      const note = document.createElement('div');
+      note.className = 'unavailable';
+      note.textContent = 'Could not search the workspace. The Dry Run output channel has why.';
+      box.appendChild(note);
+      return box;
+    }
+
+    const head = document.createElement('div');
+    head.className = state.total > 0 ? 'refs-head found' : 'refs-head';
+    head.textContent = state.summary;
+    box.appendChild(head);
+
+    for (const reference of state.references) {
+      const row = document.createElement('div');
+      row.className = 'ref';
+
+      const where = document.createElement('span');
+      where.className = 'ref-where';
+      where.textContent = `${reference.file}:${reference.line}`;
+      row.appendChild(where);
+
+      const text = document.createElement('code');
+      text.className = 'ref-text';
+      text.textContent = reference.text;
+      row.appendChild(text);
+
+      box.appendChild(row);
+    }
+
+    if (state.total > state.references.length) {
+      const more = document.createElement('div');
+      more.className = 'offenders-more';
+      more.textContent = `Showing ${state.references.length} of ${state.total}.`;
+      box.appendChild(more);
     }
 
     return box;

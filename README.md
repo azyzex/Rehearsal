@@ -122,6 +122,16 @@ notification already sent, a row pushed through a foreign data wrapper, or an
 HTTP request already answered. Trigger functions are read one level deep for
 those, and the panel says plainly that one level deep is not a proof.
 
+**Ask the code, not just the database.** The database will let you drop a column
+the moment nothing *in the database* depends on it. The application is never
+consulted, and the application is where the outage lands — the migration
+succeeds, the deploy succeeds, and forty minutes later something serialises a
+row and finds a field missing. Findings that remove something carry a "where
+does the code use this?" button that searches the workspace, in every spelling
+an ORM might have given it: `phone_number`, `phoneNumber`, `PhoneNumber`,
+`phone-number`. Finding nothing is reported as *finding nothing by text search*,
+never as safe.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as

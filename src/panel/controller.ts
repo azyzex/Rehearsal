@@ -26,6 +26,13 @@ export interface PanelHost {
    * several large tables would otherwise pay for rows nobody looks at.
    */
   onShowOffenders(statementIndex: number): void | Promise<void>;
+  /**
+   * Called when the user asks where the code still uses what this drops.
+   *
+   * On demand for the same reason as the offending rows, and more so: this one
+   * reads every source file in the workspace.
+   */
+  onShowReferences(statementIndex: number): void | Promise<void>;
 }
 
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -139,6 +146,11 @@ export class PreviewPanel {
     });
   }
 
+  /** Where the workspace still mentions what this statement removes. */
+  showReferences(statementIndex: number, scan: unknown): void {
+    void this.panel.webview.postMessage({ type: 'references', statementIndex, scan });
+  }
+
   finish(summary?: string): void {
     void this.panel.webview.postMessage({ type: 'done', summary });
   }
@@ -162,6 +174,10 @@ export class PreviewPanel {
     }
     if (message.type === 'showOffenders' && typeof message.index === 'number') {
       void this.host?.onShowOffenders(message.index);
+      return;
+    }
+    if (message.type === 'showReferences' && typeof message.index === 'number') {
+      void this.host?.onShowReferences(message.index);
       return;
     }
     if (
