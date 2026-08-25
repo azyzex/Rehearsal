@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PostgresAdapter } from '../adapters/postgres';
 import { MysqlAdapter } from '../adapters/mysql';
+import { MongoAdapter } from '../adapters/mongo';
 import { ConnectionConfig, DatabaseAdapter } from '../adapters/types';
 import { checkConnection, ConnectionIdentity, identify } from './guard';
 import { ConnectionResolutionError, resolveConnection } from './resolve';
@@ -235,6 +236,9 @@ export function adapterFor(connectionString: string): DatabaseAdapter {
 
   if (scheme === 'mysql' || scheme === 'mariadb') {
     return new MysqlAdapter();
+  }
+  if (scheme === 'mongodb' || scheme === 'mongodb+srv') {
+    return new MongoAdapter();
   }
   return new PostgresAdapter();
 }

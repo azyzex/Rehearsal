@@ -225,6 +225,18 @@ credential it needs is read-only: there is no flag that applies anything, on
 purpose — a CI job holding a connection string that can write is a worse thing
 to leave lying around than any migration it might have caught.
 
+## Three databases, three answers
+
+The extension rests on one property: everything runs inside a transaction that
+is rolled back. Each engine answers that differently, and the differences are
+enforced in code rather than described in a comment.
+
+| | Data changes | Schema changes | Preview needs |
+|---|---|---|---|
+| **Postgres** | roll back | roll back | nothing special |
+| **MySQL** | roll back | **commit silently** — refused by the adapter | nothing special |
+| **MongoDB** | roll back | **refused by the server** | a replica set |
+
 ## MySQL, and the thing it cannot do
 
 Postgres has transactional DDL: an `ALTER` inside a transaction is undone by a
@@ -251,6 +263,46 @@ commits the first. So it is refused, with the suggestion to export the SQL and
 run it through a migration tool that can record how far it got. Half a migration
 is the exact failure this extension exists to prevent, and delivering one
 quietly would be worse than not offering Apply at all.
+
+## MongoDB, and the schema that is not written down
+
+MongoDB gets the rule right by itself: try to create an index inside a
+transaction and the server refuses. So the discipline the MySQL adapter has to
+impose by hand is one this database already enforces.
+
+What it adds instead is a condition neither SQL engine has. Multi-document
+transactions require a replica set — point Dry Run at a standalone `mongod` and
+there is no rollback available at all, so a preview would apply every change
+permanently while reporting it as previewed. The adapter checks on connect and
+refuses to work. A preview that cannot be rolled back is an apply with a
+reassuring name.
+
+Two things work differently because MongoDB is not a relational database:
+
+**The schema is sampled, not read.** A collection is whatever its documents
+happen to contain, so the field list comes from sampling and a field is reported
+as nullable when documents are missing it. A field holding both strings and
+integers is shown as holding both, because a schema explorer that picks one is
+lying quietly.
+
+**Relationships are measured, not declared.** There are no foreign keys. What
+there is instead is fields named like references — `user_id`, `userId` — whose
+values are usually the `_id` of another collection. So the naming suggests a
+candidate and a count decides it: a field whose values are overwhelmingly
+present in another collection is a relationship, whatever the database thinks,
+and one that matches a tenth of the time just shares a name. Every one is
+labelled as inferred.
+
+Deleting works differently too. MongoDB does not cascade, so a delete removes
+exactly what it matches — and the panel reports the referencing documents
+anyway, because "these 40,000 documents now point at nothing" is the same
+problem arriving by a different route.
+
+Migrations are read rather than run. Dry Run reads the declarative subset —
+`db.users.updateMany({ … }, { … })` and friends — and refuses anything with a
+variable or a loop in it, because running your migration to find out what it
+means is exactly the thing this tool exists not to do. A `$unset` applied across
+a collection is read as what it is: dropping a column.
 
 ## How it works
 
