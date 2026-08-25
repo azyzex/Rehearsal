@@ -38,9 +38,16 @@ export interface Rewrite {
  * and suggesting a three-step dance for it would be the cargo-cult version of
  * the advice.
  */
-export function rewritesFor(finding: Finding): Rewrite[] {
+export function rewritesFor(finding: Finding, engine = 'postgres'): Rewrite[] {
   const { classification } = finding;
   const rewrites: Rewrite[] = [];
+
+  // Every rewrite below is Postgres syntax. Offering it for another engine
+  // would be handing someone a statement that does not run, which is worse
+  // than offering nothing: it costs them the attempt and the trust.
+  if (engine !== 'postgres') {
+    return rewrites;
+  }
 
   switch (classification.kind) {
     case 'create_index':

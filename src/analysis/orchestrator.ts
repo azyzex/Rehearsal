@@ -7,6 +7,7 @@ import { cascadeTotal, describeCascade } from './cascade';
 import { analyzeDdl } from './ddl';
 import { analyzeDml } from './dml';
 import { analyzeMongoDml } from './mongoDml';
+import { analyzeMysqlDml } from './mysqlDml';
 import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
 import { rewritesFor } from './rewrite';
 import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
@@ -115,7 +116,7 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
 
       // Rewrites are computed from the finished finding, because what to
       // suggest depends on what was measured rather than on the statement.
-      const rewrites = rewritesFor(withContext);
+      const rewrites = rewritesFor(withContext, adapter.engine);
       onFinding(rewrites.length > 0 ? { ...withContext, rewrites } : withContext);
     } catch (error) {
       onFinding({
@@ -149,14 +150,28 @@ async function analyzeOne(
     // way: how many documents change, and which ones.
     const { rowCount, sample, plan } =
       adapter.engine === 'mongo'
-        ? { ...(await analyzeMongoDml(adapter, statement.sql, classification, thresholds)), plan: undefined }
-        : await analyzeDml(
-            adapter,
-            statement.sql,
-            classification,
-            thresholds,
-            statement.params ?? [],
-          );
+        ? {
+            ...(await analyzeMongoDml(adapter, statement.sql, classification, thresholds)),
+            plan: undefined,
+          }
+        : adapter.engine === 'mysql'
+          ? {
+              ...(await analyzeMysqlDml(
+                adapter,
+                statement.sql,
+                classification,
+                thresholds,
+                statement.params ?? [],
+              )),
+              plan: undefined,
+            }
+          : await analyzeDml(
+              adapter,
+              statement.sql,
+              classification,
+              thresholds,
+              statement.params ?? [],
+            );
 
     const severity = blastRadiusSeverity(
       rowCount,

@@ -241,7 +241,11 @@ function classifyAlter(
     }
   }
 
-  if (/^ADD\s+(?:CONSTRAINT\b|CHECK\b|FOREIGN\b|UNIQUE\b|PRIMARY\b|EXCLUDE\b)/i.test(action)) {
+  if (
+    /^ADD\s+(?:CONSTRAINT\b|CHECK\b|FOREIGN\b|UNIQUE\b|PRIMARY\b|EXCLUDE\b|INDEX\b|KEY\b)/i.test(
+      action,
+    )
+  ) {
     const prefix = re(String.raw`^ADD\s+(?:CONSTRAINT\s+${IDENT}\s+)?`).exec(action)!;
     const bodyStart = actionStart + prefix[0].length;
     const body = action.slice(prefix[0].length);
@@ -275,12 +279,59 @@ function classifyAlter(
       };
     }
 
-    const unique = re(String.raw`^UNIQUE\s*\(([^)]*)\)`).exec(body);
+    // `UNIQUE (a)` is Postgres; `UNIQUE KEY name (a)` and `UNIQUE INDEX name (a)`
+    // are the same statement in MySQL, and a classifier that only knows the
+    // first says nothing about a constraint that would fail on real data.
+    const unique = re(
+      String.raw`^UNIQUE\s*(?:KEY|INDEX)?\s*(?:${IDENT}\s*)?\(([^)]*)\)`,
+    ).exec(body);
     if (unique) {
       return { kind: 'add_unique', ...t, columns: splitColumns(bodyCap(unique, 1) ?? '') };
     }
 
+    // A plain `ADD INDEX`/`ADD KEY` is MySQL's inline CREATE INDEX. It takes
+    // the same lock and deserves the same warning.
+    const index = re(
+      String.raw`^(?:INDEX|KEY)\s*(?:${IDENT}\s*)?\(([^)]*)\)`,
+    ).exec(body);
+    if (index) {
+      return { kind: 'create_index', ...t, columns: splitColumns(bodyCap(index, 1) ?? '') };
+    }
+
     return { kind: 'other', ...t };
+  }
+
+  // MySQL restates the whole column rather than naming what changes:
+  //   ALTER TABLE t MODIFY email VARCHAR(255) NOT NULL
+  // is Postgres's SET NOT NULL and ALTER COLUMN TYPE at once. Which one it
+  // means depends on what the rest of the definition says, and both are worth
+  // measuring, so nullability wins when it is stated — that is the one that
+  // fails outright on existing rows.
+  const modify = re(
+    String.raw`^(?:MODIFY|CHANGE)\s+(?:COLUMN\s+)?(${IDENT})\s+(?:(${IDENT})\s+)?([\s\S]+)$`,
+  ).exec(action);
+  if (modify) {
+    // CHANGE names the column twice — old then new — and MODIFY names it once.
+    const isChange = /^CHANGE\b/i.test(action);
+    const column = ident(cap(modify, 1)!);
+    const definition = (cap(modify, 3) ?? '').trim();
+
+    if (/\bNOT\s+NULL\b/i.test(definition)) {
+      return { kind: 'set_not_null', ...t, column };
+    }
+    if (/\bNULL\b/i.test(definition)) {
+      return { kind: 'drop_not_null', ...t, column };
+    }
+    if (isChange && cap(modify, 2)) {
+      return { kind: 'rename_column', ...t, column };
+    }
+    // Everything else restates the type, which is the other thing this can be.
+    return {
+      kind: 'alter_column_type',
+      ...t,
+      column,
+      newType: definition.split(/\s+/)[0] ?? definition,
+    };
   }
 
   const addColumn = re(

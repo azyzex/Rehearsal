@@ -18,9 +18,16 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT = join(HERE, '..');
 
-const AUTHORS = 20_000;
-const POSTS = 60_000;
-const COMMENTS = 400_000;
+// Overridable, because 400,000 comments is a slow seed and the findings keep
+// their shape at a tenth of the size — only the numbers shrink.
+const AUTHORS = Number(argOf('--authors', 20_000));
+const POSTS = Number(argOf('--posts', 60_000));
+const COMMENTS = Number(argOf('--comments', 400_000));
+
+function argOf(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);

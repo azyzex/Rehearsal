@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { PostgresAdapter } from '../adapters/postgres';
+import { adapterFor } from '../adapters/select';
 import { analyzeStatements } from '../analysis/orchestrator';
 import { Finding, Thresholds } from '../analysis/types';
 import { splitStatements } from '../parser/splitter';
@@ -77,7 +77,10 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
     return 2;
   }
 
-  const adapter = new PostgresAdapter();
+  // Whichever database the connection string names. The CLI is bundled
+  // separately from the extension, so this has to reach the selector without
+  // dragging `vscode` in behind it.
+  const adapter = adapterFor(options.connectionString);
   let failed = false;
 
   try {
@@ -88,10 +91,9 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
       applicationName: APPLICATION_NAME,
     });
 
-    const version = await adapter.withRollback(async (tx) => {
-      const result = await tx.query('SELECT current_database() AS db');
-      return String(result.rows[0]?.['db'] ?? 'unknown');
-    });
+    // Named rather than queried: `SELECT current_database()` is SQL, and one
+    // of the three engines does not speak it.
+    const version = describeTarget(options.connectionString, adapter.engine);
 
     for (const file of options.files) {
       const sql = fs.readFileSync(file, 'utf8');
@@ -223,4 +225,16 @@ function number(value: string, name: string): number {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+
+/** What to call the database in the report, without the password. */
+function describeTarget(connectionString: string, engine: string): string {
+  try {
+    const url = new URL(connectionString);
+    const name = url.pathname.replace(/^\//, '').split('?')[0];
+    return `${name || engine}@${url.hostname}`;
+  } catch {
+    return engine;
+  }
 }

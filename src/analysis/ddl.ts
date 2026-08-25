@@ -39,6 +39,9 @@ export async function analyzeDdl(
   thresholds: Thresholds,
 ): Promise<DdlOutcome> {
   const { kind, table, column } = classification;
+  // CONCURRENTLY is a Postgres keyword. Recommending it to a MySQL user costs
+  // them the time to try it and the trust they had in the rest of the row.
+  const online = onlineIndexAdvice(adapter.engine);
 
   switch (kind) {
     case 'drop_column': {
@@ -215,7 +218,7 @@ export async function analyzeDdl(
         return {
           severity: 'safe',
           headline: 'Safe',
-          detail: `Built CONCURRENTLY on ${formatCount(rows)} ${plural(rows, 'row')} (${formatBytes(stats.totalBytes)}), so writes keep working throughout.`,
+          detail: `Built without blocking writes on ${formatCount(rows)} ${plural(rows, 'row')} (${formatBytes(stats.totalBytes)}), so writes keep working throughout.`,
           rowCount: rows,
           estimated: true,
         };
@@ -225,7 +228,7 @@ export async function analyzeDdl(
       return {
         severity,
         headline: severity === 'blocking' ? 'Will lock the table' : 'Locks the table briefly',
-        detail: `${table} has about ${formatCount(rows)} ${plural(rows, 'row')} (${formatBytes(stats.totalBytes)}). Writes are blocked for roughly ${formatDuration(seconds)}. Adding CONCURRENTLY avoids the lock entirely.`,
+        detail: `${table} has about ${formatCount(rows)} ${plural(rows, 'row')} (${formatBytes(stats.totalBytes)}). Writes are blocked for roughly ${formatDuration(seconds)}.${online}`,
         rowCount: rows,
         estimated: true,
       };
@@ -280,3 +283,29 @@ function identifier(name: string): string {
 }
 
 export { blastRadiusSeverity, type Finding };
+
+
+/**
+ * How to build an index without taking the table down, per engine.
+ *
+ * Every database has an answer and none of them share a keyword, so the
+ * sentence has to know which one it is talking about. An empty string where
+ * there is no good answer, rather than a suggestion that does not run.
+ */
+function onlineIndexAdvice(engine: string): string {
+  switch (engine) {
+    case 'postgres':
+      return ' Adding CONCURRENTLY avoids the lock entirely.';
+    case 'mysql':
+      // The default since 5.6 for most index types, but not for all of them,
+      // and stating it explicitly is what makes the build fail loudly rather
+      // than silently locking the table when it cannot.
+      return ' Adding ALGORITHM=INPLACE, LOCK=NONE builds it without blocking writes, ' +
+        'and fails outright if this index cannot be built that way.';
+    case 'mongo':
+      return ' MongoDB builds indexes in the background by default and does not block ' +
+        'writes for this.';
+    default:
+      return '';
+  }
+}
