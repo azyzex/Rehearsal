@@ -66,6 +66,18 @@ export interface ColumnInfo {
   readonly type: string;
   readonly nullable: boolean;
   readonly isPrimaryKey: boolean;
+  /**
+   * The column's DEFAULT, as the server renders it back. Needed to reverse a
+   * DROP COLUMN: putting the column back without its default puts back a
+   * different column.
+   */
+  readonly defaultExpression?: string;
+  /**
+   * Set for a `GENERATED ... AS IDENTITY` column. Not a default, and invisible
+   * in `defaultExpression` — a column rebuilt without it is a plain integer
+   * that has quietly stopped generating anything.
+   */
+  readonly identity?: 'always' | 'by default';
 }
 
 export interface ForeignKeyInfo {

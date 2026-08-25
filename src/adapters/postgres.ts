@@ -321,6 +321,13 @@ export class PostgresAdapter implements DatabaseAdapter {
       `SELECT a.attname AS name,
               format_type(a.atttypid, a.atttypmod) AS type,
               NOT a.attnotnull AS nullable,
+              -- Needed to reverse a DROP COLUMN: putting the column back
+              -- without its default puts back a different column.
+              pg_get_expr(d.adbin, d.adrelid) AS default_expression,
+              -- 'a' for GENERATED ALWAYS, 'd' for BY DEFAULT, '' for neither.
+              -- An identity column has no default expression, so without this
+              -- it rebuilds as a plain integer and quietly stops generating.
+              a.attidentity AS identity,
               EXISTS (
                 SELECT 1 FROM pg_index i
                  WHERE i.indrelid = a.attrelid
@@ -328,6 +335,7 @@ export class PostgresAdapter implements DatabaseAdapter {
                    AND a.attnum = ANY(i.indkey)
               ) AS is_primary
          FROM pg_attribute a
+         LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
         WHERE a.attrelid = to_regclass($1)
           AND a.attnum > 0
           AND NOT a.attisdropped
@@ -340,6 +348,12 @@ export class PostgresAdapter implements DatabaseAdapter {
       type: String(row['type']),
       nullable: Boolean(row['nullable']),
       isPrimaryKey: Boolean(row['is_primary']),
+      defaultExpression:
+        row['default_expression'] === null || row['default_expression'] === undefined
+          ? undefined
+          : String(row['default_expression']),
+      identity:
+        row['identity'] === 'a' ? 'always' : row['identity'] === 'd' ? 'by default' : undefined,
     }));
   }
 

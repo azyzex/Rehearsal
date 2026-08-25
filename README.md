@@ -144,6 +144,11 @@ rename one. Each becomes a *pending change* — not a write. Then:
 - **Apply** is the only thing that writes, and it refuses anything that has not
   been previewed exactly as it stands.
 - **Export SQL** hands you the whole thing as a migration file to review and keep.
+- **Down SQL** hands you the migration that undoes it — generated now, against
+  the live schema, because "later" is after the change has been applied and by
+  then the schema no longer remembers the column's type or its default. That is
+  why hand-written down migrations are usually wrong. Anything it cannot undo is
+  listed at the top of the file in plain words rather than quietly omitted.
 
 ## How it works
 

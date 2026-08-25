@@ -4,6 +4,7 @@ import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
+import { downMigration } from '../edit/down';
 import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
 import { findJoinPath } from '../analysis/joinPath';
@@ -190,6 +191,10 @@ export class SchemaPanel {
 
         case 'exportSql':
           await this.exportSql();
+          break;
+
+        case 'exportDown':
+          await this.exportDown();
           break;
 
         case 'exportDiagram':
@@ -389,6 +394,37 @@ export class SchemaPanel {
       });
     } catch (error) {
       this.post({ type: 'healthFailed', message: errorMessage(error) });
+    }
+  }
+
+/**
+   * The migration that undoes the pending one.
+   *
+   * Generated now rather than later, because "later" is after the change has
+   * been applied — and by then the schema no longer remembers the column's
+   * type or its default. This is the whole reason down migrations are usually
+   * wrong: they are written against the wrong version of the schema.
+   */
+  private async exportDown(): Promise<void> {
+    const state = this.session.state();
+    if (state.changes.length === 0) {
+      this.post({ type: 'error', message: 'There are no pending changes to reverse.' });
+      return;
+    }
+
+    try {
+      const down = await downMigration(
+        this.requireAdapter(),
+        state.changes.map((change) => change.edit),
+      );
+
+      const document = await vscode.workspace.openTextDocument({
+        language: 'sql',
+        content: down.sql,
+      });
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+    } catch (error) {
+      this.post({ type: 'error', message: errorMessage(error) });
     }
   }
 
@@ -604,6 +640,7 @@ export class SchemaPanel {
     <span id="changes-title">Pending changes</span>
     <span class="spacer"></span>
     <button id="export" type="button">Export SQL</button>
+    <button id="export-down" type="button" title="The migration that undoes this one">Down SQL</button>
     <button id="discard" type="button">Discard</button>
     <button id="preview" type="button" class="primary">Preview</button>
     <button id="apply" type="button" class="danger" hidden>Apply</button>

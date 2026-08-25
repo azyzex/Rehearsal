@@ -54,6 +54,7 @@
     apply: /** @type {HTMLButtonElement} */ (document.getElementById('apply')),
     discard: /** @type {HTMLButtonElement} */ (document.getElementById('discard')),
     exportSql: /** @type {HTMLButtonElement} */ (document.getElementById('export')),
+    exportDown: /** @type {HTMLButtonElement} */ (document.getElementById('export-down')),
     toggle: /** @type {HTMLElement} */ (document.getElementById('view-toggle')),
     before: /** @type {HTMLButtonElement} */ (document.getElementById('view-before')),
     after: /** @type {HTMLButtonElement} */ (document.getElementById('view-after')),
@@ -825,6 +826,7 @@
     ui.preview.hidden = readOnly;
     ui.discard.hidden = readOnly;
     ui.exportSql.hidden = readOnly;
+    ui.exportDown.hidden = readOnly;
     ui.preview.textContent = findings.length > 0 ? 'Preview again' : 'Preview';
 
     const body = document.createDocumentFragment();
@@ -883,6 +885,7 @@
   ui.preview.addEventListener('click', () => vscode.postMessage({ type: 'previewChanges' }));
   ui.discard.addEventListener('click', () => vscode.postMessage({ type: 'clearEdits' }));
   ui.exportSql.addEventListener('click', () => vscode.postMessage({ type: 'exportSql' }));
+  ui.exportDown.addEventListener('click', () => vscode.postMessage({ type: 'exportDown' }));
 
   ui.apply.addEventListener('click', () => {
     // Asked here, and asked again by the editor itself for anything
