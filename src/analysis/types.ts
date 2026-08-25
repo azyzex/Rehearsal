@@ -1,5 +1,5 @@
 import { Classification, StatementKind } from '../parser/classifier';
-import { Row } from '../adapters/types';
+import { Row, TriggerInfo } from '../adapters/types';
 import { CascadeNode } from '../adapters/types';
 import { Blocker, LockProfile } from './locks';
 import { AnalysedPlan } from './plan';
@@ -102,6 +102,14 @@ export interface Finding {
   readonly queuedBehind?: readonly Blocker[];
   /** What a delete would take with it through ON DELETE CASCADE. */
   readonly cascade?: CascadeNode;
+  /**
+   * Triggers that fired while this was previewed.
+   *
+   * The preview really executes the statement, so triggers really run. Their
+   * effect on rows is rolled back with everything else — and anything they did
+   * outside the database is not.
+   */
+  readonly triggers?: readonly TriggerInfo[];
   /**
    * Safer ways to say the same thing, offered rather than applied.
    *

@@ -222,6 +222,7 @@
     // Ordered by what changes a decision: whether it will queue, then what it
     // silently takes with it, then how to do it more safely.
     for (const section of [
+      renderTriggers(finding),
       renderOffenders(finding),
       renderQueueWarning(finding),
       renderCascade(finding.cascade),
@@ -878,6 +879,87 @@
    * decision stays with the reader. Copying it is one click; running it is
    * their business.
    */
+  /**
+   * What fired when this statement ran.
+   *
+   * The preview really executes the statement, so triggers really run. Almost
+   * always that is a feature: the row counts above already include whatever
+   * the triggers did, which is more than reading the statement would tell you.
+   *
+   * The exception is the one thing this whole extension rests on. A rollback
+   * takes back rows. It does not take back a notification that has been sent,
+   * a row pushed through a foreign data wrapper, or an HTTP request that has
+   * already been answered. When a trigger looks capable of any of that, it goes
+   * at the top of the row in the loudest style the panel has.
+   */
+  function renderTriggers(finding) {
+    const triggers = finding.triggers;
+    if (!triggers || triggers.length === 0) {
+      return null;
+    }
+
+    const escaping = triggers.filter((trigger) => trigger.escapes && trigger.escapes.length > 0);
+
+    const box = document.createElement('div');
+    box.className = escaping.length > 0 ? 'triggers escaping' : 'triggers';
+
+    const head = document.createElement('div');
+    head.className = 'triggers-head';
+    head.textContent =
+      escaping.length > 0
+        ? 'A trigger here may reach outside the transaction'
+        : `${triggers.length} ${triggers.length === 1 ? 'trigger fires' : 'triggers fire'} on this`;
+    box.appendChild(head);
+
+    const note = document.createElement('div');
+    note.className = 'triggers-note';
+    note.textContent =
+      escaping.length > 0
+        ? 'The preview really ran this statement, so these really fired. Rolling back ' +
+          'takes the rows back. It does not take back anything already sent outside the ' +
+          'database.'
+        : 'They really fired, and their effect on rows is already counted above. Rolling ' +
+          'back took all of it with them.';
+    box.appendChild(note);
+
+    for (const trigger of triggers) {
+      const row = document.createElement('div');
+      row.className = 'trigger';
+
+      const name = document.createElement('code');
+      name.className = 'trigger-name';
+      name.textContent = trigger.name;
+      row.appendChild(name);
+
+      const when = document.createElement('span');
+      when.className = 'trigger-when';
+      when.textContent = `${trigger.timing} ${trigger.events.join(', ')} → ${trigger.functionName}()`;
+      row.appendChild(when);
+
+      if (trigger.escapes && trigger.escapes.length > 0) {
+        const escape = document.createElement('div');
+        escape.className = 'trigger-escape';
+        escape.textContent = trigger.escapes.join('; ');
+        row.appendChild(escape);
+      }
+
+      box.appendChild(row);
+    }
+
+    if (escaping.length > 0) {
+      // Said plainly, because an empty list here is the easiest thing in the
+      // panel to mistake for a guarantee.
+      const caveat = document.createElement('div');
+      caveat.className = 'triggers-note';
+      caveat.textContent =
+        'Found by reading the trigger functions one level deep. A function that calls ' +
+        'another function is beyond what this can see, so an empty list is not a promise.';
+      box.appendChild(caveat);
+    }
+
+    return box;
+  }
+
   /** Which statements have rows worth showing. Mirrors analysis/offenders.ts. */
   const OFFENDER_KINDS = new Set([
     'set_not_null',

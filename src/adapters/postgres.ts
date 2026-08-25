@@ -25,6 +25,7 @@ import {
   RedundantIndex,
   UnindexedForeignKey,
   TableHealth,
+  TriggerInfo,
 } from './types';
 import { executionMs, indexNames, totalCost } from './planShape';
 import { CommittableStatement, CommittedResult, runCommittedOn } from './commit';
@@ -851,6 +852,63 @@ export class PostgresAdapter implements DatabaseAdapter {
     return { raw: rows[0]?.['QUERY PLAN'] };
   }
 
+  // ---- triggers ----------------------------------------------------------
+
+  /**
+   * What fires when this table is written to, and what of it escapes.
+   *
+   * The escape patterns are matched against the trigger function's source, one
+   * level deep. That is not a proof of safety and the wording everywhere says
+   * so — a function calling another function is beyond what this can see.
+   * It is, however, enough to catch the cases that actually happen: a
+   * notification sent to a queue, a row pushed through a foreign table, an
+   * HTTP call made from a trigger.
+   */
+  async triggers(table: string): Promise<TriggerInfo[]> {
+    const { rows } = await this.probe(
+      `SELECT t.tgname AS name,
+              p.proname AS function_name,
+              t.tgenabled <> 'D' AS enabled,
+              t.tgtype AS type_bits,
+              COALESCE(p.prosrc, '') AS source
+         FROM pg_trigger t
+         JOIN pg_proc p ON p.oid = t.tgfoid
+        WHERE t.tgrelid = to_regclass($1)
+          AND NOT t.tgisinternal
+        ORDER BY t.tgname`,
+      [table],
+    );
+
+    return rows.map((row) => {
+      // tgtype is a bitmask: 1 = row-level, 2 = BEFORE, 4 = INSERT,
+      // 8 = DELETE, 16 = UPDATE, 32 = TRUNCATE, 64 = INSTEAD OF.
+      const bits = Number(row['type_bits'] ?? 0);
+      const events: string[] = [];
+      if (bits & 4) {
+        events.push('insert');
+      }
+      if (bits & 8) {
+        events.push('delete');
+      }
+      if (bits & 16) {
+        events.push('update');
+      }
+      if (bits & 32) {
+        events.push('truncate');
+      }
+
+      return {
+        name: String(row['name']),
+        table,
+        timing: bits & 64 ? ('instead of' as const) : bits & 2 ? ('before' as const) : ('after' as const),
+        events,
+        functionName: String(row['function_name']),
+        enabled: Boolean(row['enabled']),
+        escapes: escapesRollback(String(row['source'] ?? '')),
+      };
+    });
+  }
+
   // ---- schema health -----------------------------------------------------
 
   /**
@@ -1284,4 +1342,35 @@ function savepointName(name: string): string {
     throw new Error(`Invalid savepoint name: ${name}`);
   }
   return name;
+}
+
+
+/**
+ * Things in a trigger function that a ROLLBACK does not take back.
+ *
+ * Matched on the function source rather than inferred from anything the
+ * catalogue records, because the catalogue records nothing about this. Reported
+ * as "worth looking at", never as a verdict: an empty list means nothing
+ * obvious was found one level deep, not that the trigger is contained.
+ */
+function escapesRollback(source: string): string[] {
+  const found: string[] = [];
+  const check = (pattern: RegExp, description: string): void => {
+    if (pattern.test(source)) {
+      found.push(description);
+    }
+  };
+
+  // NOTIFY is delivered at commit, so a rolled-back preview never sends it —
+  // but a listener on a replica or a queue consumer reading the same channel
+  // is a common enough pattern that saying nothing feels worse than saying it.
+  check(/\bpg_notify\s*\(|\bNOTIFY\s+\w/i, 'sends a notification (pg_notify / NOTIFY)');
+  check(/\bdblink\w*\s*\(/i, 'opens a connection to another database (dblink)');
+  check(/\bhttp(_get|_post|_put|_delete|_request)?\s*\(/i, 'makes an HTTP request');
+  check(/\bCOPY\b[\s\S]{0,120}\bTO\s+PROGRAM\b/i, 'runs a shell command (COPY TO PROGRAM)');
+  check(/\bpg_background_launch\s*\(/i, 'starts work in a separate transaction (pg_background)');
+  check(/\bpg_read_file\s*\(|\bpg_write_file\s*\(|\blo_export\s*\(/i, 'touches the server filesystem');
+  check(/\bperform\s+\w*\.?send/i, 'calls something named "send"');
+
+  return found;
 }

@@ -114,6 +114,14 @@ index has never been scanned" and "this index has not been scanned since the
 server woke up ninety seconds ago" are the same number, and only one of them is
 a reason to drop anything.
 
+**Know what else fired.** The preview really executes the statement, so
+triggers really run — which is a feature: the row counts already include
+whatever they did. It becomes a problem in exactly one case, and Dry Run now
+says so loudly. A rollback takes back rows. It does not take back a
+notification already sent, a row pushed through a foreign data wrapper, or an
+HTTP request already answered. Trigger functions are read one level deep for
+those, and the panel says plainly that one level deep is not a proof.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as

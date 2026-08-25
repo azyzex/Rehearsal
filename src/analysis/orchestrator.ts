@@ -1,4 +1,4 @@
-import { CascadeNode, DatabaseAdapter } from '../adapters/types';
+import { CascadeNode, DatabaseAdapter, TriggerInfo } from '../adapters/types';
 import { classify, Classification, StatementKind } from '../parser/classifier';
 import { maskLiterals } from '../parser/mask';
 import { SplitStatement } from '../parser/splitter';
@@ -61,6 +61,20 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
   // whole, and the answer changing halfway through would be noise.
   const blockerCache = new Map<string, readonly Blocker[]>();
 
+  // Triggers, read once per table for the same reason.
+  const triggerCache = new Map<string, readonly TriggerInfo[]>();
+  const triggersOf = async (table: string | undefined): Promise<readonly TriggerInfo[]> => {
+    if (!table) {
+      return [];
+    }
+    if (!triggerCache.has(table)) {
+      // A table whose triggers cannot be read is not a reason to fail the
+      // whole statement; it is a reason to say nothing about triggers.
+      triggerCache.set(table, await adapter.triggers(table).catch(() => []));
+    }
+    return triggerCache.get(table) ?? [];
+  };
+
   for (const statement of statements) {
     if (isCancelled?.()) {
       return;
@@ -76,10 +90,18 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
       // and it is the half that turns a one-second migration into an outage.
       const outlook = await lockOutlook(adapter, classification, blockerCache);
 
+      // Only for statements that write. A CREATE INDEX fires nothing, and
+      // listing a table's triggers next to it is noise.
+      const triggers = WRITES.has(classification.kind) ? await triggersOf(classification.table) : [];
+      const firing = triggers.filter(
+        (trigger) => trigger.enabled && firesOn(trigger, classification.kind),
+      );
+
       const withContext: Finding = {
         ...finding,
         ...(tableRows === undefined ? {} : { tableRows }),
         ...outlook,
+        ...(firing.length > 0 ? { triggers: firing } : {}),
         ...(outlook.queuedBehind && outlook.queuedBehind.length > 0
           ? { severity: worst([finding.severity, 'blocking']) }
           : {}),
@@ -375,4 +397,18 @@ function whereClauseOf(sql: string): string | undefined {
 
   const predicate = sql.slice(match.index + match[0].length).replace(/;\s*$/, '').trim();
   return predicate.length > 0 ? predicate : undefined;
+}
+
+
+/** Statement kinds that make triggers fire. */
+const WRITES: ReadonlySet<string> = new Set(['update', 'delete', 'insert', 'truncate']);
+
+/**
+ * Whether this trigger fires for this kind of statement.
+ *
+ * A table can carry a dozen triggers of which one is relevant, and listing the
+ * other eleven trains people to stop reading the section.
+ */
+function firesOn(trigger: TriggerInfo, kind: string): boolean {
+  return trigger.events.includes(kind);
 }

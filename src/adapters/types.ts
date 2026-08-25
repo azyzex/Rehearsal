@@ -285,6 +285,35 @@ export interface TableHealth {
   readonly bytes: number;
 }
 
+/**
+ * A trigger on a table, and whether it can reach outside the transaction.
+ *
+ * The whole extension rests on one property: everything runs inside a
+ * transaction that is rolled back, so nothing it does survives. Triggers are
+ * the place that property can quietly stop being true. A trigger that writes to
+ * another table is fine — the rollback takes that with it. A trigger that calls
+ * `pg_notify`, reaches through an FDW, or fires an HTTP request has already
+ * done something the rollback cannot recall, and the preview will have caused
+ * it for real.
+ *
+ * That is worth saying loudly rather than discovering afterwards.
+ */
+export interface TriggerInfo {
+  readonly name: string;
+  readonly table: string;
+  readonly timing: 'before' | 'after' | 'instead of';
+  /** insert, update, delete, truncate. */
+  readonly events: readonly string[];
+  readonly functionName: string;
+  readonly enabled: boolean;
+  /**
+   * Things found in the trigger function that a ROLLBACK does not undo, named
+   * so the user can go and look. Empty is not a guarantee: a trigger function
+   * that calls another function is only read one level deep.
+   */
+  readonly escapes: readonly string[];
+}
+
 export type PrimaryKeyValue = Record<string, unknown>;
 
 export interface DatabaseAdapter {
@@ -409,6 +438,15 @@ export interface DatabaseAdapter {
     analyze: boolean,
     params?: readonly unknown[],
   ): Promise<QueryPlan>;
+
+/**
+   * Triggers on `table`, with anything in them that outlives a rollback.
+   *
+   * The preview really executes the statement, so triggers really fire. Their
+   * effects on rows are rolled back with everything else; their effects outside
+   * the database are not.
+   */
+  triggers(table: string): Promise<TriggerInfo[]>;
 
   /**
    * The health of the schema itself: indexes nothing reads, indexes another
