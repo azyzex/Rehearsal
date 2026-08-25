@@ -5,6 +5,7 @@ import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
 import { downMigration } from '../edit/down';
+import { ChangesetHistory } from '../edit/history';
 import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
 import { findJoinPath } from '../analysis/joinPath';
@@ -29,6 +30,8 @@ export interface SchemaHost {
   /** Re-reads the schema after changes have been applied. */
   refresh(): Promise<void>;
   report(error: unknown): void;
+  /** Where applied changesets are recorded, when the host keeps one. */
+  history?: ChangesetHistory;
 }
 
 export class SchemaPanel {
@@ -40,6 +43,10 @@ export class SchemaPanel {
   private host: SchemaHost | undefined;
   private previewToken: string | undefined;
   private previewDestructive = false;
+  /** The verdict the preview gave, kept for the history entry. */
+  private previewSummary = '';
+  /** The database being edited, as it should be named in the history. */
+  private connectionName = '';
   /** The schema as read, kept so a migration impact can be projected from it. */
   private baseline: SchemaSnapshot | undefined;
 
@@ -93,6 +100,7 @@ export class SchemaPanel {
   show(snapshot: SchemaSnapshot, connection: string): void {
     this.session.setBaseline(snapshot);
     this.baseline = snapshot;
+    this.connectionName = connection;
     this.post({ type: 'schema', snapshot, connection });
     this.postChangeset();
   }
@@ -252,6 +260,7 @@ export class SchemaPanel {
     const result = await this.session.preview(adapter, this.host!.thresholds());
     this.previewToken = result.token;
     this.previewDestructive = result.destructive;
+    this.previewSummary = result.summary;
 
     this.post({
       type: 'preview',
@@ -274,6 +283,16 @@ export class SchemaPanel {
       return;
     }
 
+    // Both are generated before anything runs, because both need the schema as
+    // it is now: after the apply, the column's type and its contents are gone.
+    const state = this.session.state();
+    const down = await downMigration(
+      this.requireAdapter(),
+      state.changes.map((change) => change.edit),
+    ).catch(() => undefined);
+
+    let rescuePath: string | undefined;
+
     // A second confirmation, in the editor rather than the webview, for
     // anything that destroys data. The webview asked once; this is the one the
     // user cannot click through without reading.
@@ -281,6 +300,7 @@ export class SchemaPanel {
       // Written before the confirmation, not after it. A safety net offered
       // after the user has already committed to the change is a receipt.
       const rescue = await this.writeRescueFile();
+      rescuePath = rescue?.path;
 
       const detail = rescue
         ? rescue.incomplete
@@ -306,6 +326,20 @@ export class SchemaPanel {
       destructive: this.previewDestructive,
       confirmedDestructive: confirmed,
     });
+
+    // Recorded before the session is cleared, since the statements come from
+    // it. A failure to record is not a failure to apply, and pretending
+    // otherwise would be worse than a missing history entry.
+    await this.host?.history
+      ?.record({
+        connection: this.connectionName,
+        statements: state.changes.map((change) => change.sql),
+        summary: this.previewSummary,
+        rowCounts: result.rowCounts,
+        ...(rescuePath ? { rescueFile: rescuePath } : {}),
+        ...(down ? { downSql: down.sql } : {}),
+      })
+      .catch((error: unknown) => this.host?.report(error));
 
     this.session.clear();
     this.clearPreview();

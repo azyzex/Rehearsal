@@ -151,6 +151,13 @@ collapse the section. They clear the moment the file is edited, because a
 measurement describes the statement that produced it and an edited line no
 longer contains it.
 
+**Remember what was applied.** Applying used to leave no trace outside the
+database itself. `Dry Run: Applied Changes` now lists what ran, against which
+database, when, and what the preview said before it ran — each entry holding the
+rescue file and the down migration that were generated for it. Nothing on that
+list executes anything: getting back means opening the file and previewing it
+like anything else, which keeps the property the whole extension rests on.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
@@ -316,6 +323,7 @@ Press `F5` to launch the extension host, then:
 | `Dry Run: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Dry Run: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
 | `Dry Run: Compare With Another Database` | Drift between two environments |
+| `Dry Run: Applied Changes` | What was applied, with its rescue file and down migration |
 | `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
 | `Dry Run: Test Connection` | Check the connection alone |
 | `Dry Run: Disconnect` | Close the connection |

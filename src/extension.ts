@@ -12,6 +12,7 @@ import { ConnectionManager, ProductionRefusedError } from './connection/manager'
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
 import { FindingDiagnostics } from './panel/diagnostics';
+import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
 import { SchemaPanel } from './panel/schemaPanel';
 import { CandidateResult, IndexPanel } from './panel/indexPanel';
 import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvice';
@@ -30,6 +31,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // looking at. These put the same findings in the Problems view, the ruler and
   // the tab's badge, none of which needed building.
   const diagnostics = new FindingDiagnostics();
+  // Applying is the one irreversible thing here, and until this it left no
+  // trace outside the database itself.
+  const history = new ChangesetHistory(context.workspaceState);
   context.subscriptions.push(connections, output, diagnostics);
 
   context.subscriptions.push(
@@ -55,8 +59,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('dryrun.exploreSchema', () =>
-      exploreSchema(context, connections, output),
+      exploreSchema(context, connections, output, history),
     ),
+
+    vscode.commands.registerCommand('dryrun.appliedChanges', () => appliedChanges(history)),
 
     vscode.commands.registerCommand('dryrun.suggestIndexes', () =>
       suggestIndexes(context, connections, output),
@@ -244,6 +250,7 @@ async function exploreSchema(
   context: vscode.ExtensionContext,
   connections: ConnectionManager,
   output: vscode.OutputChannel,
+  history: ChangesetHistory,
 ): Promise<void> {
   const load = async (panel: SchemaPanel): Promise<void> => {
     const connection = await connections.acquire();
@@ -259,6 +266,7 @@ async function exploreSchema(
       await load(panel).catch((error) => reportError(error, output, connections));
     },
     report: (error) => reportError(error, output, connections),
+    history,
   });
 
   try {
@@ -267,6 +275,87 @@ async function exploreSchema(
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
   }
+}
+
+/**
+ * What has been applied from here, and how to get back.
+ *
+ * Nothing on this list is executed. The down migration and the rescue file are
+ * opened as documents, and getting back is done by previewing them like
+ * anything else — which keeps the property the whole extension is built on:
+ * nothing is written whose measured consequences have not already been shown.
+ */
+async function appliedChanges(history: ChangesetHistory): Promise<void> {
+  const entries = history.all();
+  if (entries.length === 0) {
+    void vscode.window.showInformationMessage(
+      'Nothing has been applied from Dry Run in this workspace yet.',
+    );
+    return;
+  }
+
+  const chosen = await vscode.window.showQuickPick(
+    entries.map((entry) => ({
+      label: describeEntry(entry),
+      description: new Date(entry.appliedAt).toLocaleString(),
+      detail: `${entry.connection} — ${entry.summary}`,
+      entry,
+    })),
+    { title: 'Applied changes', placeHolder: 'Which one?' },
+  );
+
+  if (!chosen) {
+    return;
+  }
+  await offerRecovery(chosen.entry);
+}
+
+async function offerRecovery(entry: AppliedChangeset): Promise<void> {
+  const actions: string[] = ['Show what ran'];
+  if (entry.downSql) {
+    actions.push('Open the down migration');
+  }
+  if (entry.rescueFile) {
+    actions.push('Open the rescue file');
+  }
+
+  const action = await vscode.window.showQuickPick(actions, {
+    title: describeEntry(entry),
+    placeHolder: 'Nothing here runs anything. Each opens a file to review.',
+  });
+
+  if (action === 'Show what ran') {
+    await openSql(
+      `-- Applied ${entry.appliedAt} against ${entry.connection}\n` +
+        `-- ${entry.summary}\n\n${entry.statements.map((sql) => `${sql};`).join('\n')}\n`,
+    );
+    return;
+  }
+
+  if (action === 'Open the down migration' && entry.downSql) {
+    await openSql(entry.downSql);
+    return;
+  }
+
+  if (action === 'Open the rescue file' && entry.rescueFile) {
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const uri = folder
+      ? vscode.Uri.joinPath(folder, entry.rescueFile)
+      : vscode.Uri.file(entry.rescueFile);
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+    } catch {
+      void vscode.window.showWarningMessage(
+        `The rescue file is no longer at ${entry.rescueFile}.`,
+      );
+    }
+  }
+}
+
+async function openSql(content: string): Promise<void> {
+  const document = await vscode.workspace.openTextDocument({ language: 'sql', content });
+  await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
 }
 
 /**

@@ -32,6 +32,11 @@
         "category": "Dry Run"
       },
       {
+        "command": "dryrun.appliedChanges",
+        "title": "Applied Changes",
+        "category": "Dry Run"
+      },
+      {
         "command": "dryrun.compareSchemas",
         "title": "Compare With Another Database",
         "category": "Dry Run"
