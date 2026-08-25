@@ -89,7 +89,9 @@ export async function analyzeDdl(
         return {
           severity: 'safe',
           headline: 'Safe',
-          detail: `Every row already has a ${column}. This will apply cleanly.`,
+          // "a ${column}" produces "a email" as often as "a phone", and the
+          // article cannot be chosen without knowing the word. Sidestepped.
+          detail: `Every row already has a value in ${column}. This will apply cleanly.`,
           rowCount: 0,
         };
       }

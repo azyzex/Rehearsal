@@ -313,6 +313,46 @@ variable or a loop in it, because running your migration to find out what it
 means is exactly the thing this tool exists not to do. A `$unset` applied across
 a collection is read as what it is: dropping a column.
 
+### The same file, measured against a real MySQL
+
+```
+testbed/mysql-blog/migrations/0001_cleanup.sql — measured against dbdata@127.0.0.1
+
+DESTRUCTIVE line 1  Will destroy data
+            1,600 rows have a value in twitter. Dropping it cannot be undone.
+
+ok          line 2  Safe
+            Every row already has a value in email. This will apply cleanly.
+
+BLOCKING    line 3  Will fail
+            40 rows share a duplicate email, across 1 value.
+
+BLOCKING    line 4  Will fail
+            150 rows in posts reference author_id values that are not in authors.
+
+caution     line 5  Locks the table briefly
+            comments has about 19,784 rows (1.5 MB). Writes are blocked for roughly 1
+            second. Adding ALGORITHM=INPLACE, LOCK=NONE builds it without blocking
+            writes, and fails outright if this index cannot be built that way.
+
+ok          line 6  Safe
+            legacy_bio is empty in all 2,000 rows. Nothing is lost.
+
+ok          line 7  Safe
+            This matches no rows at all. Nothing changes.
+
+DESTRUCTIVE line 8  Will destroy data
+            2,222 rows are deleted from comments.
+
+2 would destroy data, 2 would fail or lock. Out of 8 statements.
+```
+
+Every line there is measured. Lines 2 and 3 are MySQL's own spelling —
+`MODIFY … NOT NULL` and `ADD UNIQUE KEY` — and line 5's advice is MySQL's, not
+Postgres's. That distinction exists because running this file for the first time
+produced two "not analysed" rows and a recommendation that is a syntax error on
+the database it was given about.
+
 ## How it works
 
 Postgres has transactional DDL, so a statement can be executed and then thrown
