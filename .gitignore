@@ -11,3 +11,9 @@ dist/
 # Screenshots the UI tests take. Useful to look at, not worth versioning.
 ui-shots/
 media/__ui-*.html
+
+# Scratch scripts for driving a testbed by hand.
+*.tmp.mjs
+*.tmp.ts
+e2e.run.mjs
+e2e.out.txt
