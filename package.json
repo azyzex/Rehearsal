@@ -192,6 +192,8 @@
     "embedded-postgres": "17.10.0-beta.17",
     "esbuild": "^0.25.0",
     "eslint": "^9.18.0",
+    "mysql-memory-server": "^1.16.0",
+    "mysql2": "^3.24.2",
     "playwright": "^1.62.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.20.0"

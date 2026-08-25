@@ -225,6 +225,33 @@ credential it needs is read-only: there is no flag that applies anything, on
 purpose — a CI job holding a connection string that can write is a worse thing
 to leave lying around than any migration it might have caught.
 
+## MySQL, and the thing it cannot do
+
+Postgres has transactional DDL: an `ALTER` inside a transaction is undone by a
+`ROLLBACK` like anything else. MySQL does not — it performs an implicit commit
+before *and* after every DDL statement, so an `ALTER` sent inside a transaction
+is committed the instant it runs and the `ROLLBACK` that follows undoes nothing.
+
+That is the one assumption this whole extension rests on, absent. So it is
+enforced rather than documented: the MySQL adapter's `withRollback` refuses DDL
+outright, the same way it refuses `COMMIT`, because the statements passed to it
+come out of migration files and a file containing an `ALTER` would otherwise be
+applied for real while the panel said nothing was committed. A test proves the
+refusal is load-bearing by sending the same `ALTER` straight down the driver and
+watching it survive a `ROLLBACK`.
+
+Almost nothing else changes, and that is not luck. DDL was already analysed by
+counting rather than by executing — an index build takes its full time and its
+full lock whether it is committed or not — so every DDL finding was already a
+read-only probe, and those probes work here unchanged.
+
+What genuinely differs is **Apply**. A changeset is meant to be all or nothing;
+on MySQL a changeset containing DDL cannot be, because the second statement
+commits the first. So it is refused, with the suggestion to export the SQL and
+run it through a migration tool that can record how far it got. Half a migration
+is the exact failure this extension exists to prevent, and delivering one
+quietly would be worse than not offering Apply at all.
+
 ## How it works
 
 Postgres has transactional DDL, so a statement can be executed and then thrown

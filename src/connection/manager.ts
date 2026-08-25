@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { PostgresAdapter } from '../adapters/postgres';
+import { MysqlAdapter } from '../adapters/mysql';
 import { ConnectionConfig, DatabaseAdapter } from '../adapters/types';
 import { checkConnection, ConnectionIdentity, identify } from './guard';
 import { ConnectionResolutionError, resolveConnection } from './resolve';
@@ -37,7 +38,7 @@ export interface ActiveConnection {
 const ENV_PATH_KEY = 'dryrun.lastEnvFile';
 
 export class ConnectionManager implements vscode.Disposable {
-  private adapter: PostgresAdapter | null = null;
+  private adapter: DatabaseAdapter | null = null;
   private active: ActiveConnection | null = null;
 
   constructor(private readonly state?: vscode.Memento) {}
@@ -81,7 +82,7 @@ export class ConnectionManager implements vscode.Disposable {
       applicationName: APPLICATION_NAME,
     };
 
-    const adapter = new PostgresAdapter();
+    const adapter = adapterFor(resolved.connectionString);
     await adapter.connect(connectionConfig);
 
     this.adapter = adapter;
@@ -219,3 +220,21 @@ function openDocuments(): vscode.Uri[] {
 }
 
 export { APPLICATION_NAME, ConnectionResolutionError };
+
+/**
+ * Which adapter a connection string asks for.
+ *
+ * Read off the scheme rather than probed, because probing means connecting,
+ * and connecting to a production database to find out what it is would be a
+ * strange first move for a tool built around not touching things. Anything
+ * unrecognised is treated as Postgres, which is the scheme people most often
+ * leave off.
+ */
+export function adapterFor(connectionString: string): DatabaseAdapter {
+  const scheme = /^([a-z0-9+]+):/i.exec(connectionString.trim())?.[1]?.toLowerCase() ?? '';
+
+  if (scheme === 'mysql' || scheme === 'mariadb') {
+    return new MysqlAdapter();
+  }
+  return new PostgresAdapter();
+}
