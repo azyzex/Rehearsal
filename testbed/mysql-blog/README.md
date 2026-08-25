@@ -3,9 +3,10 @@
 The MySQL testbed. A blog schema with the same hidden problems as
 `postgres-shop`, in an engine that behaves differently enough to matter.
 
-**Status: staged for v2. The extension cannot connect to MySQL yet.**
+**Status: live.** Dry Run connects to MySQL, and `mysql://` in a connection
+string is what selects the adapter.
 
-## Why this is v2 and not v1
+## What is different about MySQL
 
 MySQL commits DDL implicitly. `ALTER TABLE` cannot be rolled back, so the core
 mechanism — run it, look at what happened, throw it away — does not apply to
@@ -29,14 +30,17 @@ bites: orphaned clones, foreign keys pointing at uncloned tables, and needing
 `CREATE TABLE` privilege that a read-only analysis user will not have. Probes
 first; cloning is a follow-up.
 
-## Setup, when v2 starts
+## Setup
 
 ```powershell
 npm install --save-dev mysql2
 node testbed/mysql-blog/scripts/setup.mjs --url "mysql://user:pass@host:3306/blog"
 ```
 
-The seed script is written but not yet exercised, because `mysql2` is
+The seed script has been run against a real MySQL. It is slow at the default
+sizes — 400,000 comments — so pass `--authors 2000 --posts 6000 --comments
+20000` for a quick one; the findings keep their shape and only the numbers
+shrink. It was written before `mysql2` was
 deliberately not in `package.json` — v1 does not need it, and an unused driver
 in the bundle is dead weight.
 

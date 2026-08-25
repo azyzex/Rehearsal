@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * Seeds the MySQL testbed. Staged for v2 — requires a driver that is not yet a
- * dependency:
+ * Seeds the MySQL testbed.
  *
- *   npm install --save-dev mysql2
  *   node testbed/mysql-blog/scripts/setup.mjs --url "mysql://user:pass@host:3306/blog"
  *
  * Shapes the data to mirror postgres-shop: null emails, duplicate emails,
@@ -39,7 +37,7 @@ async function loadDriver() {
     return (await import('mysql2/promise')).default;
   } catch {
     throw new Error(
-      'mysql2 is not installed. This testbed is staged for v2:\n  npm install --save-dev mysql2',
+      'mysql2 is not installed:\n  npm install --save-dev mysql2',
     );
   }
 }

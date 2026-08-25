@@ -1,4 +1,6 @@
--- Staged for v2. Same failure modes as the Postgres testbed, MySQL syntax.
+-- The same failure modes as the Postgres testbed, in MySQL syntax — including
+-- the two MySQL spells differently: MODIFY rather than SET NOT NULL, and
+-- UNIQUE KEY rather than UNIQUE.
 
 -- Destructive: twitter is populated for most authors.
 ALTER TABLE authors DROP COLUMN twitter;

@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * Seeds the MongoDB testbed. Staged for v3 — requires a driver that is not yet
- * a dependency:
+ * Seeds the MongoDB testbed.
  *
- *   npm install --save-dev mongodb
  *   node testbed/mongo-analytics/scripts/setup.mjs --url "mongodb+srv://user:pass@cluster.mongodb.net/analytics"
  *
  * Mongo needs a replica set for multi-document transactions, which is what the
@@ -24,7 +22,7 @@ async function loadDriver() {
     return (await import('mongodb')).MongoClient;
   } catch {
     throw new Error(
-      'mongodb is not installed. This testbed is staged for v3:\n  npm install --save-dev mongodb',
+      'mongodb is not installed:\n  npm install --save-dev mongodb',
     );
   }
 }

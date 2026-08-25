@@ -1,8 +1,15 @@
 # mongo-analytics
 
-The MongoDB testbed. An events/sessions dataset, staged for v3.
+The MongoDB testbed. An events/sessions dataset.
 
-**Status: staged for v3. The extension cannot connect to MongoDB yet.**
+**Status: live.** Dry Run connects to MongoDB, and `mongodb://` or
+`mongodb+srv://` selects the adapter.
+
+One condition, and it is not optional: previews need a **replica set**.
+Multi-document transactions are what the rollback is, and a standalone
+`mongod` does not have them — so Dry Run refuses to connect to one rather
+than running a preview it could not undo. Atlas gives you a replica set on
+the free tier, and a local single-node one works too.
 
 ## What survives the port, and what doesn't
 
@@ -29,7 +36,7 @@ undo. Atlas's free M0 tier is a three-node replica set, so it works.
 
 The seed script checks this and tells you which one you have.
 
-## Setup, when v3 starts
+## Setup
 
 ```powershell
 npm install --save-dev mongodb

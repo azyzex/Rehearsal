@@ -1,5 +1,5 @@
-// Staged for v3. The Mongo equivalent of a migration file: a handful of
-// write operations someone is about to run against real data.
+// The Mongo equivalent of a migration file: a handful of write operations
+// someone is about to run against real data.
 
 // Destructive: removes a field from ~40,000 documents. There is no schema to
 // consult afterwards to find out what was in it.

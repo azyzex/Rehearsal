@@ -6,8 +6,8 @@ packaged into the extension — `testbed/` is excluded from the `.vsix`.
 | Project | Engine | Status |
 |---|---|---|
 | [`postgres-shop`](postgres-shop/) | Postgres | **live** — this is what v1 supports |
-| [`mysql-blog`](mysql-blog/) | MySQL | staged for v2 |
-| [`mongo-analytics`](mongo-analytics/) | MongoDB | staged for v3 |
+| [`mysql-blog`](mysql-blog/) | MySQL | live |
+| [`mongo-analytics`](mongo-analytics/) | MongoDB | live — needs a replica set |
 
 Each one is seeded with data that is *deliberately messy* — nulls where a
 `NOT NULL` is about to be added, orphans where a foreign key is about to be
@@ -140,10 +140,10 @@ before the first push, because a leaked Neon string is a live database.
 
 Not needed yet — noted here so the decision doesn't have to be made twice.
 
-- **MySQL (v2):** PlanetScale dropped its free tier, so most guides you'll find
+- **MySQL:** PlanetScale dropped its free tier, so most guides you'll find
   are out of date. **Aiven** has a genuinely free MySQL plan; **Railway** gives a
   monthly credit that covers a test database comfortably.
-- **MongoDB (v3):** **Atlas M0** is free and, importantly, is a three-node
+- **MongoDB:** **Atlas M0** is free and, importantly, is a three-node
   replica set. That matters — Mongo needs a replica set for the multi-document
   transactions the rollback mechanism depends on, and a local standalone
   `mongod` can't do it.
