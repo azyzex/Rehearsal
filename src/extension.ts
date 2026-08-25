@@ -11,6 +11,7 @@ import { Finding, Severity, Thresholds } from './analysis/types';
 import { ConnectionManager, ProductionRefusedError } from './connection/manager';
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
+import { FindingDiagnostics } from './panel/diagnostics';
 import { SchemaPanel } from './panel/schemaPanel';
 import { CandidateResult, IndexPanel } from './panel/indexPanel';
 import { IndexCandidate, indexCandidates, seqScans } from './analysis/indexAdvice';
@@ -25,10 +26,16 @@ import { APPLICATION_NAME } from './constants';
 export function activate(context: vscode.ExtensionContext): void {
   const connections = new ConnectionManager(context.workspaceState);
   const output = vscode.window.createOutputChannel('Dry Run');
-  context.subscriptions.push(connections, output);
+  // The panel is the product, but the panel is also something you have to be
+  // looking at. These put the same findings in the Problems view, the ruler and
+  // the tab's badge, none of which needed building.
+  const diagnostics = new FindingDiagnostics();
+  context.subscriptions.push(connections, output, diagnostics);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('dryrun.preview', () => preview(context, connections, output)),
+    vscode.commands.registerCommand('dryrun.preview', () =>
+      preview(context, connections, output, diagnostics),
+    ),
 
     vscode.commands.registerCommand('dryrun.testConnection', async () => {
       try {
@@ -56,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
 
     vscode.commands.registerCommand('dryrun.pendingMigrations', () =>
-      pendingMigrations(context, connections, output),
+      pendingMigrations(context, connections, output, diagnostics),
     ),
 
     vscode.commands.registerCommand('dryrun.schemaHealth', () =>
@@ -82,6 +89,7 @@ async function preview(
   context: vscode.ExtensionContext,
   connections: ConnectionManager,
   output: vscode.OutputChannel,
+  diagnostics: FindingDiagnostics,
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -173,6 +181,8 @@ async function preview(
       },
     });
 
+    diagnostics.begin(editor.document, statements);
+
     const findings: Finding[] = [];
     await analyzeStatements({
       adapter: connection.adapter,
@@ -182,6 +192,7 @@ async function preview(
       onFinding: (finding) => {
         findings.push(finding);
         panel.add(finding);
+        diagnostics.add(finding);
       },
     });
 
@@ -395,6 +406,7 @@ async function pendingMigrations(
   context: vscode.ExtensionContext,
   connections: ConnectionManager,
   output: vscode.OutputChannel,
+  diagnostics: FindingDiagnostics,
 ): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const layout = folders
@@ -449,7 +461,7 @@ async function pendingMigrations(
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(picked.file));
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
 
-    await preview(context, connections, output);
+    await preview(context, connections, output, diagnostics);
   } catch (error) {
     reportError(error, output, connections);
   }

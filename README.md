@@ -142,6 +142,15 @@ environments for no interesting reason. The second connection is opened for the
 comparison, read-only, and closed again; the string is never saved and its
 password never reaches the report.
 
+**In the Problems view too.** Every finding is also published as an editor
+diagnostic, so it lands in the Problems panel, the file's ruler, the tab's
+badge, and whatever you have bound to "go to next problem" — none of which
+needed building, and all of which people check out of habit. Safe statements
+draw nothing: twenty hints for twenty harmless statements teaches you to
+collapse the section. They clear the moment the file is edited, because a
+measurement describes the statement that produced it and an edited line no
+longer contains it.
+
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
 are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
