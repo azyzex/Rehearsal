@@ -9,3 +9,9 @@ tsconfig*.json
 eslint.config.mjs
 DRYRUN_SPEC.md
 testbed/
+ui-shots/
+media/__ui-*.html
+MANUAL-CHECK.md
+examples/
+*.tmp.mjs
+*.tmp.ts

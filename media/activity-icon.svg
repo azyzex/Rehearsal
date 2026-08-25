@@ -1,0 +1,15 @@
+<!--
+  The activity-bar icon.
+
+  A table with a line through it: the shape of a change, and the shape of it
+  not landing. Single-colour and stroke-only, because VS Code recolours this
+  to match the theme and fills come out as solid blocks.
+-->
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+     fill="none" stroke="currentColor" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="12" cy="5.5" rx="7" ry="2.75"/>
+  <path d="M5 5.5v6c0 1.52 3.13 2.75 7 2.75s7-1.23 7-2.75v-6"/>
+  <path d="M5 11.5v6c0 1.52 3.13 2.75 7 2.75 1.02 0 2-.09 2.87-.24"/>
+  <path d="M15.5 17.5l6-6"/>
+</svg>

@@ -18,24 +18,47 @@ one is to be broken, not by how the extension is organised.
 
 ## Setting up (once)
 
-1. Open this folder in VS Code.
-2. Press `f5`. A second VS Code window opens, titled **[Extension Development
-   Host]**. Everything below happens in **that** window.
-3. In the new window: `ctrl + k` then `ctrl + o`, and open
-   `testbed/postgres-shop`. It must be the folder, not a file.
-4. `ctrl + shift + p` → type `Dry Run: Test Connection` → enter.
-   You should get a notification naming the database. If you get "no connection
-   string", use the **Select .env file…** button on the error and pick
-   `testbed/postgres-shop/.env`.
+The extension is installed, so there is no `f5` any more:
 
-If the window opens with no folder, or you get an apc-extension error, close it
-and press `f5` again from the first window.
+```
+npm run vsix
+code --install-extension dryrun-0.0.1.vsix
+```
+
+1. Open `testbed/postgres-shop` as a folder in VS Code (`ctrl + k` then
+   `ctrl + o`).
+2. Click the **database icon in the activity bar**, down the left edge with the
+   file explorer and search icons.
+3. Paste the connection string from `testbed/postgres-shop/.env` into the box.
+   The engine badge should say **PostgreSQL** before you press anything.
+4. Press **Connect**. The panel should swap to a list of actions.
+
+Everything below can be done from that panel; the command palette still works
+if you prefer it.
+
+Use `f5` instead only when you are changing the extension's own code — that
+launches a second window running from source, and the sidebar behaves the same
+way in it.
 
 ---
 
 ## The ten minutes that matter most
 
 These are the newest and least verified. Tick as you go.
+
+### 0. The front door
+
+- [ ] The icon is in the activity bar and the panel opens.
+- [ ] Typing into the box shows an engine badge **as you type**, before you
+      connect. Try deleting the `postgresql://` prefix — it should still say
+      PostgreSQL, guessed from the port.
+- [ ] Paste something nonsense (`redis://localhost`). **Expect:** the Connect
+      button goes grey and it says it does not know that scheme.
+- [ ] Connect with **Remember this one** ticked, then disconnect. **Expect:**
+      the connection appears under **Saved**, and clicking it reconnects
+      without retyping anything.
+- [ ] **The thing to catch:** it says connected but the actions do nothing, or
+      a saved connection fails with "password is not in the keychain".
 
 ### 1. The offending rows — never seen end to end
 

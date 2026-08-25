@@ -193,3 +193,110 @@ export function indexPanelHtml(options: HtmlOptions): string {
 </body>
 </html>`;
 }
+
+/**
+ * The view in the activity bar: connect, then launch everything else.
+ *
+ * Two states in one page rather than two pages, because the transition between
+ * them is the whole point and a reload in the middle of it loses the string
+ * someone has just pasted.
+ */
+export function sidebarHtml(options: HtmlOptions): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="${csp(options)}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="${options.media('sidebar.css')}" rel="stylesheet">
+<title>Dry Run</title>
+</head>
+<body>
+<div id="connect">
+  <p class="lede">
+    Point Dry Run at a database. It reads, measures, and rolls everything back.
+  </p>
+
+  <label class="field-label" for="connection">Connection string</label>
+  <textarea id="connection" rows="3" spellcheck="false"
+    placeholder="postgresql://user:password@host/database"></textarea>
+
+  <div id="detected" class="detected" hidden></div>
+  <div id="notes" class="notes"></div>
+
+  <label class="remember">
+    <input id="remember" type="checkbox" checked>
+    <span>Remember this one</span>
+  </label>
+
+  <button id="go" class="primary" type="button">Connect</button>
+  <div id="error" class="error" hidden></div>
+
+  <div class="or">or</div>
+  <button id="from-env" class="ghost" type="button">Use a .env file…</button>
+
+  <section id="saved-section" hidden>
+    <h2>Saved</h2>
+    <div id="saved"></div>
+  </section>
+</div>
+
+<div id="ready" hidden>
+  <div class="connected">
+    <div class="connected-head">
+      <span class="dot"></span>
+      <span id="connected-label"></span>
+    </div>
+    <div class="connected-meta">
+      <span id="connected-engine" class="badge-engine"></span>
+      <span id="connected-source"></span>
+    </div>
+    <div id="connected-note" class="connected-note" hidden></div>
+  </div>
+
+  <h2>Look at it</h2>
+  <button class="action" type="button" data-command="dryrun.exploreSchema">
+    <span class="action-name">Explore the schema</span>
+    <span class="action-why">Every table and relationship, drawn</span>
+  </button>
+  <button class="action" type="button" data-command="dryrun.schemaHealth">
+    <span class="action-name">Schema health</span>
+    <span class="action-why">Unindexed keys, unread indexes, stale statistics</span>
+  </button>
+  <button class="action" type="button" data-command="dryrun.compareSchemas">
+    <span class="action-name">Compare with another database</span>
+    <span class="action-why">Drift between two environments</span>
+  </button>
+
+  <h2>Measure a change</h2>
+  <button class="action" type="button" data-command="dryrun.preview">
+    <span class="action-name">Preview the open file</span>
+    <span class="action-why">What each statement would really do</span>
+  </button>
+  <button class="action" type="button" data-command="dryrun.pendingMigrations">
+    <span class="action-name">Preview pending migrations</span>
+    <span class="action-why">What your ORM has queued up</span>
+  </button>
+  <button class="action" type="button" data-command="dryrun.suggestIndexes">
+    <span class="action-name">Would an index help?</span>
+    <span class="action-why">Tested against the planner, not guessed</span>
+  </button>
+
+  <h2>Afterwards</h2>
+  <button class="action" type="button" data-command="dryrun.appliedChanges">
+    <span class="action-name">Applied changes</span>
+    <span class="action-why">What ran, with its rescue file and down migration</span>
+  </button>
+
+  <button id="disconnect" class="ghost" type="button">Disconnect</button>
+</div>
+
+<div id="busy" hidden>
+  <p class="lede">Connecting…</p>
+</div>
+
+<footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
+<script nonce="${options.nonce}" src="${options.media('sidebar.js')}"></script>
+</body>
+</html>`;
+}

@@ -13,7 +13,10 @@
 export type ConnectionSource =
   | { readonly kind: 'setting'; readonly detail: string }
   | { readonly kind: 'env'; readonly detail: string }
-  | { readonly kind: 'envFile'; readonly detail: string };
+  | { readonly kind: 'envFile'; readonly detail: string }
+  // Picked in the sidebar. Outranks everything above it, because someone who
+  // has just chosen a database means that database.
+  | { readonly kind: 'chosen'; readonly detail: string };
 
 export interface ResolvedConnection {
   readonly connectionString: string;

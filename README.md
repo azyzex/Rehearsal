@@ -9,6 +9,23 @@ See what a database change will actually do to your data, before you do it.
      press Ctrl+Alt+D, land on four rows — red, red, amber, green — with the real
      40,072 on the first one. -->
 
+## Installing it
+
+```
+npm install
+npm run vsix
+code --install-extension dryrun-0.0.1.vsix
+```
+
+Then click the database icon in the activity bar. Paste a connection string and
+it works out the rest — `postgresql://`, `mysql://` and `mongodb://` each pick
+their own adapter, and a string with no scheme is read from its port. Connections
+you keep go in the OS keychain; only their labels are written to disk, so the
+list can be drawn without ever touching a credential.
+
+Press `f5` instead if you are changing the code — that launches a second window
+running from source.
+
 ## The problem
 
 You write `ALTER TABLE users DROP COLUMN phone_number;` because you're fairly sure

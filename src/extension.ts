@@ -11,6 +11,8 @@ import { ConnectionManager, ProductionRefusedError } from './connection/manager'
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
 import { FindingDiagnostics } from './panel/diagnostics';
+import { Sidebar } from './panel/sidebar';
+import { SavedConnections } from './connection/saved';
 import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
 import { SchemaPanel } from './panel/schemaPanel';
 import { CandidateResult, IndexPanel } from './panel/indexPanel';
@@ -33,7 +35,31 @@ export function activate(context: vscode.ExtensionContext): void {
   // Applying is the one irreversible thing here, and until this it left no
   // trace outside the database itself.
   const history = new ChangesetHistory(context.workspaceState);
-  context.subscriptions.push(connections, output, diagnostics);
+
+  // The front door. Connections live in the OS keychain; only their labels go
+  // in global state, so the list can be drawn without touching a credential.
+  const saved = new SavedConnections(context.globalState, context.secrets);
+  const sidebar = new Sidebar(context, {
+    connections,
+    saved,
+    run: (command) => void vscode.commands.executeCommand(command),
+    report: (error) => reportError(error, output, connections),
+  });
+
+  context.subscriptions.push(
+    connections,
+    output,
+    diagnostics,
+    vscode.window.registerWebviewViewProvider(Sidebar.viewId, sidebar, {
+      // Kept alive while hidden, so a half-typed connection string survives
+      // the panel being collapsed.
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  // The sidebar shows what is connected, and connecting happens elsewhere too
+  // — through a command, or through the .env fallback. Both have to reach it.
+  connections.onChanged(() => void sidebar.refresh());
 
   context.subscriptions.push(
     vscode.commands.registerCommand('dryrun.preview', () =>

@@ -57,6 +57,7 @@ const HTML_OF: Record<string, string> = {
   'controller.ts': 'previewPanelHtml',
   'schemaPanel.ts': 'schemaPanelHtml',
   'indexPanel.ts': 'indexPanelHtml',
+  'sidebar.ts': 'sidebarHtml',
 };
 
 const panels: Record<string, string[]> = Object.fromEntries(
@@ -68,6 +69,7 @@ describe('webview scripts', () => {
     assert.deepEqual(panels['controller.ts'], ['panel.js']);
     assert.deepEqual(panels['schemaPanel.ts'], ['schema.js', 'schema-editor.js']);
     assert.deepEqual(panels['indexPanel.ts'], ['indexes.js']);
+    assert.deepEqual(panels['sidebar.ts'], ['sidebar.js']);
   });
 
   for (const [panel, scripts] of Object.entries(panels)) {
@@ -161,6 +163,7 @@ describe('webview scripts', () => {
   for (const [panel, script] of [
     ['controller.ts', 'panel.js'],
     ['indexPanel.ts', 'indexes.js'],
+    ['sidebar.ts', 'sidebar.js'],
   ]) {
     it(`every message ${panel} sends is handled by ${script}`, () => {
       // The same gap the other way round: a measurement is computed, posted,
@@ -168,8 +171,11 @@ describe('webview scripts', () => {
       const controller = stripComments(fs.readFileSync(path.join(PANELS, panel!), 'utf8'));
       const source = stripComments(fs.readFileSync(path.join(MEDIA, script!), 'utf8'));
 
+      // `postMessage({ type: … })` and the `post({ type: … })` helper some
+      // panels funnel through. A panel that only sends through a variable is
+      // invisible to this, which is why schemaPanel.ts is not in the list.
       const sent = new Set(
-        [...controller.matchAll(/postMessage\(\{\s*type:\s*'(\w+)'/g)].map((m) => m[1]!),
+        [...controller.matchAll(/\bpost(?:Message)?\(\{\s*type:\s*'(\w+)'/g)].map((m) => m[1]!),
       );
       assert.ok(sent.size > 0, 'found no outgoing messages at all — the regex has rotted');
 

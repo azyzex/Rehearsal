@@ -17,9 +17,27 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:sql",
-    "onCommand:dryrun.exploreSchema"
+    "onView:dryrun.sidebar"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dryrun",
+          "title": "Dry Run",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "dryrun": [
+        {
+          "id": "dryrun.sidebar",
+          "name": "Database",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "dryrun.preview",
@@ -169,10 +187,12 @@
   "bin": {
     "dryrun": "./dist/cli.js"
   },
+  "icon": "media/marketplace-icon.png",
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "package": "node esbuild.js --production",
+    "vsix": "npm run package && vsce package --no-dependencies",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run compile-tests && node --test \"out/test/**/*.test.js\"",
     "test:ui": "npm run compile-tests && node --test \"out/test/ui/*.test.js\"",
@@ -189,6 +209,7 @@
     "@types/node": "^22.10.0",
     "@types/pg": "^8.15.5",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
     "embedded-postgres": "17.10.0-beta.17",
     "esbuild": "^0.25.0",
     "eslint": "^9.18.0",

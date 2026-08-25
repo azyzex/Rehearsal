@@ -39,6 +39,16 @@ const ENV_PATH_KEY = 'dryrun.lastEnvFile';
 export class ConnectionManager implements vscode.Disposable {
   private adapter: DatabaseAdapter | null = null;
   private active: ActiveConnection | null = null;
+  /** A connection the user picked, which outranks anything found on disk. */
+  private chosen: string | undefined;
+  /**
+   * Told whenever the connection opens or closes.
+   *
+   * The sidebar shows what is connected, and connecting happens in three
+   * places — the sidebar itself, a command, and the .env fallback. Without
+   * this it would only ever be right about the first.
+   */
+  private readonly listeners: (() => void)[] = [];
 
   constructor(private readonly state?: vscode.Memento) {}
 
@@ -46,9 +56,46 @@ export class ConnectionManager implements vscode.Disposable {
     return this.active;
   }
 
+  onChanged(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  private changed(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // A listener that throws is not a reason to fail a connection.
+      }
+    }
+  }
+
   /** Points the manager at a specific `.env`, chosen by the user. */
   async useEnvFile(uri: vscode.Uri): Promise<void> {
     await this.state?.update(ENV_PATH_KEY, uri.toString());
+    await this.close();
+  }
+
+  /**
+   * Connects to a string the user chose, rather than one found for them.
+   *
+   * This is the path the sidebar uses. It wins over the `.env` search for as
+   * long as it is set, because someone who has just picked a database means
+   * that database — falling back to whatever a file in the workspace says
+   * would be the tool overruling them silently.
+   *
+   * The string is held in memory only. It came from the keychain and it goes
+   * nowhere else.
+   */
+  async useConnectionString(connectionString: string): Promise<ActiveConnection> {
+    await this.close();
+    this.chosen = connectionString;
+    return this.acquire();
+  }
+
+  /** Goes back to finding a connection the usual way. */
+  async clearChoice(): Promise<void> {
+    this.chosen = undefined;
     await this.close();
   }
 
@@ -59,11 +106,13 @@ export class ConnectionManager implements vscode.Disposable {
     }
 
     const config = vscode.workspace.getConfiguration('dryrun');
-    const resolved = resolveConnection({
-      setting: config.get<string>('connectionString', ''),
-      env: process.env,
-      ...(await this.readEnvFile(config.get<string>('envFile', '.env'))),
-    });
+    const resolved = this.chosen
+      ? { connectionString: this.chosen, source: { kind: 'chosen' as const, detail: 'chosen in the sidebar' } }
+      : resolveConnection({
+          setting: config.get<string>('connectionString', ''),
+          env: process.env,
+          ...(await this.readEnvFile(config.get<string>('envFile', '.env'))),
+        });
 
     const verdict = checkConnection(resolved.connectionString, {
       productionPatterns: config.get<string[]>('productionPatterns', ['prod', 'production', 'live']),
@@ -90,6 +139,7 @@ export class ConnectionManager implements vscode.Disposable {
       identity: identify(resolved.connectionString),
       source: resolved.source.detail,
     };
+    this.changed();
     return this.active;
   }
 
@@ -100,6 +150,7 @@ export class ConnectionManager implements vscode.Disposable {
     if (adapter) {
       await adapter.dispose();
     }
+    this.changed();
   }
 
   dispose(): void {

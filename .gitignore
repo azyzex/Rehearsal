@@ -17,3 +17,6 @@ media/__ui-*.html
 *.tmp.ts
 e2e.run.mjs
 e2e.out.txt
+
+# The packaged extension. Built from source with npm run vsix.
+*.vsix
