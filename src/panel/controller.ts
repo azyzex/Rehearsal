@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { Diagram } from '../analysis/impact';
 import { Finding, Severity } from '../analysis/types';
 import { Offenders } from '../analysis/offenders';
+import { previewPanelHtml } from './html';
+import { htmlOptionsFor } from './htmlOptions';
 import { SplitStatement } from '../parser/splitter';
 
 /**
@@ -314,48 +316,7 @@ export class PreviewPanel {
   }
 
   private render(): string {
-    const webview = this.panel.webview;
-    const media = (file: string): vscode.Uri =>
-      webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', file));
-
-    const nonce = Array.from({ length: 32 }, () =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.charAt(
-        Math.floor(Math.random() * 62),
-      ),
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="${media('panel.css')}" rel="stylesheet">
-<title>Dry Run</title>
-</head>
-<body>
-<header id="header">
-  <div class="title">
-    <span class="badge-dot" aria-hidden="true"></span>
-    <span id="file">No file analysed yet</span>
-  </div>
-  <div class="meta">
-    <div class="tabs" role="tablist">
-      <button id="tab-list" class="tab active" type="button" role="tab">List</button>
-      <button id="tab-diagram" class="tab" type="button" role="tab">Diagram</button>
-    </div>
-    <span id="connection"></span>
-    <button id="cancel" type="button" hidden>Stop</button>
-  </div>
-</header>
-<div id="summary" class="summary" hidden></div>
-<main id="rows"></main>
-<div id="diagram" hidden></div>
-<footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
-<script nonce="${nonce}" src="${media('panel.js')}"></script>
-</body>
-</html>`;
+    return previewPanelHtml(htmlOptionsFor(this.panel.webview, this.context.extensionUri));
   }
 
   private dispose(): void {

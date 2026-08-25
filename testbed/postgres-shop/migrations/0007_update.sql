@@ -11,3 +11,4 @@ ALTER TABLE users ALTER COLUMN email SET NOT NULL;
 CREATE INDEX idx_orders_status ON orders (status);
 
 ALTER TABLE users ADD COLUMN last_seen_at timestamptz;
+                                                                                                                                                                                                    

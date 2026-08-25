@@ -61,8 +61,35 @@
   };
 
   window.addEventListener('message', (event) => {
-    const message = event.data;
+    try {
+      handle(event.data);
+    } catch (error) {
+      // A thrown handler removes nothing and breaks everything: the listener
+      // survives, but this panel would sit there ignoring every message after
+      // it with nothing on screen to say why. Both halves matter — keep
+      // listening, and put the failure where someone can see it.
+      reportFailure(error);
+    }
+  });
 
+  /**
+   * Shows a handler failure rather than letting it disappear.
+   *
+   * The drawer is the loudest place available that does not destroy whatever
+   * the user was looking at, and the console line is for the case where the
+   * drawer itself is what broke.
+   */
+  function reportFailure(error) {
+    const description = error && error.message ? error.message : String(error);
+    console.error('Dry Run: ' + description, error);
+    try {
+      openDrawer(errorDrawer('Something went wrong', description));
+    } catch {
+      // Nothing further to try; the console line above is the record.
+    }
+  }
+
+  function handle(message) {
     switch (message.type) {
       case 'tableLoading':
         openDrawer(loadingDrawer(message.table));
@@ -132,7 +159,7 @@
       default:
         break;
     }
-  });
+  }
 
   // ---- drawer ------------------------------------------------------------
 
@@ -689,8 +716,12 @@
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
+    const rawRows = detail.sampleRaw || detail.sample;
     detail.sample.forEach((row, index) => {
-      const raw = detail.sampleRaw[index];
+      // Falls back to the display row rather than throwing. Editing a cell
+      // needs the real value, and a drawer that renders without the raw rows
+      // is worth more than one that renders nothing at all.
+      const raw = rawRows[index] || {};
       const tr = document.createElement('tr');
       tr.className = 'data-row';
 

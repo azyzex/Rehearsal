@@ -57,6 +57,24 @@ body {
   gap: 8px;
 }
 
+/* Buttons keep their label on one line. Without this the toolbar solves a
+   narrow window by wrapping "Re-layout" into two lines and growing taller,
+   which is a worse answer than letting the row scroll. */
+#toolbar button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#toolbar .right {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* The one thing in the toolbar that can afford to give up space. */
+#toolbar .left {
+  flex: 1 1 auto;
+}
+
 #toolbar .left {
   min-width: 0;
 }

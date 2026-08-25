@@ -70,8 +70,18 @@
   // ---- messages ----------------------------------------------------------
 
   window.addEventListener('message', (event) => {
-    const message = event.data;
+    try {
+      handle(event.data);
+    } catch (error) {
+      // The diagram half. Same reasoning as the editor half: a thrown handler
+      // leaves a panel that has stopped responding and says nothing about it.
+      console.error('Dry Run: ' + (error && error.message ? error.message : String(error)), error);
+      el.status.hidden = false;
+      el.status.textContent = 'Could not draw that: ' + (error && error.message ? error.message : error);
+    }
+  });
 
+  function handle(message) {
     if (message.type === 'loading') {
       el.status.hidden = false;
       el.status.textContent = 'Reading the schema…';
@@ -105,7 +115,7 @@
       el.overlayNote.hidden = false;
       el.overlayNote.textContent = `Could not read the statistics: ${message.message}`;
     }
-  });
+  }
 
   // ---- building ----------------------------------------------------------
 
@@ -974,6 +984,57 @@
     for (const card of el.tables.querySelectorAll('.table')) {
       card.classList.toggle('opened', card.dataset.table === name);
     }
+    keepInView(name);
+  }
+
+  /**
+   * Pans just enough to bring a card fully into the stage.
+   *
+   * Opening the drawer takes a third of the width away, and the table you
+   * clicked is very often the one that disappears behind it — you click a
+   * thing and the thing goes away, which is a strange way for a diagram to
+   * behave.
+   *
+   * Deliberately minimal, and does nothing at all when the card is already
+   * visible. Re-centring on every open would yank the whole diagram around
+   * every time the drawer opens, which is its own kind of annoying.
+   */
+  function keepInView(name) {
+    const node = nodes.get(name);
+    if (!node || !node.el) {
+      return;
+    }
+
+    const frame = el.stage.getBoundingClientRect();
+    const card = node.el.getBoundingClientRect();
+    const margin = 16;
+
+    let dx = 0;
+    let dy = 0;
+
+    if (card.right > frame.right - margin) {
+      dx = frame.right - margin - card.right;
+    }
+    if (card.left + dx < frame.left + margin) {
+      // Wider than the space left over. Line its left edge up rather than
+      // splitting the difference and clipping both ends.
+      dx = frame.left + margin - card.left;
+    }
+
+    if (card.bottom > frame.bottom - margin) {
+      dy = frame.bottom - margin - card.bottom;
+    }
+    if (card.top + dy < frame.top + margin) {
+      dy = frame.top + margin - card.top;
+    }
+
+    if (dx === 0 && dy === 0) {
+      return;
+    }
+
+    view.x += dx;
+    view.y += dy;
+    apply();
   }
 
 // ---- overlays ----------------------------------------------------------

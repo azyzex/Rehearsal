@@ -7,3 +7,7 @@ dist/
 
 # Rescue files written before a destructive apply.
 .dryrun/
+
+# Screenshots the UI tests take. Useful to look at, not worth versioning.
+ui-shots/
+media/__ui-*.html

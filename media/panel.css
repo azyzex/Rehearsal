@@ -757,18 +757,23 @@ footer {
   color: var(--dryrun-caution);
 }
 
+/* A control has to look like one.
+   These used to take their border from --vscode-panel-border, which in Dark+
+   is #2b2b2b against a #1f1f1f background — a border nobody can see, on a
+   transparent background, which renders a button as a piece of text. Given
+   the editor's own secondary-button colours they read as pressable. */
 .tiny {
   font-size: 0.8em;
   padding: 2px 8px;
-  border: 1px solid var(--dryrun-border);
+  border: 1px solid var(--vscode-contrastBorder, transparent);
   border-radius: 3px;
-  background: transparent;
-  color: var(--vscode-foreground);
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.22));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   cursor: pointer;
 }
 
 .tiny:hover {
-  background: var(--vscode-list-hoverBackground);
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
   border-color: var(--vscode-focusBorder);
 }
 

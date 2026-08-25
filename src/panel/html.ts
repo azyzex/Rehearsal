@@ -1,0 +1,195 @@
+/**
+ * The HTML each panel loads.
+ *
+ * Lifted out of the panels so it can be rendered somewhere other than an
+ * editor. A webview's markup is the one part of it that nothing could test
+ * before: it was built inside a class from `vscode` objects and handed
+ * straight to the editor, so "the element exists" and "the script can find it"
+ * were assumptions rather than facts.
+ *
+ * These take a `media` resolver and a nonce instead of a webview, which is the
+ * whole trick — the editor passes `webview.asWebviewUri`, and the UI tests
+ * pass a function returning a plain filename so a browser can load the same
+ * markup from disk.
+ */
+
+export interface HtmlOptions {
+  /** Resolves a file in `media/` to something the page can load. */
+  readonly media: (file: string) => string;
+  /** Goes in the CSP and on every script tag. */
+  readonly nonce: string;
+  /** The `style-src` the editor requires. Empty when rendering outside one. */
+  readonly cspSource: string;
+}
+
+/** The nonce a webview's CSP needs. Regenerated for every panel. */
+export function nonce(): string {
+  return Array.from({ length: 32 }, () =>
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.charAt(
+      Math.floor(Math.random() * 62),
+    ),
+  ).join('');
+}
+
+
+/**
+ * The Content-Security-Policy each panel runs under.
+ *
+ * `inlineStyles` exists for the schema explorer alone: it positions every card
+ * by setting `style.left` and `style.top`, which is an inline style, and a
+ * layout engine that cannot move anything is not a layout engine. Nothing else
+ * gets it.
+ */
+function csp(options: HtmlOptions, inlineStyles = false): string {
+  const styles = inlineStyles ? `${options.cspSource} 'unsafe-inline'` : options.cspSource;
+  return `default-src 'none'; style-src ${styles}; script-src 'nonce-${options.nonce}';`;
+}
+
+/** The preview panel: a list of statements, and a diagram of what they touch. */
+export function previewPanelHtml(options: HtmlOptions): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="${csp(options)}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="${options.media('panel.css')}" rel="stylesheet">
+<title>Dry Run</title>
+</head>
+<body>
+<header id="header">
+  <div class="title">
+    <span class="badge-dot" aria-hidden="true"></span>
+    <span id="file">No file analysed yet</span>
+  </div>
+  <div class="meta">
+    <div class="tabs" role="tablist">
+      <button id="tab-list" class="tab active" type="button" role="tab">List</button>
+      <button id="tab-diagram" class="tab" type="button" role="tab">Diagram</button>
+    </div>
+    <span id="connection"></span>
+    <button id="cancel" type="button" hidden>Stop</button>
+  </div>
+</header>
+<div id="summary" class="summary" hidden></div>
+<main id="rows"></main>
+<div id="diagram" hidden></div>
+<footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
+<script nonce="${options.nonce}" src="${options.media('panel.js')}"></script>
+</body>
+</html>`;
+}
+
+/** The schema explorer: the whole database, and the pending edits to it. */
+export function schemaPanelHtml(options: HtmlOptions): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="${csp(options, true)}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="${options.media('schema.css')}" rel="stylesheet">
+<title>Database Schema</title>
+</head>
+<body>
+<header id="toolbar">
+  <div class="left">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="stats">Reading the schema…</span>
+    <span id="view-toggle" class="toggle" hidden>
+      <button id="view-before" class="seg active" type="button">Now</button>
+      <button id="view-after" class="seg" type="button">After changes</button>
+    </span>
+  </div>
+  <div class="right">
+    <input id="search" type="search" placeholder="Find a table or column" spellcheck="false">
+    <select id="schema-filter" title="Schema"></select>
+    <select id="focus" title="Show only tables near the selected one">
+      <option value="0">Whole schema</option>
+      <option value="1">1 hop</option>
+      <option value="2">2 hops</option>
+      <option value="3">3 hops</option>
+    </select>
+    <select id="overlay" title="Colour the tables by a measurement">
+      <option value="none">No overlay</option>
+      <option value="rows">Colour by rows</option>
+      <option value="bytes">Colour by size</option>
+      <option value="dead">Colour by dead rows</option>
+      <option value="stale">Colour by stale statistics</option>
+      <option value="fk">Foreign keys with no index</option>
+    </select>
+    <button id="fit" type="button" title="Fit the whole schema in view">Fit</button>
+    <button id="relayout" type="button" title="Lay the diagram out again">Re-layout</button>
+    <button id="new-table" type="button" title="Add a table to the pending changes">+ Table</button>
+    <button id="export-diagram" type="button" title="Export as a Mermaid diagram GitHub can render">Export</button>
+  </div>
+</header>
+
+<div id="body">
+  <div id="stage">
+    <div id="canvas">
+      <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="tables"></div>
+    </div>
+    <div id="status" class="status">Connecting…</div>
+  </div>
+
+  <aside id="drawer" hidden></aside>
+</div>
+
+<section id="changes" hidden>
+  <header class="changes-head">
+    <span id="changes-title">Pending changes</span>
+    <span class="spacer"></span>
+    <button id="export" type="button">Export SQL</button>
+    <button id="export-down" type="button" title="The migration that undoes this one">Down SQL</button>
+    <button id="discard" type="button">Discard</button>
+    <button id="preview" type="button" class="primary">Preview</button>
+    <button id="apply" type="button" class="danger" hidden>Apply</button>
+  </header>
+  <div id="changes-body"></div>
+</section>
+
+<div id="overlay-note" class="overlay-note" hidden></div>
+<footer id="legend">
+  <span><i class="swatch pk"></i> primary key</span>
+  <span><i class="swatch fk"></i> foreign key</span>
+  <span>Drag to move · scroll to zoom · click a table to open it</span>
+  <span id="connection"></span>
+</footer>
+
+<script nonce="${options.nonce}" src="${options.media('schema.js')}"></script>
+<script nonce="${options.nonce}" src="${options.media('schema-editor.js')}"></script>
+</body>
+</html>`;
+}
+
+/** The index panel: one card per candidate, with before and after on one scale. */
+export function indexPanelHtml(options: HtmlOptions): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="${csp(options)}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="${options.media('panel.css')}" rel="stylesheet">
+<title>Dry Run — Indexes</title>
+</head>
+<body>
+<header id="header">
+  <div class="title">
+    <span class="badge-dot" aria-hidden="true"></span>
+    <span id="query">No query tested yet</span>
+  </div>
+  <div class="meta">
+    <span id="connection"></span>
+  </div>
+</header>
+<div id="summary" class="summary" hidden></div>
+<main id="results"></main>
+<footer id="footer">No index was kept. Dry Run only ever reads and rolls back.</footer>
+<script nonce="${options.nonce}" src="${options.media('indexes.js')}"></script>
+</body>
+</html>`;
+}

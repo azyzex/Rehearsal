@@ -84,8 +84,17 @@
   });
 
   window.addEventListener('message', (event) => {
-    const message = event.data;
+    try {
+      handle(event.data);
+    } catch (error) {
+      // Same guard as the schema panel. A preview that silently stops updating
+      // halfway through a migration is worse than one that says it broke.
+      console.error('Dry Run: ' + (error && error.message ? error.message : String(error)), error);
+      el.rows.appendChild(banner('Could not render that: ' + (error && error.message ? error.message : error)));
+    }
+  });
 
+  function handle(message) {
     switch (message.type) {
       case 'begin':
         statements = message.statements;
@@ -149,7 +158,7 @@
         render();
         break;
     }
-  });
+  }
 
   function showSummary(text) {
     if (!text) {

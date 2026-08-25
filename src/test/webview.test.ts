@@ -23,12 +23,25 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const MEDIA = path.join(ROOT, 'media');
 const PANELS = path.join(ROOT, 'src', 'panel');
 
+/** The markup of one panel, read out of the function that builds it. */
+export function htmlFor(functionName: string): string {
+  const source = fs.readFileSync(path.join(PANELS, 'html.ts'), 'utf8');
+  const start = source.indexOf(`export function ${functionName}(`);
+  if (start < 0) {
+    throw new Error(`No ${functionName} in html.ts`);
+  }
+  const open = source.indexOf('`<!DOCTYPE html>', start);
+  const close = source.indexOf('</html>`', open);
+  return source.slice(open + 1, close + '</html>'.length);
+}
+
 /** The script files each panel loads, read out of its HTML. */
-function scriptsFor(controller: string): string[] {
-  const source = fs.readFileSync(path.join(PANELS, controller), 'utf8');
+function scriptsFor(functionName: string): string[] {
   // Either quote style: these calls sit inside a template literal holding HTML,
   // and the formatter rewrites the quotes there without asking.
-  return [...source.matchAll(/media\(['"]([^'"]+\.js)['"]\)/g)].map((match) => match[1]!);
+  return [...htmlFor(functionName).matchAll(/media\(['"]([^'"]+\.js)['"]\)/g)].map(
+    (match) => match[1]!,
+  );
 }
 
 /** Removes // and block comments, so prose about a call is not counted as one. */
@@ -39,11 +52,16 @@ function stripComments(source: string): string {
   });
 }
 
-const panels: Record<string, string[]> = {
-  'controller.ts': scriptsFor('controller.ts'),
-  'schemaPanel.ts': scriptsFor('schemaPanel.ts'),
-  'indexPanel.ts': scriptsFor('indexPanel.ts'),
+/** Each panel's controller, the function building its markup, and its scripts. */
+const HTML_OF: Record<string, string> = {
+  'controller.ts': 'previewPanelHtml',
+  'schemaPanel.ts': 'schemaPanelHtml',
+  'indexPanel.ts': 'indexPanelHtml',
 };
+
+const panels: Record<string, string[]> = Object.fromEntries(
+  Object.entries(HTML_OF).map(([controller, builder]) => [controller, scriptsFor(builder)]),
+);
 
 describe('webview scripts', () => {
   it('finds the scripts each panel loads', () => {
@@ -86,7 +104,7 @@ describe('webview scripts', () => {
     // becomes a TypeError on first use — often long after startup, in a branch
     // nobody exercised.
     for (const [panel, scripts] of Object.entries(panels)) {
-      const html = fs.readFileSync(path.join(PANELS, panel), 'utf8');
+      const html = htmlFor(HTML_OF[panel]!);
       const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]!));
 
       for (const script of scripts) {

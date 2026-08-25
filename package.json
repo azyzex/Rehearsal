@@ -175,6 +175,7 @@
     "package": "node esbuild.js --production",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run compile-tests && node --test \"out/test/**/*.test.js\"",
+    "test:ui": "npm run compile-tests && node --test \"out/test/ui/*.test.js\"",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "testbed:db": "node testbed/postgres-shop/scripts/local-db.mjs",
@@ -191,6 +192,7 @@
     "embedded-postgres": "17.10.0-beta.17",
     "esbuild": "^0.25.0",
     "eslint": "^9.18.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.20.0"
   },

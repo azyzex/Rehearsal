@@ -5,6 +5,8 @@ import { Thresholds } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
 import { downMigration } from '../edit/down';
+import { schemaPanelHtml } from './html';
+import { htmlOptionsFor } from './htmlOptions';
 import { ChangesetHistory } from '../edit/history';
 import { diffSchemas, projectSchema } from '../edit/project';
 import { EditSession } from '../edit/session';
@@ -603,97 +605,7 @@ export class SchemaPanel {
   }
 
   private render(): string {
-    const webview = this.panel.webview;
-    const media = (file: string): vscode.Uri =>
-      webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', file));
-
-    const nonce = Array.from({ length: 32 }, () =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.charAt(
-        Math.floor(Math.random() * 62),
-      ),
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="${media('schema.css')}" rel="stylesheet">
-<title>Database Schema</title>
-</head>
-<body>
-<header id="toolbar">
-  <div class="left">
-    <span class="dot" aria-hidden="true"></span>
-    <span id="stats">Reading the schema…</span>
-    <span id="view-toggle" class="toggle" hidden>
-      <button id="view-before" class="seg active" type="button">Now</button>
-      <button id="view-after" class="seg" type="button">After changes</button>
-    </span>
-  </div>
-  <div class="right">
-    <input id="search" type="search" placeholder="Find a table or column" spellcheck="false">
-    <select id="schema-filter" title="Schema"></select>
-    <select id="focus" title="Show only tables near the selected one">
-      <option value="0">Whole schema</option>
-      <option value="1">1 hop</option>
-      <option value="2">2 hops</option>
-      <option value="3">3 hops</option>
-    </select>
-    <select id="overlay" title="Colour the tables by a measurement">
-      <option value="none">No overlay</option>
-      <option value="rows">Colour by rows</option>
-      <option value="bytes">Colour by size</option>
-      <option value="dead">Colour by dead rows</option>
-      <option value="stale">Colour by stale statistics</option>
-      <option value="fk">Foreign keys with no index</option>
-    </select>
-    <button id="fit" type="button" title="Fit the whole schema in view">Fit</button>
-    <button id="relayout" type="button" title="Lay the diagram out again">Re-layout</button>
-    <button id="new-table" type="button" title="Add a table to the pending changes">+ Table</button>
-    <button id="export-diagram" type="button" title="Export as a Mermaid diagram GitHub can render">Export</button>
-  </div>
-</header>
-
-<div id="body">
-  <div id="stage">
-    <div id="canvas">
-      <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div id="tables"></div>
-    </div>
-    <div id="status" class="status">Connecting…</div>
-  </div>
-
-  <aside id="drawer" hidden></aside>
-</div>
-
-<section id="changes" hidden>
-  <header class="changes-head">
-    <span id="changes-title">Pending changes</span>
-    <span class="spacer"></span>
-    <button id="export" type="button">Export SQL</button>
-    <button id="export-down" type="button" title="The migration that undoes this one">Down SQL</button>
-    <button id="discard" type="button">Discard</button>
-    <button id="preview" type="button" class="primary">Preview</button>
-    <button id="apply" type="button" class="danger" hidden>Apply</button>
-  </header>
-  <div id="changes-body"></div>
-</section>
-
-<div id="overlay-note" class="overlay-note" hidden></div>
-<footer id="legend">
-  <span><i class="swatch pk"></i> primary key</span>
-  <span><i class="swatch fk"></i> foreign key</span>
-  <span>Drag to move · scroll to zoom · click a table to open it</span>
-  <span id="connection"></span>
-</footer>
-
-<script nonce="${nonce}" src="${media('schema.js')}"></script>
-<script nonce="${nonce}" src="${media('schema-editor.js')}"></script>
-</body>
-</html>`;
+    return schemaPanelHtml(htmlOptionsFor(this.panel.webview, this.context.extensionUri));
   }
 
   private dispose(): void {

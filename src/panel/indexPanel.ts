@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { IndexCandidate } from '../analysis/indexAdvice';
 import { IndexExperiment } from '../adapters/types';
+import { indexPanelHtml } from './html';
+import { htmlOptionsFor } from './htmlOptions';
 
 /**
  * What an index would do, side by side with what happens now.
@@ -123,42 +125,7 @@ export class IndexPanel {
   }
 
   private render(context: vscode.ExtensionContext): string {
-    const webview = this.panel.webview;
-    const media = (file: string): vscode.Uri =>
-      webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', file));
-
-    const nonce = Array.from({ length: 32 }, () =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.charAt(
-        Math.floor(Math.random() * 62),
-      ),
-    ).join('');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="${media('panel.css')}" rel="stylesheet">
-<title>Dry Run — Indexes</title>
-</head>
-<body>
-<header id="header">
-  <div class="title">
-    <span class="badge-dot" aria-hidden="true"></span>
-    <span id="query">No query tested yet</span>
-  </div>
-  <div class="meta">
-    <span id="connection"></span>
-  </div>
-</header>
-<div id="summary" class="summary" hidden></div>
-<main id="results"></main>
-<footer id="footer">No index was kept. Dry Run only ever reads and rolls back.</footer>
-<script nonce="${nonce}" src="${media('indexes.js')}"></script>
-</body>
-</html>`;
+    return indexPanelHtml(htmlOptionsFor(this.panel.webview, context.extensionUri));
   }
 
   private dispose(): void {
