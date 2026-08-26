@@ -301,7 +301,46 @@ function describeKey(key: Readonly<Record<string, unknown>>): string {
 }
 
 /** Turns one edit into the statement that performs it. */
-export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
+/**
+ * How an engine quotes an identifier in the SQL this module writes.
+ *
+ * Postgres and MySQL are both "SQL" and do not agree on this: MySQL's default
+ * sql_mode reads a double-quoted word as a *string literal*, so the migration
+ * this file exported for a MySQL user was a syntax error every time. Passed in
+ * rather than assumed, because assuming is what produced that.
+ */
+export interface SqlQuoting {
+  identifier(name: string): string;
+  qualified(table: string): string;
+}
+
+export const ANSI_QUOTING: SqlQuoting = {
+  identifier: quoteIdentifier,
+  qualified: quoteQualified,
+};
+
+/** MySQL: backticks, and a doubled backtick to escape one. */
+export const BACKTICK_QUOTING: SqlQuoting = {
+  identifier: (name) => {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      throw new Error('An identifier cannot be empty.');
+    }
+    return `\`${trimmed.replace(/`/g, '``')}\``;
+  },
+  qualified: (table) =>
+    table
+      .split('.')
+      .map((part) => BACKTICK_QUOTING.identifier(part))
+      .join('.'),
+};
+
+
+export function toStatement(
+  edit: Edit,
+  editIndex: number,
+  quoting: SqlQuoting = ANSI_QUOTING,
+): GeneratedStatement {
   const label = describeEdit(edit);
   const make = (sql: string, params: readonly unknown[] = []): GeneratedStatement => ({
     sql,
@@ -313,7 +352,7 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
   switch (edit.kind) {
     case 'add_column': {
       const parts = [
-        `ALTER TABLE ${quoteQualified(edit.table)} ADD COLUMN ${quoteIdentifier(edit.column)} ${checkTypeName(edit.type)}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} ADD COLUMN ${quoting.identifier(edit.column)} ${checkTypeName(edit.type)}`,
       ];
       if (edit.defaultExpression) {
         parts.push(`DEFAULT ${checkExpression(edit.defaultExpression)}`);
@@ -326,45 +365,45 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
 
     case 'drop_column':
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} DROP COLUMN ${quoteIdentifier(edit.column)}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} DROP COLUMN ${quoting.identifier(edit.column)}`,
       );
 
     case 'rename_column':
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} RENAME COLUMN ${quoteIdentifier(edit.column)} TO ${quoteIdentifier(edit.to)}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} RENAME COLUMN ${quoting.identifier(edit.column)} TO ${quoting.identifier(edit.to)}`,
       );
 
     case 'alter_type': {
-      const base = `ALTER TABLE ${quoteQualified(edit.table)} ALTER COLUMN ${quoteIdentifier(edit.column)} TYPE ${checkTypeName(edit.to)}`;
+      const base = `ALTER TABLE ${quoting.qualified(edit.table)} ALTER COLUMN ${quoting.identifier(edit.column)} TYPE ${checkTypeName(edit.to)}`;
       return make(edit.using ? `${base} USING ${checkExpression(edit.using)}` : base);
     }
 
     case 'set_nullability':
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} ALTER COLUMN ${quoteIdentifier(edit.column)} ${edit.nullable ? 'DROP' : 'SET'} NOT NULL`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} ALTER COLUMN ${quoting.identifier(edit.column)} ${edit.nullable ? 'DROP' : 'SET'} NOT NULL`,
       );
 
     case 'set_default':
       return make(
         edit.expression
-          ? `ALTER TABLE ${quoteQualified(edit.table)} ALTER COLUMN ${quoteIdentifier(edit.column)} SET DEFAULT ${checkExpression(edit.expression)}`
-          : `ALTER TABLE ${quoteQualified(edit.table)} ALTER COLUMN ${quoteIdentifier(edit.column)} DROP DEFAULT`,
+          ? `ALTER TABLE ${quoting.qualified(edit.table)} ALTER COLUMN ${quoting.identifier(edit.column)} SET DEFAULT ${checkExpression(edit.expression)}`
+          : `ALTER TABLE ${quoting.qualified(edit.table)} ALTER COLUMN ${quoting.identifier(edit.column)} DROP DEFAULT`,
       );
 
     case 'add_index': {
       const name = edit.name ?? defaultIndexName(edit.table, edit.columns, edit.unique);
       return make(
         `CREATE ${edit.unique ? 'UNIQUE ' : ''}INDEX ${edit.concurrently ? 'CONCURRENTLY ' : ''}` +
-          `${quoteIdentifier(name)} ON ${quoteQualified(edit.table)} ` +
-          `(${edit.columns.map(quoteIdentifier).join(', ')})`,
+          `${quoting.identifier(name)} ON ${quoting.qualified(edit.table)} ` +
+          `(${edit.columns.map(quoting.identifier).join(', ')})`,
       );
     }
 
     case 'add_unique': {
       const name = edit.name ?? `${bare(edit.table)}_${edit.columns.join('_')}_key`;
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} ADD CONSTRAINT ${quoteIdentifier(name)} ` +
-          `UNIQUE (${edit.columns.map(quoteIdentifier).join(', ')})`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} ADD CONSTRAINT ${quoting.identifier(name)} ` +
+          `UNIQUE (${edit.columns.map(quoting.identifier).join(', ')})`,
       );
     }
 
@@ -372,59 +411,59 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
       const name = edit.name ?? `${bare(edit.table)}_${edit.columns.join('_')}_fkey`;
       const target =
         edit.referencedColumns.length > 0
-          ? ` (${edit.referencedColumns.map(quoteIdentifier).join(', ')})`
+          ? ` (${edit.referencedColumns.map(quoting.identifier).join(', ')})`
           : '';
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} ADD CONSTRAINT ${quoteIdentifier(name)} ` +
-          `FOREIGN KEY (${edit.columns.map(quoteIdentifier).join(', ')}) ` +
-          `REFERENCES ${quoteQualified(edit.referencedTable)}${target}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} ADD CONSTRAINT ${quoting.identifier(name)} ` +
+          `FOREIGN KEY (${edit.columns.map(quoting.identifier).join(', ')}) ` +
+          `REFERENCES ${quoting.qualified(edit.referencedTable)}${target}`,
       );
     }
 
     case 'add_check': {
       const name = edit.name ?? `${bare(edit.table)}_check`;
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} ADD CONSTRAINT ${quoteIdentifier(name)} ` +
+        `ALTER TABLE ${quoting.qualified(edit.table)} ADD CONSTRAINT ${quoting.identifier(name)} ` +
           `CHECK (${checkExpression(edit.expression)})`,
       );
     }
 
     case 'drop_constraint':
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} DROP CONSTRAINT ${quoteIdentifier(edit.name)}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} DROP CONSTRAINT ${quoting.identifier(edit.name)}`,
       );
 
     case 'rename_table':
       return make(
-        `ALTER TABLE ${quoteQualified(edit.table)} RENAME TO ${quoteIdentifier(edit.to)}`,
+        `ALTER TABLE ${quoting.qualified(edit.table)} RENAME TO ${quoting.identifier(edit.to)}`,
       );
 
     case 'drop_table':
-      return make(`DROP TABLE ${quoteQualified(edit.table)}`);
+      return make(`DROP TABLE ${quoting.qualified(edit.table)}`);
 
     case 'create_table':
-      return make(createTableSql(edit));
+      return make(createTableSql(edit, quoting));
 
     case 'update_row': {
       const params: unknown[] = [];
       const assignments = Object.entries(edit.set).map(([column, value]) => {
         params.push(value);
-        return `${quoteIdentifier(column)} = $${params.length}`;
+        return `${quoting.identifier(column)} = $${params.length}`;
       });
       if (assignments.length === 0) {
         throw new Error('An update needs at least one column to change.');
       }
-      const where = keyPredicate(edit.key, params);
+      const where = keyPredicate(edit.key, params, quoting);
       return make(
-        `UPDATE ${quoteQualified(edit.table)} SET ${assignments.join(', ')} WHERE ${where}`,
+        `UPDATE ${quoting.qualified(edit.table)} SET ${assignments.join(', ')} WHERE ${where}`,
         params,
       );
     }
 
     case 'delete_row': {
       const params: unknown[] = [];
-      const where = keyPredicate(edit.key, params);
-      return make(`DELETE FROM ${quoteQualified(edit.table)} WHERE ${where}`, params);
+      const where = keyPredicate(edit.key, params, quoting);
+      return make(`DELETE FROM ${quoting.qualified(edit.table)} WHERE ${where}`, params);
     }
 
     case 'insert_row': {
@@ -435,8 +474,8 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
       const params = columns.map((column) => edit.values[column]);
       const placeholders = columns.map((_, i) => `$${i + 1}`);
       return make(
-        `INSERT INTO ${quoteQualified(edit.table)} ` +
-          `(${columns.map(quoteIdentifier).join(', ')}) VALUES (${placeholders.join(', ')})`,
+        `INSERT INTO ${quoting.qualified(edit.table)} ` +
+          `(${columns.map(quoting.identifier).join(', ')}) VALUES (${placeholders.join(', ')})`,
         params,
       );
     }
@@ -453,7 +492,11 @@ export function toStatement(edit: Edit, editIndex: number): GeneratedStatement {
  * refused. The visual editor is the one place where a missing WHERE could
  * happen silently rather than being visible in text the user wrote.
  */
-function keyPredicate(key: Readonly<Record<string, unknown>>, params: unknown[]): string {
+function keyPredicate(
+  key: Readonly<Record<string, unknown>>,
+  params: unknown[],
+  quoting: SqlQuoting = ANSI_QUOTING,
+): string {
   const entries = Object.entries(key);
   if (entries.length === 0) {
     throw new Error(
@@ -465,10 +508,10 @@ function keyPredicate(key: Readonly<Record<string, unknown>>, params: unknown[])
   return entries
     .map(([column, value]) => {
       if (value === null || value === undefined) {
-        return `${quoteIdentifier(column)} IS NULL`;
+        return `${quoting.identifier(column)} IS NULL`;
       }
       params.push(value);
-      return `${quoteIdentifier(column)} = $${params.length}`;
+      return `${quoting.identifier(column)} = $${params.length}`;
     })
     .join(' AND ');
 }
@@ -595,7 +638,10 @@ function literalForDisplay(value: unknown): string {
  * a list rather than a fixed shape, and inlining it made that function hard to
  * read for the sake of one case.
  */
-export function createTableSql(edit: CreateTable): string {
+export function createTableSql(
+  edit: CreateTable,
+  quoting: SqlQuoting = ANSI_QUOTING,
+): string {
   if (edit.columns.length === 0) {
     throw new Error('A table needs at least one column.');
   }
@@ -603,7 +649,7 @@ export function createTableSql(edit: CreateTable): string {
   const keys = edit.columns.filter((column) => column.primaryKey).map((column) => column.name);
 
   const definitions = edit.columns.map((column) => {
-    const parts = [quoteIdentifier(column.name), checkTypeName(column.type)];
+    const parts = [quoting.identifier(column.name), checkTypeName(column.type)];
     // A single-column key is declared inline; a composite one needs its own
     // clause, and mixing the two forms produces two primary keys and an error.
     if (column.primaryKey && keys.length === 1) {
@@ -615,8 +661,8 @@ export function createTableSql(edit: CreateTable): string {
   });
 
   if (keys.length > 1) {
-    definitions.push(`PRIMARY KEY (${keys.map(quoteIdentifier).join(', ')})`);
+    definitions.push(`PRIMARY KEY (${keys.map(quoting.identifier).join(', ')})`);
   }
 
-  return `CREATE TABLE ${quoteQualified(edit.table)} (${definitions.join(', ')})`;
+  return `CREATE TABLE ${quoting.qualified(edit.table)} (${definitions.join(', ')})`;
 }

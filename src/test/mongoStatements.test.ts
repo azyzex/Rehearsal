@@ -287,3 +287,49 @@ describe('the changeset, in each engine', () => {
     assert.match(changeset.toSql(), /ALTER TABLE/);
   });
 });
+
+describe('the SQL each SQL engine actually accepts', () => {
+  // Postgres and MySQL are both "SQL" and do not agree on quoting. MySQL's
+  // default sql_mode reads a double-quoted word as a string literal, so every
+  // migration this exported for a MySQL user was a syntax error — offered as
+  // the file to review and keep, and rejected the moment anyone ran it.
+  const edits: Edit[] = [
+    { kind: 'drop_column', table: 'users', column: 'email' },
+    { kind: 'rename_table', table: 'users', to: 'people' },
+    { kind: 'update_row', table: 'users', key: { id: 1 }, set: { tier: 'pro' } },
+  ];
+
+  const scriptFor = (engine: 'postgres' | 'mysql'): string => {
+    const changeset = new Changeset();
+    changeset.useDialect(dialectFor(engine));
+    for (const edit of edits) {
+      changeset.add(edit);
+    }
+    return changeset.toSql();
+  };
+
+  it('quotes Postgres the ANSI way', () => {
+    const script = scriptFor('postgres');
+    assert.match(script, /ALTER TABLE "users" DROP COLUMN "email"/);
+    assert.doesNotMatch(script, /`/, 'no backticks anywhere');
+  });
+
+  it('quotes MySQL with backticks, everywhere it quotes at all', () => {
+    const script = scriptFor('mysql');
+
+    assert.match(script, /ALTER TABLE `users` DROP COLUMN `email`/);
+    assert.match(script, /ALTER TABLE `users` RENAME TO `people`/);
+    assert.match(script, /UPDATE `users` SET `tier` = 'pro' WHERE `id` = 1/);
+
+    // The whole point: not one ANSI-quoted identifier survives, because each
+    // one of them is a string literal to MySQL.
+    assert.doesNotMatch(script, /"users"|"email"|"tier"|"id"|"people"/);
+  });
+
+  it('escapes a backtick in a name by doubling it', () => {
+    const changeset = new Changeset();
+    changeset.useDialect(dialectFor('mysql'));
+    changeset.add({ kind: 'drop_table', table: 'we`ird' });
+    assert.match(changeset.toSql(), /DROP TABLE `we``ird`/);
+  });
+});

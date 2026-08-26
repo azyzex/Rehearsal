@@ -1,5 +1,11 @@
 import { DatabaseAdapter, Engine } from '../adapters/types';
-import { Edit, GeneratedStatement, inlineParams, toStatement } from './changeset';
+import {
+  BACKTICK_QUOTING,
+  Edit,
+  GeneratedStatement,
+  inlineParams,
+  toStatement,
+} from './changeset';
 import { DownMigration, downMigration } from './down';
 import { mongoDownMigration } from './mongoDown';
 import { toMongoScript, toMongoStatement } from './mongoStatements';
@@ -90,7 +96,18 @@ const SQL: EditDialect = {
   downMigration,
 };
 
-const MYSQL: EditDialect = { ...SQL, engine: 'mysql' };
+/**
+ * MySQL is SQL with different quotes, and getting that wrong is not cosmetic.
+ *
+ * Its default sql_mode reads `"users"` as the string 'users', so every
+ * migration this exported for a MySQL user was a syntax error — offered as the
+ * file to review and keep, and rejected the moment anyone ran it.
+ */
+const MYSQL: EditDialect = {
+  ...SQL,
+  engine: 'mysql',
+  toStatement: (edit, editIndex) => toStatement(edit, editIndex, BACKTICK_QUOTING),
+};
 
 const MONGO: EditDialect = {
   engine: 'mongo',

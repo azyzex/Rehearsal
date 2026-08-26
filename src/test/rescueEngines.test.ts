@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { MongoAdapter } from '../adapters/mongo';
 import { MysqlAdapter } from '../adapters/mysql';
-import { Edit } from '../edit/changeset';
+import { Changeset, Edit } from '../edit/changeset';
+import { dialectFor } from '../edit/dialect';
 import { captureRescue } from '../edit/rescue';
 import { rescueWriterFor } from '../edit/rescueWriter';
 import { MongoFixture, seedMongo, startMongo } from './support/mongoFixture';
@@ -230,5 +231,83 @@ describe('the rescue file, per engine', () => {
         'the values that came back are not the values that went in',
       );
     });
+  });
+});
+
+/**
+ * The migration this exports for MySQL, run by MySQL.
+ *
+ * The quoting bug it guards is the kind that looks completely fine until a real
+ * server reads it: `ALTER TABLE "users"` is well-formed, readable, and rejected.
+ */
+describe('the exported migration, run by a real MySQL', () => {
+  let fixture: MysqlFixture;
+
+  before(async () => {
+    fixture = await startMysql();
+    const connection = await fixture.connect();
+    try {
+      await seedMysql(connection);
+    } finally {
+      await connection.end();
+    }
+  });
+
+  after(async () => {
+    await fixture.stop();
+  });
+
+  it('runs, statement by statement', async () => {
+    const changeset = new Changeset();
+    changeset.useDialect(dialectFor('mysql'));
+    changeset.add({ kind: 'drop_column', table: 'users', column: 'nickname' });
+    changeset.add({
+      kind: 'add_index',
+      table: 'users',
+      columns: ['org_id'],
+      unique: false,
+      concurrently: false,
+      name: 'by_org',
+    });
+    changeset.add({ kind: 'update_row', table: 'users', key: { id: 1 }, set: { tier: 'pro' } });
+
+    const connection = await fixture.connect();
+    try {
+      for (const statement of changeset.statements()) {
+        // Bound the way the adapter binds them, not inlined: this is the path
+        // an apply would take.
+        await connection.query(
+          statement.sql.replace(/\$\d+/g, '?'),
+          [...statement.params],
+        );
+      }
+
+      const [columns] = await connection.query(
+        'SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ?',
+        [fixture.database, 'users'],
+      );
+      const names = (columns as Record<string, unknown>[]).map((row) =>
+        String(row['column_name'] ?? row['COLUMN_NAME']),
+      );
+      assert.ok(!names.includes('nickname'), 'the DROP COLUMN did not run');
+
+      const [rows] = await connection.query('SELECT tier FROM users WHERE id = 1');
+      assert.equal((rows as { tier: string }[])[0]!.tier, 'pro', 'the UPDATE did not run');
+    } finally {
+      await connection.end();
+    }
+  });
+
+  it('is rejected when quoted the ANSI way, which is what it used to be', async () => {
+    // The proof that the fix was needed rather than cosmetic.
+    const connection = await fixture.connect();
+    try {
+      await assert.rejects(
+        () => connection.query('ALTER TABLE "users" DROP COLUMN "tier"'),
+        /You have an error in your SQL syntax/i,
+      );
+    } finally {
+      await connection.end();
+    }
   });
 });
