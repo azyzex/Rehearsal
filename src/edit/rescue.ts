@@ -1,5 +1,5 @@
 import { DatabaseAdapter, Row } from "../adapters/types";
-import { Edit } from "./changeset";
+import { Edit, describeEdit } from "./changeset";
 import { RescueWriter, rescueWriterFor } from "./rescueWriter";
 
 /**
@@ -14,7 +14,10 @@ import { RescueWriter, rescueWriterFor } from "./rescueWriter";
  * It is read-only and runs before the transaction that applies anything. The
  * file it produces is reviewable, diffable, and runnable by hand with no
  * tooling from here, because a rescue that depends on the tool that caused the
- * problem is not much of a rescue. Which language it is written in belongs to
+ * problem is not much of a rescue. Section headings are the plain-English
+ * description of the change rather than a SQL phrasing of it, so a MongoDB
+ * rescue file does not announce itself with "DROP TABLE". Which language the
+ * statements are written in belongs to
  * the engine — see `rescueWriter.ts`, which also owns the filters used to find
  * the rows, because building those here in one engine's dialect is how the
  * file came to be empty on one engine and full of the wrong rows on another.
@@ -86,7 +89,7 @@ async function capture(
       const total = await adapter.countRows(change.table);
       const rows = await adapter.rowsMatching(change.table, "true", limit);
       return section(
-        `DROP TABLE ${change.table}`,
+        describeEdit(change),
         change.table,
         rows,
         total,
@@ -109,7 +112,7 @@ async function capture(
       const kept = rows.map((row) => project(row, [...keys, change.column]));
 
       return section(
-        `DROP COLUMN ${change.table}.${change.column}`,
+        describeEdit(change),
         change.table,
         kept,
         total,
@@ -126,7 +129,7 @@ async function capture(
       const where = writer.byKey(change.key);
       const rows = await adapter.rowsMatching(change.table, where, 1);
       return section(
-        `DELETE FROM ${change.table}`,
+        describeEdit(change),
         change.table,
         rows,
         rows.length,
@@ -146,7 +149,7 @@ async function capture(
       const kept = rows.map((row) => project(row, [...keys, ...columns]));
 
       return section(
-        `UPDATE ${change.table}`,
+        describeEdit(change),
         change.table,
         kept,
         kept.length,
@@ -168,7 +171,7 @@ async function capture(
       const kept = rows.map((row) => project(row, [...keys, change.column]));
 
       return section(
-        `ALTER ${change.table}.${change.column} TO ${change.to}`,
+        describeEdit(change),
         change.table,
         kept,
         total,

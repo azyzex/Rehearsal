@@ -511,12 +511,29 @@ describe('the schema explorer, rendered', () => {
     it('colours the worst one differently from the safe one', async () => {
       // A colour scale that paints every affected card the same has drawn
       // nothing.
-      const colours = (await panel.page.evaluate(`
-        Array.prototype.map.call(document.querySelectorAll('.table.affected'), function (card) {
-          return getComputedStyle(card).borderTopColor;
-        })
-      `)) as string[];
-      assert.equal(new Set(colours).size, 2, `both are ${colours.join(', ')}`);
+      //
+      // Polled rather than read once. The two tests above read *attributes*,
+      // which are there the moment the handler returns; this reads a computed
+      // style, which is not there until the browser has recalculated. Reading
+      // it immediately passed about one run in three and failed the other two
+      // with both cards reporting the plain border colour — a flake that looks
+      // exactly like the bug it is testing for.
+      const settled = await panel.page.waitForFunction(
+        `(function () {
+          var cards = document.querySelectorAll('.table.affected');
+          if (cards.length < 2) { return null; }
+          var seen = {};
+          for (var i = 0; i < cards.length; i++) {
+            seen[getComputedStyle(cards[i]).borderTopColor] = true;
+          }
+          return Object.keys(seen);
+        })()`,
+        undefined,
+        { timeout: 5000 },
+      );
+
+      const colours = (await settled.jsonValue()) as string[];
+      assert.equal(colours.length, 2, `both are ${colours.join(', ')}`);
     });
 
     it('keeps the marks through a re-layout', async () => {
