@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { schemaPanelHtml } from '../../panel/html';
-import { Panel, closeBrowser, openPanel } from '../support/uiHarness';
+import { Panel, closeBrowser, openPanel, visible } from '../support/uiHarness';
 
 /**
  * The visual editor's own buttons.
@@ -361,5 +361,125 @@ describe('the visual editor, using its own buttons', () => {
 
   it('reached for no dialog at any point', async () => {
     assert.deepEqual(await panel.modals(), []);
+  });
+});
+
+/**
+ * The editor, told it is talking to MongoDB.
+ *
+ * The panel used to say "Export SQL" on a MongoDB connection and offer a
+ * Require button for a database that has no nullability to declare. Both were
+ * the visible half of a larger lie — the file behind that button really was
+ * SQL — and both are decided by what the extension sends with the changeset
+ * rather than by anything baked into the markup.
+ */
+describe('the editor, per engine', () => {
+  let panel: Panel;
+
+  const CHANGES = [
+    { index: 0, label: 'Drop users.legacy_utm', sql: 'db.getCollection("users").updateMany(...)' },
+  ];
+
+  const EMPTY_DIFF = { tables: [], columns: [], relationships: [], dataEdits: 0 };
+
+  const changeset = (dialect?: Record<string, unknown>) => ({
+    type: 'changeset',
+    changes: CHANGES,
+    diff: EMPTY_DIFF,
+    projected: SNAPSHOT,
+    sql: '',
+    ...(dialect ? { dialect } : {}),
+  });
+
+  before(async () => {
+    panel = await openPanel(schemaPanelHtml, { width: 1200, height: 820 });
+    await panel.send({ type: 'schema', snapshot: SNAPSHOT, connection: 'analytics@local' });
+  });
+
+  after(async () => {
+    await panel.close();
+    await closeBrowser();
+  });
+
+  it('says SQL until it is told otherwise', async () => {
+    // Two of the three engines take SQL, and a panel that has not heard from
+    // the extension yet has nothing better to guess.
+    await panel.send(changeset());
+
+    assert.equal(await panel.page.textContent('#export'), 'Export SQL');
+    assert.equal(await panel.page.textContent('#export-down'), 'Down SQL');
+  });
+
+  it('renames its own buttons when the engine does not speak SQL', async () => {
+    await panel.send(
+      changeset({
+        noun: 'operation',
+        exportLabel: 'Export script',
+        downLabel: 'Down script',
+        hasNullability: false,
+        hasDownMigration: true,
+      }),
+    );
+
+    assert.equal(await panel.page.textContent('#export'), 'Export script');
+    assert.equal(await panel.page.textContent('#export-down'), 'Down script');
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('stops offering nullability where there is none to declare', async () => {
+    // A field in MongoDB is absent, null, or has a value, and nothing enforces
+    // which. The button is not offered rather than offered and refused.
+    await panel.send({ type: 'tableLoading', table: DETAIL.table });
+    await panel.send({ type: 'tableDetail', detail: DETAIL });
+
+    const labels = await panel.page.$$eval('#drawer .drawer-col button', (buttons) =>
+      buttons.map((button) => button.textContent),
+    );
+
+    assert.ok(labels.includes('Rename'), `the other buttons are still there: ${labels.join(', ')}`);
+    assert.ok(labels.includes('Drop'));
+    assert.ok(!labels.includes('Require'), 'Require is offered on a database with no NOT NULL');
+    assert.ok(!labels.includes('Allow null'));
+  });
+
+  it('offers them again when the engine has them', async () => {
+    await panel.send(
+      changeset({
+        noun: 'statement',
+        exportLabel: 'Export SQL',
+        downLabel: 'Down SQL',
+        hasNullability: true,
+        hasDownMigration: true,
+      }),
+    );
+    await panel.send({ type: 'tableLoading', table: DETAIL.table });
+    await panel.send({ type: 'tableDetail', detail: DETAIL });
+
+    const labels = await panel.page.$$eval('#drawer .drawer-col button', (buttons) =>
+      buttons.map((button) => button.textContent),
+    );
+
+    assert.ok(
+      labels.includes('Require') || labels.includes('Allow null'),
+      `nullability is gone on an engine that has it: ${labels.join(', ')}`,
+    );
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('hides the Down button for an engine that cannot generate one', async () => {
+    // Every engine can today. The flag stays because the next one might not,
+    // and because a button offered and refused is worse than one not offered.
+    await panel.send(
+      changeset({
+        noun: 'operation',
+        exportLabel: 'Export script',
+        downLabel: 'Down script',
+        hasNullability: false,
+        hasDownMigration: false,
+      }),
+    );
+
+    assert.equal(await visible(panel.page, '#export-down'), false);
+    assert.equal(await visible(panel.page, '#export'), true, 'the others stay');
   });
 });
