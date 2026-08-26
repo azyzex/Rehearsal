@@ -931,7 +931,12 @@
     }
 
     for (const change of changes) {
-      const finding = findings.find((f) => f.statementIndex === change.index);
+      // Paired on the edit, not on a position. The two agree only while every
+      // edit produces exactly one statement, and nothing enforces that — a
+      // mismatch would attach a measurement to the wrong change, silently.
+      const finding = findings.find((f) =>
+        f.editIndex === undefined ? f.statementIndex === change.index : f.editIndex === change.index,
+      );
 
       if (finding) {
         // Once measured, the row leads with what it will actually do rather

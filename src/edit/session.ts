@@ -39,7 +39,8 @@ export interface ChangesetState {
 }
 
 export interface PreviewResult {
-  readonly findings: readonly Finding[];
+  /** Each carries `editIndex`, so the panel can pair it with the right change. */
+  readonly findings: readonly (Finding & { editIndex: number })[];
   /** Proof that these exact statements were measured, required to apply. */
   readonly token: string;
   readonly destructive: boolean;
@@ -128,11 +129,20 @@ export class EditSession {
       },
     });
 
+    // Findings are numbered by their position among the generated statements,
+    // and the panel lists edits. Those agree only while every edit produces
+    // exactly one statement — which is true today and is not a property
+    // anything enforces. Pairing on the edit itself removes the coincidence.
+    const paired = findings.map((finding) => ({
+      ...finding,
+      editIndex: generated[finding.statementIndex]?.editIndex ?? finding.statementIndex,
+    }));
+
     const destructive = findings.some((f) => f.severity === 'destructive');
     const blocking = findings.some((f) => f.severity === 'blocking');
 
     return {
-      findings,
+      findings: paired,
       destructive,
       blocking,
       token: previewTokenFor(generated),

@@ -154,6 +154,24 @@ describe('previewing and then applying', () => {
     assert.equal(rows[0].n, 0);
   });
 
+  it('pairs each finding with the edit that produced it', async () => {
+    // The panel lists edits; findings are numbered by their position among the
+    // generated statements. Those agree only while every edit produces exactly
+    // one statement, and nothing enforces that — so the pairing is explicit
+    // rather than a coincidence that currently holds.
+    session.add({ kind: 'add_column', table: 'users', column: 'poopy', type: 'text', nullable: true });
+    session.add({ kind: 'update_row', table: 'users', key: { id: 1 }, set: { tier: 'pro' } });
+
+    const preview = await session.preview(adapter, THRESHOLDS);
+
+    assert.deepEqual(
+      preview.findings.map((finding) => finding.editIndex),
+      [0, 1],
+    );
+    assert.equal(preview.findings[0]!.classification.kind, 'add_column');
+    assert.equal(preview.findings[1]!.classification.kind, 'update');
+  });
+
   it('refuses once an edit has been added since the preview', async () => {
     // The refusal is correct and worth pinning: what was measured is no longer
     // what would run.
