@@ -1,3 +1,4 @@
+
 # The pass only you can do
 
 The browser harness renders the real markup, stylesheet and scripts, and drives
@@ -84,19 +85,19 @@ These are the newest and least verified. Tick as you go.
 
 - [ ] The icon is in the activity bar and the panel opens.
 - [ ] Typing into the box shows an engine badge **as you type**, before you
-      connect. Try deleting the `postgresql://` prefix — it should still say
-      PostgreSQL, guessed from the port.
+  connect. Try deleting the `postgresql://` prefix — it should still say
+  PostgreSQL, guessed from the port.
 - [ ] Paste something nonsense (`redis://localhost`). **Expect:** the Connect
-      button goes grey and it says it does not know that scheme.
+  button goes grey and it says it does not know that scheme.
 - [ ] Connect with **Remember this one** ticked, then disconnect. **Expect:**
-      the connection appears under **Saved**, and clicking it reconnects
-      without retyping anything.
+  the connection appears under **Saved**, and clicking it reconnects
+  without retyping anything.
 - [ ] Click the **pencil** on a saved row, type a shorter name, press enter.
-      **Expect:** the row keeps the new name after a reload of the window
-      (`ctrl + shift + p`, then "Developer: Reload Window"). Press escape
-      instead and it should go back to the old name unchanged.
+  **Expect:** the row keeps the new name after a reload of the window
+  (`ctrl + shift + p`, then "Developer: Reload Window"). Press escape
+  instead and it should go back to the old name unchanged.
 - [ ] **The thing to catch:** it says connected but the actions do nothing, or
-      a saved connection fails with "password is not in the keychain".
+  a saved connection fails with "password is not in the keychain".
 
 ### 1. The offending rows — never seen end to end
 
@@ -105,30 +106,30 @@ These are the newest and least verified. Tick as you go.
 - [ ] The row should say something like *"12 rows have no email"*.
 - [ ] Click **Show me which rows**.
 - [ ] **Expect:** a table of actual rows appears, with the `email` column
-      highlighted, and a suggested fix underneath with **Copy** and
-      **Insert above the statement** buttons.
+  highlighted, and a suggested fix underneath with **Copy** and
+  **Insert above the statement** buttons.
 - [ ] **The thing to catch:** the button does nothing, or spins forever. That
-      means the extension never answered.
+  means the extension never answered.
 - [ ] Click **Insert above the statement**. The SQL file should gain a new line
-      above the statement. Press `ctrl + z` to undo it.
+  above the statement. Press `ctrl + z` to undo it.
 
 ### 2. Where the code uses it — same risk
 
 - [ ] Open `migrations/0002_drop_phone_number.sql`, `ctrl + alt + d`.
 - [ ] Click **Where does the code use this?**.
 - [ ] **Expect:** a list of `file:line` with matching lines, or a sentence
-      saying nothing was found in N files.
+  saying nothing was found in N files.
 - [ ] **The thing to catch:** it hangs, or reports 0 files searched.
 
 ### 3. Would an index help — a whole new panel
 
 - [ ] Open any `.sql` file and type this on its own line:
-      `SELECT id FROM orders WHERE user_id = 4242 AND status = 'paid';`
+  `SELECT id FROM orders WHERE user_id = 4242 AND status = 'paid';`
 - [ ] Put the cursor inside that line.
 - [ ] `ctrl + alt + i`.
 - [ ] **Expect:** a new panel titled **Dry Run — Indexes** with a card, a green
-      **Used** badge, and two bars — a long one for *Now* and a very short one
-      for *With the index*.
+  **Used** badge, and two bars — a long one for *Now* and a very short one
+  for *With the index*.
 - [ ] **The thing to catch:** an empty panel, or "no sequential scan found".
 - [ ] The buttons at the bottom should look like buttons, not like plain text.
 
@@ -136,28 +137,28 @@ These are the newest and least verified. Tick as you go.
 
 - [ ] `ctrl + shift + p` → `Dry Run: Schema Health Report`.
 - [ ] **Expect:** a markdown document opens listing unindexed foreign keys with
-      `CREATE INDEX CONCURRENTLY` statements.
+  `CREATE INDEX CONCURRENTLY` statements.
 - [ ] `ctrl + shift + p` → `Dry Run: Explore Schema`.
 - [ ] In the toolbar, the dropdown that says **No overlay** → pick
-      **Colour by rows**.
+  **Colour by rows**.
 - [ ] **Expect:** cards take on an orange tint, darkest for the biggest table,
-      and a line appears at the bottom naming the largest one.
+  and a line appears at the bottom naming the largest one.
 - [ ] Now pick **Foreign keys with no index**. It should say "Reading the
-      statistics…" briefly, then shade only some tables.
+  statistics…" briefly, then shade only some tables.
 - [ ] **The thing to catch:** it sits on "Reading the statistics…" forever.
 
 ### 5. The Problems view
 
 - [ ] With a preview still open, press `ctrl + shift + m`.
 - [ ] **Expect:** one entry per risky statement, source **Dry Run**, and
-      clicking one jumps to the line.
+  clicking one jumps to the line.
 - [ ] Type a character into the SQL file. **Expect:** the entries disappear.
 
 ### 6. Pending migrations
 
 - [ ] `ctrl + shift + p` → `Dry Run: Preview Pending Migrations`.
 - [ ] **Expect:** a picker listing the migration files, with a note that they
-      are plain SQL and it cannot tell which have been applied.
+  are plain SQL and it cannot tell which have been applied.
 - [ ] Pick one. It should open the file and preview it.
 
 ---
@@ -170,15 +171,15 @@ Do this one on a table you do not mind changing.
 
 - [ ] `Dry Run: Explore Schema`, click a table, and use **Drop** on a column.
 - [ ] Click **Down SQL**. **Expect:** a SQL document with a header listing what
-      it cannot undo.
+  it cannot undo.
 - [ ] Click **Preview**, then **Apply**.
 - [ ] **Expect:** a `.dryrun/rescue-<timestamp>.sql` file opens *before* the
-      confirmation dialog, and the dialog itself mentions how many rows were
-      saved.
+  confirmation dialog, and the dialog itself mentions how many rows were
+  saved.
 - [ ] Cancel the dialog. Nothing should have changed.
 - [ ] Do it again and confirm this time. Then `ctrl + shift + p` →
-      `Dry Run: Applied Changes` and check the entry is there with both the
-      down migration and the rescue file.
+  `Dry Run: Applied Changes` and check the entry is there with both the
+  down migration and the rescue file.
 
 ### Comparing two databases
 
@@ -201,7 +202,7 @@ whatever you have actually installed.
 - [ ] `ctrl + k` then `ctrl + t`, choose **Light+ (default light)**.
 - [ ] Re-run a preview and open the schema explorer.
 - [ ] **Look for:** text the same colour as its background, invisible borders,
-      badges you cannot read, the diagram's edges vanishing.
+  badges you cannot read, the diagram's edges vanishing.
 - [ ] Repeat with **Dark High Contrast**.
 
 This is where the red-on-red Drop button would have shown up, and it is the

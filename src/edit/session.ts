@@ -1,9 +1,10 @@
-import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
+import { DatabaseAdapter, Engine, SchemaSnapshot } from '../adapters/types';
 import { analyzeStatements } from '../analysis/orchestrator';
 import { Finding, Thresholds } from '../analysis/types';
 import { SplitStatement } from '../parser/splitter';
 import { ApplyResult, applyChangeset, previewTokenFor } from './apply';
 import { Changeset, Edit, GeneratedStatement, describeEdit } from './changeset';
+import { EditDialect, dialectFor } from './dialect';
 import { SchemaDiff, diffSchemas, projectSchema } from './project';
 
 /**
@@ -51,10 +52,25 @@ export interface PreviewResult {
 export class EditSession {
   private readonly changeset = new Changeset();
   private baseline: SchemaSnapshot | undefined;
+  private dialect: EditDialect = dialectFor('postgres');
 
-  /** The schema as it is now. Everything is projected forward from this. */
-  setBaseline(snapshot: SchemaSnapshot): void {
+  /**
+   * The schema as it is now, and the engine it came from.
+   *
+   * The engine matters because the changeset has to write its statements in a
+   * language that engine speaks. Before it was threaded through, a MongoDB
+   * connection got `ALTER TABLE users DROP COLUMN phone` — offered as the file
+   * to review and keep, about a database with no tables in it.
+   */
+  setBaseline(snapshot: SchemaSnapshot, engine: Engine = 'postgres'): void {
     this.baseline = snapshot;
+    this.dialect = dialectFor(engine);
+    this.changeset.useDialect(this.dialect);
+  }
+
+  /** How this engine writes a change down, for whoever has to label it. */
+  get language(): EditDialect {
+    return this.dialect;
   }
 
   get isEmpty(): boolean {

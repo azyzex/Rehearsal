@@ -490,6 +490,29 @@ function bare(table: string): string {
  * see them in the order they would really run.
  */
 export class Changeset {
+  /**
+   * How this engine writes a change down.
+   *
+   * Injected rather than imported, because `dialect.ts` imports `toStatement`
+   * from here and the cycle would be real. The default keeps every existing
+   * caller working: SQL is what this class produced before there was a choice.
+   */
+  private render: (edit: Edit, index: number) => GeneratedStatement = toStatement;
+
+  private script: (statements: readonly GeneratedStatement[]) => string = (statements) =>
+    statements
+      .map((s) => `-- ${s.label}\n${inlineParams(s.sql, s.params)};`)
+      .join('\n\n');
+
+  /** Points this changeset at one engine's way of writing things down. */
+  useDialect(dialect: {
+    toStatement(edit: Edit, index: number): GeneratedStatement;
+    toScript(statements: readonly GeneratedStatement[]): string;
+  }): void {
+    this.render = (edit, index) => dialect.toStatement(edit, index);
+    this.script = (statements) => dialect.toScript(statements);
+  }
+
   private edits: Edit[] = [];
 
   get size(): number {
@@ -521,18 +544,17 @@ export class Changeset {
 
   /** Every edit as the statement that performs it, in order. */
   statements(): GeneratedStatement[] {
-    return this.edits.map((edit, index) => toStatement(edit, index));
+    return this.edits.map((edit, index) => this.render(edit, index));
   }
 
-  /** The changeset as a migration file someone could read, review and keep. */
+  /**
+   * The changeset as a file someone could read, review and keep.
+   *
+   * Still called `toSql` because that is what it is on two of the three
+   * engines. On MongoDB it is a mongosh script, and the dialect decides which.
+   */
   toSql(): string {
-    return this.edits
-      .map((edit, index) => {
-        const statement = toStatement(edit, index);
-        const inlined = inlineParams(statement.sql, statement.params);
-        return `-- ${statement.label}\n${inlined};`;
-      })
-      .join('\n\n');
+    return this.script(this.statements());
   }
 }
 

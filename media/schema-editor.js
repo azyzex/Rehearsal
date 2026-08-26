@@ -116,6 +116,13 @@
       case 'changeset': {
         readOnly = Boolean(message.readOnly);
         source = message.source || '';
+        // What this engine calls things. Sent with every changeset rather than
+        // baked into the markup, because "Export SQL" on a MongoDB connection
+        // is a small lie that gives away a large one.
+        if (message.dialect) {
+          dialect = message.dialect;
+          applyDialect();
+        }
         const hadStructure = changesStructure(changes);
         changes = message.changes;
         diff = message.diff;
@@ -472,16 +479,21 @@
         }),
       );
 
-      actions.appendChild(
-        miniButton(column.nullable ? 'Require' : 'Allow null', () => {
-          addEdit({
-            kind: 'set_nullability',
-            table: detail.table,
-            column: column.name,
-            nullable: !column.nullable,
-          });
-        }),
-      );
+      // Only where the engine has nullability to declare. MongoDB does not: a
+      // field is absent, null, or has a value, and nothing enforces which — so
+      // the button is not offered rather than offered and refused.
+      if (dialect.hasNullability) {
+        actions.appendChild(
+          miniButton(column.nullable ? 'Require' : 'Allow null', () => {
+            addEdit({
+              kind: 'set_nullability',
+              table: detail.table,
+              column: column.name,
+              nullable: !column.nullable,
+            });
+          }),
+        );
+      }
 
       // The primary key has no drop button. Dropping it is legal SQL and almost
       // never what someone means by clicking a small button next to a column.
@@ -874,6 +886,29 @@
     vscode.postMessage({ type: 'removeEdit', index });
   }
 
+  /**
+   * The words this engine uses, and what it can express.
+   *
+   * SQL until told otherwise: two of the three engines take it, and a panel
+   * that has not heard from the extension yet has nothing better to guess.
+   */
+  let dialect = {
+    noun: 'statement',
+    exportLabel: 'Export SQL',
+    downLabel: 'Down SQL',
+    hasNullability: true,
+    hasDownMigration: true,
+  };
+
+  function applyDialect() {
+    ui.exportSql.textContent = dialect.exportLabel;
+    ui.exportDown.textContent = dialect.downLabel;
+    ui.exportDown.title =
+      dialect.downLabel === 'Down SQL'
+        ? 'The migration that undoes this one'
+        : 'The script that undoes this one';
+  }
+
   function renderChanges() {
     const has = changes.length > 0;
     ui.changes.hidden = !has;
@@ -901,7 +936,10 @@
     ui.preview.hidden = readOnly;
     ui.discard.hidden = readOnly;
     ui.exportSql.hidden = readOnly;
-    ui.exportDown.hidden = readOnly;
+    // Hidden where Dry Run cannot generate one, rather than offered and
+    // refused. Better than what shipped first, which was a SQL down migration
+    // handed to a MongoDB user.
+    ui.exportDown.hidden = readOnly || !dialect.hasDownMigration;
     ui.preview.textContent = findings.length > 0 ? 'Preview again' : 'Preview';
 
     const body = document.createDocumentFragment();
