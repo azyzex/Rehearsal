@@ -91,7 +91,7 @@
         "dryrun.connectionString": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
+          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` \u2014 never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
         },
         "dryrun.envFile": {
           "type": "string",
@@ -116,7 +116,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override."
+          "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act \u2014 there is no one-click override."
         },
         "dryrun.statementTimeoutMs": {
           "type": "number",
@@ -194,7 +194,7 @@
     "package": "node esbuild.js --production",
     "vsix": "npm run package && vsce package --no-dependencies",
     "compile-tests": "tsc -p tsconfig.test.json",
-    "test": "npm run compile-tests && node --test \"out/test/**/*.test.js\"",
+    "test": "npm run compile-tests && node --test --test-concurrency=4 \"out/test/**/*.test.js\"",
     "test:ui": "npm run compile-tests && node --test \"out/test/ui/*.test.js\"",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",

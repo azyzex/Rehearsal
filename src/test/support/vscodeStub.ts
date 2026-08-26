@@ -408,7 +408,25 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
  * The extension is compiled CJS, so this is done by intercepting resolution
  * rather than by rewriting any imports.
  */
+let installedApi: unknown;
+
 export function installVscode(api: unknown): () => void {
+  // Installing a second, different stub in one process is always a mistake and
+  // never an obvious one. The extension module binds its `import * as vscode`
+  // the first time it is required and keeps that binding, so the second stub
+  // is simply ignored: commands go on being registered into the first one, and
+  // a test reading the second finds an empty map and reports a working command
+  // as missing. That cost three debugging sessions before it was worth saying
+  // out loud.
+  if (installedApi !== undefined && installedApi !== api) {
+    throw new Error(
+      'A different vscode stub is already installed in this process. The extension ' +
+        'module is bound to the first one, so the second would be ignored — share ' +
+        'one stub across the file, or use makeContext() for a fresh context.',
+    );
+  }
+  installedApi = api;
+
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Module = require('node:module') as {
     _resolveFilename(request: string, ...rest: unknown[]): string;
@@ -425,5 +443,70 @@ export function installVscode(api: unknown): () => void {
   return () => {
     Module._resolveFilename = original;
     delete require.cache[id];
+    installedApi = undefined;
   };
+}
+
+/**
+ * A TextDocument and an editor showing it, with no selection.
+ *
+ * Only the members the extension actually reaches for: the text, the offsets
+ * both ways, one line at a time, and a uri to key the panel and the
+ * diagnostics off. `openEditor` puts it where `activeTextEditor` will find it.
+ */
+export function makeDocument(path: string, text: string): any {
+  const lines = text.split(String.fromCharCode(10));
+
+  const offsetOf = (line: number, character: number) => {
+    let offset = 0;
+    for (let index = 0; index < line; index += 1) {
+      offset += (lines[index] ?? '').length + 1;
+    }
+    return offset + character;
+  };
+
+  const positionAt = (offset: number) => {
+    let remaining = offset;
+    for (let line = 0; line < lines.length; line += 1) {
+      const length = (lines[line] ?? '').length;
+      if (remaining <= length) {
+        return { line, character: remaining };
+      }
+      remaining -= length + 1;
+    }
+    return { line: Math.max(lines.length - 1, 0), character: 0 };
+  };
+
+  return {
+    uri: {
+      scheme: 'file',
+      path,
+      fsPath: path,
+      toString: () => `file://${path}`,
+    },
+    fileName: path,
+    languageId: 'sql',
+    lineCount: lines.length,
+    getText: (range?: unknown) => (range ? '' : text),
+    lineAt: (line: number) => ({ lineNumber: line, text: lines[line] ?? '' }),
+    offsetAt: (position: { line: number; character: number }) =>
+      offsetOf(position.line, position.character),
+    positionAt,
+    save: async () => true,
+  };
+}
+
+/** Puts a document in front of the user, with the cursor at the top. */
+export function openEditor(api: any, document: any): void {
+  const editor = {
+    document,
+    // Empty: "the whole file", which is what a migration wants.
+    selection: { isEmpty: true, start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+    revealRange: () => undefined,
+    setDecorations: () => undefined,
+  };
+
+  api.window.activeTextEditor = editor;
+  api.window.visibleTextEditors = [editor];
+  api.workspace.textDocuments = [document];
 }

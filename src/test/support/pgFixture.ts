@@ -23,6 +23,32 @@ export interface PostgresFixture {
 const DB_NAME = 'dryrun_test';
 
 /**
+ * How long one attempt at a cluster gets.
+ *
+ * Generous: initdb on a cold cache takes seconds, and the suite runs several of
+ * these at once. This is the number at which something is wrong, not the number
+ * at which it is slow.
+ */
+const START_TIMEOUT_MS = 90_000;
+
+async function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what} took longer than ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/**
  * A port nothing is listening on, from the operating system.
  *
  * This used to be `5000 + random(10000)`. Twenty-three test files each start
@@ -75,9 +101,19 @@ export async function startPostgres(): Promise<PostgresFixture> {
     });
 
     try {
-      await pg.initialise();
-      await pg.start();
-      await pg.createDatabase(DB_NAME);
+      // Under a timeout, because a start that hangs hangs forever otherwise:
+      // the retry below only fires on a throw, and an embedded cluster
+      // struggling for memory on a loaded machine does not throw, it waits.
+      // That took the whole suite down for twenty minutes with no output.
+      await withTimeout(
+        (async () => {
+          await pg.initialise();
+          await pg.start();
+          await pg.createDatabase(DB_NAME);
+        })(),
+        START_TIMEOUT_MS,
+        'starting the cluster',
+      );
 
       const connectionString = `postgresql://postgres:postgres@localhost:${port}/${DB_NAME}`;
       await seed(connectionString);
