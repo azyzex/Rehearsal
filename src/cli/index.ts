@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import { describeError } from '../errors';
 import { adapterFor } from '../adapters/select';
+import { languageFor } from '../parser/language';
 import { analyzeStatements } from '../analysis/orchestrator';
 import { Finding, Thresholds } from '../analysis/types';
-import { splitStatements } from '../parser/splitter';
 import { APPLICATION_NAME } from '../constants';
 import { FailLevel, markdownReport, shouldFail, textReport } from './report';
 
@@ -96,9 +96,14 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
     // of the three engines does not speak it.
     const version = describeTarget(options.connectionString, adapter.engine);
 
+    // How to read a file is the engine's business. Splitting on SQL rules was
+    // hardcoded here, so pointing the CLI at MongoDB read a file of operations
+    // as though semicolons and dollar-quoting meant something in it.
+    const language = languageFor(adapter.engine);
+
     for (const file of options.files) {
       const sql = fs.readFileSync(file, 'utf8');
-      const statements = splitStatements(sql);
+      const statements = language.split(sql);
 
       const findings: Finding[] = [];
       await analyzeStatements({

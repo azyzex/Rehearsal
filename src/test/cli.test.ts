@@ -6,6 +6,7 @@ import { after, before, describe, it } from 'node:test';
 import { Output, run } from '../cli/index';
 import { markdownReport, shouldFail, textReport } from '../cli/report';
 import { Finding, Severity } from '../analysis/types';
+import { MongoFixture, seedMongo, startMongo } from './support/mongoFixture';
 import { PostgresFixture, startPostgres } from './support/pgFixture';
 
 /**
@@ -313,5 +314,103 @@ describe('running it', () => {
     captured();
     assert.equal(code, 2);
     assert.ok(errors().length > 0);
+  });
+});
+
+describe('running it against MongoDB', () => {
+  // The CLI split every file with the SQL splitter, whatever it was pointed
+  // at — so a file of MongoDB operations was read as though semicolons and
+  // dollar-quoting meant something in it, and came back as one unparseable
+  // blob or several wrong ones.
+  let fixture: MongoFixture;
+  let operations: string;
+
+  const out: string[] = [];
+  const err: string[] = [];
+  const io: Output = {
+    out: (text) => out.push(text),
+    err: (text) => err.push(text),
+  };
+
+  before(async () => {
+    fixture = await startMongo();
+    await seedMongo(fixture.db());
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-cli-mongo-'));
+    operations = path.join(directory, 'cleanup.mongodb.js');
+    fs.writeFileSync(
+      operations,
+      [
+        "db.users.updateMany({ tier: 'free' }, { $set: { tier: 'basic' } })",
+        '',
+        'db.users.deleteMany({ org_id: 99 })',
+        '',
+        "db.orgs.deleteMany({ name: 'nobody' })",
+      ].join('\n'),
+      'utf8',
+    );
+  });
+
+  after(async () => {
+    await fixture?.stop();
+  });
+
+  function captured(): string {
+    const text = out.join('');
+    out.length = 0;
+    err.length = 0;
+    return text;
+  }
+
+  it('reads the file as operations rather than as SQL', async () => {
+    const code = await run([operations, '--url', fixture.uri], io);
+    const report = captured();
+
+    // Three operations, each on its own line of the report. Split as SQL this
+    // was one statement, because there is not a semicolon in the file.
+    assert.match(report, /line 1/);
+    assert.match(report, /line 2/);
+    assert.match(report, /line 3/);
+
+    // Exit 1, and rightly: deleting those ten users leaves forty orders
+    // pointing at nothing, and MongoDB will not clean them up.
+    assert.equal(code, 1, `exited ${code}`);
+  });
+
+  it('says orphaned documents are orphaned, not cascaded', async () => {
+    // MongoDB has no cascade. Saying "it also cascades to 40 rows" would be
+    // reassuring about the wrong thing — those documents are not deleted, they
+    // are left pointing at something that is gone.
+    await run([operations, '--url', fixture.uri], io);
+    const report = captured();
+
+    assert.match(report, /40 rows in orders still reference these/);
+    assert.match(report, /MongoDB does not cascade/);
+    assert.match(report, /left pointing at something that is no longer there/);
+    assert.doesNotMatch(report, /cascades to 40/);
+  });
+
+  it('measures them against the real documents', async () => {
+    await run([operations, '--url', fixture.uri], io);
+    const report = captured();
+
+    // 67 of the 100 are on the free tier and 10 point at org 99, and neither
+    // number is in the file.
+    assert.match(report, /67/);
+    assert.match(report, /10\b/);
+  });
+
+  it('says the one that matches nothing is safe, rather than leaving it blank', async () => {
+    await run([operations, '--url', fixture.uri], io);
+    assert.match(captured(), /Safe/i);
+  });
+
+  it('leaves the database exactly as it was', async () => {
+    await run([operations, '--url', fixture.uri], io);
+    captured();
+
+    const users = fixture.db().collection('users');
+    assert.equal(await users.countDocuments({}), 100);
+    assert.equal(await users.countDocuments({ tier: 'free' }), 67, 'the update was not rolled back');
   });
 });

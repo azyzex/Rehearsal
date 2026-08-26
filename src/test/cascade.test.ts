@@ -62,10 +62,56 @@ describe('reading a cascade tree', () => {
   });
 
   it('leads with the total, because that is the number nobody expects', () => {
+    // 46, not 49. The three rows in `reviews` have their reference set to
+    // null and are not deleted — counting them in the same total *and* then
+    // listing them separately as not deleted said two different things about
+    // the same three rows.
     const text = describeCascade(tree);
-    assert.match(text, /cascades to 49 rows across 3 other tables/);
+    assert.match(text, /cascades to 46 rows across 2 other tables/);
     assert.match(text, /12 in orders/);
+    assert.match(text, /34 in order_items/);
+    assert.doesNotMatch(text, /reviews.*cascades|cascades.*3 in reviews/);
     assert.match(text, /set to null rather than being deleted/);
+  });
+
+  it('says a reference that refuses the delete refuses it, rather than cascading', () => {
+    // RESTRICT and NO ACTION do not cascade and do not blank anything: they
+    // make the statement fail. Counting them as "rows this also deletes" was
+    // wrong about what happens and reassuring about a delete that will error.
+    const text = describeCascade({
+      table: 'users',
+      rows: 1,
+      children: [
+        { table: 'invoices', rows: 7, via: { constraint: 'i_fk', action: 'restrict' }, children: [] },
+      ],
+    });
+
+    assert.doesNotMatch(text, /cascades to/);
+    assert.match(text, /7 rows in invoices/);
+    assert.match(text, /still reference these/);
+    assert.match(text, /does not cascade, so the delete is refused/);
+  });
+
+  it("uses the engine's own explanation when it has one", () => {
+    // MongoDB has no cascade at all, and says on the node what really happens:
+    // the documents are left pointing at something that is gone.
+    const text = describeCascade({
+      table: 'users',
+      rows: 1,
+      children: [
+        {
+          table: 'orders',
+          rows: 40,
+          via: { constraint: 'inferred', action: 'no action' },
+          children: [],
+          truncated: 'MongoDB does not cascade. These documents are left orphaned.',
+        },
+      ],
+    });
+
+    assert.match(text, /MongoDB does not cascade/);
+    assert.match(text, /left orphaned/);
+    assert.doesNotMatch(text, /cascades to/);
   });
 
   it('says nothing at all when there is no cascade', () => {
@@ -207,7 +253,11 @@ describe('walking a real cascade', () => {
 
       assert.equal(finding.rowCount, 1);
       assert.match(finding.detail, /1 row is deleted from users/);
-      assert.match(finding.detail, /cascades to 5 rows across 3 other tables/);
+      // Four, not five: the fifth is in audit_entries and has its reference set
+      // to null rather than being deleted, which the next line says separately.
+      assert.match(finding.detail, /cascades to 4 rows across 2 other tables/);
+      assert.match(finding.detail, /audit_entries/);
+      assert.match(finding.detail, /set to null rather than being deleted/);
       assert.equal(
         finding.severity,
         'destructive',
