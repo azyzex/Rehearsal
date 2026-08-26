@@ -405,9 +405,22 @@ async function compareWithAnother(
   connections: ConnectionManager,
   output: vscode.OutputChannel,
 ): Promise<void> {
+  // The connection this one compares against, first. Asking for the second
+  // string before knowing there is a first one means asking someone to type a
+  // password for a comparison that cannot happen, and only then saying so —
+  // and with nothing connected at all it used to close the box and say
+  // nothing whatsoever.
+  let connection;
+  try {
+    connection = await connections.acquire();
+  } catch (error) {
+    reportError(error, output, connections);
+    return;
+  }
+
   const other = await vscode.window.showInputBox({
     title: 'Compare with another database',
-    prompt: 'Connection string for the database to compare against. It is not saved.',
+    prompt: `Connection string for the database to compare ${connection.identity.display} against. It is not saved.`,
     placeHolder: 'postgresql://user:password@host/database',
     password: true,
     ignoreFocusOut: true,
@@ -420,8 +433,6 @@ async function compareWithAnother(
   const second = new PostgresAdapter();
 
   try {
-    const connection = await connections.acquire();
-
     const { left, right } = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Dry Run: reading both schemas…' },
       async () => {
