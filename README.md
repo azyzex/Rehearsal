@@ -206,12 +206,22 @@ rename one. Each becomes a *pending change* — not a write. Then:
   a transaction that is rolled back — and reports what each one would cost.
 - **Apply** is the only thing that writes, and it refuses anything that has not
   been previewed exactly as it stands.
-- **Export SQL** hands you the whole thing as a migration file to review and keep.
-- **Down SQL** hands you the migration that undoes it — generated now, against
-  the live schema, because "later" is after the change has been applied and by
-  then the schema no longer remembers the column's type or its default. That is
-  why hand-written down migrations are usually wrong. Anything it cannot undo is
-  listed at the top of the file in plain words rather than quietly omitted.
+- **Export** hands you the whole thing as a file to review and keep — SQL on
+  Postgres and MySQL, a mongosh script on MongoDB. The button says which, because
+  "Export SQL" on a database with no tables in it is a small lie that gives away
+  a large one.
+- **Down** hands you what undoes it — generated now, against the live schema,
+  because "later" is after the change has been applied and by then the schema no
+  longer remembers the column's type or its default. That is why hand-written
+  down migrations are usually wrong. Anything it cannot undo is listed at the top
+  of the file in plain words rather than quietly omitted.
+
+Each engine is written in its own language throughout, not only in the export:
+dropping a field is `$unset` rather than `DROP COLUMN`, MySQL is quoted with
+backticks because double quotes are a string literal there, and the route
+between two collections is a `$lookup` pipeline rather than a JOIN. The four
+changes MongoDB has no equivalent for — nullability, defaults, foreign keys,
+check constraints — are not offered rather than approximated.
 
 ## In CI
 
