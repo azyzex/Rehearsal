@@ -75,6 +75,48 @@ the refusal instead of the feature. If you ever want to see that refusal
 deliberately, point it at a standalone and check the message says what is wrong
 and what would fix it.
 
+### What to look at once MongoDB is connected
+
+All of this is checked automatically now, but it is checked against a fixture,
+and the point of this list is the things that only look right in a real window.
+
+- [ ] **Nothing anywhere says SQL.** The buttons should read **Export script**
+      and **Down script**. Press Export: the file that opens should be
+      JavaScript, commented with `//`, and full of `db.getCollection(...)` —
+      not one `ALTER TABLE` in it.
+- [ ] **Require and Allow null are gone** from the column rows in the drawer.
+      Rename, Type and Drop should still be there. A field here is absent,
+      null, or has a value, and nothing enforces which.
+- [ ] **Find a route** from `orders` to `accounts`. Expect a `$lookup`
+      pipeline, not a SELECT — and check the second stage says
+      `localField: "users.account_id"` rather than `"account_id"`. That prefix
+      is the difference between a pipeline that works and one that runs,
+      returns nothing, and looks correct.
+- [ ] **Open `orders`** and look at `items` and `total`. `items` should show as
+      an array; `total` should say it holds *both* a double and an int rather
+      than picking one.
+- [ ] **Open `users`** and look for `profile.preferences.notifications.email`.
+      Nested fields should appear by the dotted path Mongo addresses them with.
+- [ ] **Preview `operations/0001_cleanup.mongodb.js`.** The two adjacent
+      deletes are the thing to look at: `{ user_id: null }` should report about
+      133,000 and `{ $exists: false }` about 44,000. If they report the same
+      number, the missing-versus-null distinction has broken.
+- [ ] **The delete that orphans.** One row should say the referencing documents
+      are *left pointing at something that is no longer there* — not that they
+      cascade. MongoDB does not cascade, and saying it does would be reassuring
+      about the wrong thing.
+
+### And on MySQL
+
+- [ ] The sidebar should warn that **MySQL commits schema changes the moment
+      they run**. That warning is the whole difference from Postgres.
+- [ ] **Export SQL** and read the first line. Identifiers should be in
+      backticks. Double quotes are a string literal to MySQL, and a migration
+      quoted that way is rejected on the first statement.
+- [ ] **Preview a migration with an `ALTER ... MODIFY ... NOT NULL` in it**
+      against a column with empty values. It must not come back green. That one
+      was reported as safe for as long as MySQL support existed.
+
 ---
 
 ## The ten minutes that matter most
