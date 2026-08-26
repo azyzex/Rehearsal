@@ -401,6 +401,21 @@ export interface DatabaseAdapter {
   ): Promise<Row[]>;
 
   /**
+   * An identifier, quoted the way this engine quotes one.
+   *
+   * Here because the analysis layer keeps needing to build a predicate and kept
+   * quoting it the ANSI way, which MySQL reads as a string literal. That is one
+   * bug shape that has now appeared three times — a migration reported safe when
+   * it would have failed, a rescue file full of the rows it exists to exclude,
+   * and an offending-rows scan that found nothing on a table full of offences.
+   * Every one of them looked like a clean result rather than a broken query.
+   *
+   * MongoDB has no SQL to quote for, and says so by returning undefined: code
+   * that needs this needs to ask a different question there.
+   */
+  quoteIdentifier?(name: string): string;
+
+  /**
    * Sessions holding a lock on `table` right now.
    *
    * The difference between "this takes one second" and "this takes one second

@@ -203,6 +203,10 @@ export class MysqlAdapter implements DatabaseAdapter {
     return toNumber(rows[0]?.['n']);
   }
 
+  quoteIdentifier(name: string): string {
+    return quote(name);
+  }
+
   async countNonNull(table: string, column: string): Promise<number> {
     const rows = await this.probe(
       `SELECT COUNT(${quote(column)}) AS n FROM ${quote(table)}`,

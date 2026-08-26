@@ -220,6 +220,10 @@ export class PostgresAdapter implements DatabaseAdapter {
     return readCount(rows);
   }
 
+  quoteIdentifier(name: string): string {
+    return quoteIdent(name);
+  }
+
   async countNonNull(table: string, column: string): Promise<number> {
     const { rows } = await this.probe(
       `SELECT COUNT(*)::bigint AS n FROM ${qualify(table)} WHERE ${quoteIdent(column)} IS NOT NULL`,

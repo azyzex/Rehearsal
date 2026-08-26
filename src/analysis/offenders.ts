@@ -54,6 +54,18 @@ export async function findOffenders(
     return undefined;
   }
 
+  // Every predicate below is SQL, and the two interesting ones are a NOT EXISTS
+  // and a GROUP BY — neither of which is a filter MongoDB can be handed. The
+  // nullable case *is* expressible there and is answered; the other two are
+  // not, and returning nothing is the honest answer rather than a query that
+  // throws into a log nobody opens.
+  const quote = quoterFor(adapter);
+  if (!quote) {
+    return classification.kind === 'set_not_null'
+      ? mongoNulls(adapter, table, classification.column, limit)
+      : undefined;
+  }
+
   switch (classification.kind) {
     case 'set_not_null': {
       const column = classification.column;
@@ -188,6 +200,51 @@ export async function findOffenders(
   }
 }
 
-function quote(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
+/**
+ * How this engine quotes an identifier, or nothing if it has no SQL to quote.
+ *
+ * This used to be a module-level function that always answered the ANSI way,
+ * which MySQL reads as a string literal: `"phone" IS NULL` asks whether the
+ * constant 'phone' is null, which it never is. The scan found no offending rows
+ * on a table full of them, and reported that as a clean result.
+ */
+function quoterFor(adapter: DatabaseAdapter): ((name: string) => string) | undefined {
+  return adapter.quoteIdentifier ? (name) => adapter.quoteIdentifier!(name) : undefined;
+}
+
+/**
+ * The documents with no value in a field, for MongoDB.
+ *
+ * `{ field: null }` matches both a null and a missing field, which is the same
+ * question `IS NULL` asks and the same set that would fail a required field.
+ */
+async function mongoNulls(
+  adapter: DatabaseAdapter,
+  table: string,
+  column: string | undefined,
+  limit: number,
+): Promise<Offenders | undefined> {
+  if (!column) {
+    return undefined;
+  }
+
+  const where = JSON.stringify({ [column]: null });
+  return {
+    kind: 'null',
+    table,
+    column,
+    total: await adapter.countRows(table, where),
+    rows: await adapter.rowsMatching(table, where, limit),
+    fix: {
+      title: 'Backfill them',
+      sql:
+        `db.getCollection(${JSON.stringify(table)}).updateMany(` +
+        `{ ${JSON.stringify(column)}: null }, ` +
+        `{ $set: { ${JSON.stringify(column)}: /* the right value */ } })`,
+      needsEditing: true,
+      note:
+        'Only you can say what these should be. Replace the placeholder, then ' +
+        'preview it — the result is measured like any other operation.',
+    },
+  };
 }
