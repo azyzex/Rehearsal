@@ -177,7 +177,11 @@ main {
 }
 
 .badge.safe { color: var(--dryrun-safe); }
-.badge.caution { color: var(--dryrun-caution); }
+/* Yellow on a dark panel is the one severity that reads as decoration rather
+   than as text. Mixed toward the foreground so the word stays a word. */
+.badge.caution {
+  color: color-mix(in srgb, var(--dryrun-caution) 70%, var(--vscode-foreground));
+}
 .badge.blocking { color: var(--dryrun-blocking); }
 .badge.destructive { color: var(--dryrun-destructive); }
 .badge.pending { color: var(--vscode-descriptionForeground); }
@@ -735,6 +739,10 @@ footer {
 }
 
 .rewrite-sql {
+  /* The statement being offered. It inherited whatever the surrounding note
+     was faded to, which put the one piece of text here meant to be read at
+     the contrast of a caption. */
+  color: var(--vscode-editor-foreground, var(--vscode-foreground));
   margin-top: 6px;
   font-family: var(--vscode-editor-font-family);
   font-size: 0.82em;

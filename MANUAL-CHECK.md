@@ -150,10 +150,15 @@ Do this one on a table you do not mind changing.
 
 ---
 
-## Themes — the gap the harness has
+## Themes — now checked, but still worth a look
 
-The harness has only ever rendered a dark theme, and its colours are
-stand-ins.
+The harness renders both Light+ and Dark+ now and walks every element that
+paints text, asking one question of all of them: can you read it. That sweep
+found seven pieces of unreadable text, including a table's own name on a card
+the preview had marked.
+
+What it still cannot see is a theme other than those two — High Contrast, and
+whatever you have actually installed.
 
 - [ ] `ctrl + k` then `ctrl + t`, choose **Light+ (default light)**.
 - [ ] Re-run a preview and open the schema explorer.

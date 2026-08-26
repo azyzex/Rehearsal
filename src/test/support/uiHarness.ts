@@ -41,7 +41,7 @@ export const SHOTS = path.join(ROOT, 'ui-shots');
  * with no variables at all exercises only the fallbacks, which is the one case
  * the real editor never produces.
  */
-const THEME = `
+const DARK = `
 :root {
   color-scheme: dark;
   --vscode-font-family: system-ui, sans-serif;
@@ -80,8 +80,67 @@ const THEME = `
   --vscode-badge-foreground: #f8f8f8;
   --vscode-scrollbarSlider-background: rgba(121, 121, 121, 0.4);
 }
+html { background: var(--vscode-editor-background); }
 body { background: var(--vscode-editor-background); color: var(--vscode-foreground); }
 `;
+
+/**
+ * Light+, the other half of the problem.
+ *
+ * Taken from the real theme rather than invented, because the point is to
+ * exercise the values VS Code actually injects. Several of these are much
+ * closer to their backgrounds than their dark counterparts — `panel.border` is
+ * a hair away from the editor background in both, which is how an invisible
+ * button border got shipped.
+ */
+const LIGHT = `
+:root {
+  color-scheme: light;
+  --vscode-font-family: system-ui, sans-serif;
+  --vscode-editor-font-family: Consolas, monospace;
+  --vscode-foreground: #3b3b3b;
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #3b3b3b;
+  --vscode-panel-border: #e5e5e5;
+  --vscode-editorWidget-background: #f8f8f8;
+  --vscode-editorWidget-border: #c8c8c8;
+  --vscode-button-background: #005fb8;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #0258a8;
+  --vscode-button-secondaryBackground: #e5e5e5;
+  --vscode-button-secondaryForeground: #3b3b3b;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #3b3b3b;
+  --vscode-input-border: #cecece;
+  --vscode-focusBorder: #005fb8;
+  --vscode-descriptionForeground: #3b3b3b99;
+  --vscode-textLink-foreground: #005fb8;
+  --vscode-list-hoverBackground: #f2f2f2;
+  --vscode-list-activeSelectionBackground: #e8e8e8;
+  --vscode-charts-red: #a1260d;
+  --vscode-charts-orange: #bf8803;
+  --vscode-charts-yellow: #b5900b;
+  --vscode-charts-green: #388a34;
+  --vscode-charts-blue: #1a85ff;
+  --vscode-charts-purple: #652d90;
+  --vscode-errorForeground: #a1260d;
+  --vscode-inputValidation-errorBackground: #f2dede;
+  --vscode-inputValidation-errorBorder: #be1100;
+  --vscode-inputValidation-warningBackground: #f6f5d2;
+  --vscode-inputValidation-warningBorder: #b89500;
+  --vscode-badge-background: #cccccc;
+  --vscode-badge-foreground: #3b3b3b;
+  --vscode-scrollbarSlider-background: rgba(100, 100, 100, 0.4);
+}
+html { background: var(--vscode-editor-background); }
+body { background: var(--vscode-editor-background); color: var(--vscode-foreground); }
+`;
+
+export type Theme = 'dark' | 'light';
+
+function themeCss(theme: Theme): string {
+  return theme === 'light' ? LIGHT : DARK;
+}
 
 /** The host seam, installed before any of the panel's own scripts run. */
 const VSCODE_SHIM = `
@@ -133,7 +192,7 @@ export interface Panel {
  */
 export async function openPanel(
   build: (options: HtmlOptions) => string,
-  options: { width?: number; height?: number } = {},
+  options: { width?: number; height?: number; theme?: Theme } = {},
 ): Promise<Panel> {
   // Written into media/ so the relative hrefs in the markup resolve to the
   // real stylesheet and the real scripts.
@@ -144,7 +203,10 @@ export async function openPanel(
     // No CSP outside the editor: a file:// page has no origin, so the editor's
     // policy would block the very files under test.
     cspSource: '',
-  }).replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, `<style>${THEME}</style>`);
+  }).replace(
+    /<meta http-equiv="Content-Security-Policy"[^>]*>/,
+    `<style>${themeCss(options.theme ?? 'dark')}</style>`,
+  );
 
   fs.writeFileSync(file, html, 'utf8');
 
@@ -214,41 +276,91 @@ export async function openPanel(
  * anything under about 3 is unreadable at the size these panels use.
  */
 export async function contrast(page: Page, selector: string): Promise<number> {
-  return page.evaluate(`
-    (function () {
-      var element = document.querySelector(${JSON.stringify(selector)});
-      if (!element) { throw new Error('no element matching ' + ${JSON.stringify(selector)}); }
+  const script = [
+    '(function () {',
+    '  var element = document.querySelector(' + JSON.stringify(selector) + ');',
+    '  if (!element) { throw new Error("no element matching " + ' +
+      JSON.stringify(selector) + '); }',
+    '',
+    '  // Built as a plain string with no escapes in it. A regex written inside',
+    '  // a TypeScript template literal loses its backslashes before the browser',
+    '  // sees it, and the resulting checker measures nothing correctly.',
+    '  function parse(value) {',
+    '    var nums = [];',
+    '    var current = "";',
+    '    for (var i = 0; i < value.length; i++) {',
+    '      var ch = value[i];',
+    '      if ((ch >= "0" && ch <= "9") || ch === ".") { current += ch; }',
+    '      else if (current.length) { nums.push(Number(current)); current = ""; }',
+    '    }',
+    '    if (current.length) { nums.push(Number(current)); }',
+    '',
+    '    var rgba = [nums[0] || 0, nums[1] || 0, nums[2] || 0, nums.length > 3 ? nums[3] : 1];',
+    '    // color-mix() comes back as color(srgb 0.64 0.48 0.16): channels in',
+    '    // 0..1 rather than 0..255.',
+    '    if (value.slice(0, 6) === "color(") {',
+    '      rgba[0] *= 255; rgba[1] *= 255; rgba[2] *= 255;',
+    '    }',
+    '    return rgba;',
+    '  }',
+    '',
+    '  // Every translucent layer composited onto the first opaque one, which is',
+    '  // what the eye sees. Returning the topmost translucent layer as if it',
+    '  // were solid reports a 22% tint as a solid block of colour.',
+    '  function backgroundOf(node) {',
+    '    var layers = [];',
+    '    var current = node;',
+    '    var base = null;',
+    '',
+    '    while (current) {',
+    '      var rgba = parse(getComputedStyle(current).backgroundColor);',
+    '      if (rgba[3] >= 0.999) { base = rgba; break; }',
+    '      if (rgba[3] > 0.001) { layers.push(rgba); }',
+    '      current = current.parentElement;',
+    '    }',
+    '',
+    '    if (!base) {',
+    '      var root = parse(getComputedStyle(document.documentElement).backgroundColor);',
+    '      base = root[3] >= 0.999 ? root : [255, 255, 255, 1];',
+    '    }',
+    '',
+    '    var out = [base[0], base[1], base[2]];',
+    '    for (var k = layers.length - 1; k >= 0; k--) {',
+    '      var a = layers[k][3];',
+    '      out[0] = layers[k][0] * a + out[0] * (1 - a);',
+    '      out[1] = layers[k][1] * a + out[1] * (1 - a);',
+    '      out[2] = layers[k][2] * a + out[2] * (1 - a);',
+    '    }',
+    '    return [out[0], out[1], out[2], 1];',
+    '  }',
+    '',
+    '  function channel(value) {',
+    '    var scaled = value / 255;',
+    '    return scaled <= 0.03928 ? scaled / 12.92 : Math.pow((scaled + 0.055) / 1.055, 2.4);',
+    '  }',
+    '  function luminance(rgb) {',
+    '    return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);',
+    '  }',
+    '',
+    '  var style = getComputedStyle(element);',
+    '  var opacity = Number(style.opacity);',
+    '  if (!isFinite(opacity)) { opacity = 1; }',
+    '',
+    '  var front = parse(style.color);',
+    '  var back = backgroundOf(element);',
+    '  var alpha = front[3] * opacity;',
+    '  var seen = [',
+    '    front[0] * alpha + back[0] * (1 - alpha),',
+    '    front[1] * alpha + back[1] * (1 - alpha),',
+    '    front[2] * alpha + back[2] * (1 - alpha)',
+    '  ];',
+    '',
+    '  var f = luminance(seen), b = luminance(back);',
+    '  return (Math.max(f, b) + 0.05) / (Math.min(f, b) + 0.05);',
+    '})()',
+  ].join('\n');
 
-      function parse(value) {
-        var parts = (value.match(/[\\d.]+/g) || []).map(Number);
-        return [parts[0] || 0, parts[1] || 0, parts[2] || 0, parts.length > 3 ? parts[3] : 1];
-      }
-
-      // Walks up for the first ancestor that actually paints, which is what
-      // the eye sees behind text on a transparent element.
-      function backgroundOf(node) {
-        var current = node;
-        while (current) {
-          var rgba = parse(getComputedStyle(current).backgroundColor);
-          if (rgba[3] > 0) { return rgba; }
-          current = current.parentElement;
-        }
-        return [31, 31, 31, 1];
-      }
-
-      function channel(value) {
-        var scaled = value / 255;
-        return scaled <= 0.03928 ? scaled / 12.92 : Math.pow((scaled + 0.055) / 1.055, 2.4);
-      }
-      function luminance(rgb) {
-        return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
-      }
-
-      var front = luminance(parse(getComputedStyle(element).color));
-      var back = luminance(backgroundOf(element));
-      return (Math.max(front, back) + 0.05) / (Math.min(front, back) + 0.05);
-    })()
-  `) as Promise<number>;
+  return page.evaluate(script) as Promise<number>;
 }
 
 /** Whether the element is on the page and actually takes up space. */

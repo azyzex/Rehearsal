@@ -185,7 +185,7 @@ button:disabled {
 .or {
   text-align: center;
   font-size: 11px;
-  opacity: 0.5;
+  opacity: 0.75;
   margin: 12px 0 0;
 }
 
@@ -230,7 +230,9 @@ button:disabled {
   color: var(--vscode-foreground);
   background: transparent;
   border: 1px solid transparent;
-  opacity: 0.5;
+  /* Quiet, because forgetting a connection is not the common action — but
+     still readable. At 0.5 it was under three to one in both themes. */
+  opacity: 0.75;
   font-size: 15px;
   line-height: 1;
 }

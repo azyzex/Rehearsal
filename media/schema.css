@@ -232,7 +232,11 @@ button:focus {
 }
 
 .table-meta {
-  color: var(--vscode-descriptionForeground);
+  /* Not descriptionForeground: in Light+ that is a whisper, and this line
+     carries the row count and the size — the two numbers the card exists to
+     show. Its own colour, faded deliberately rather than by accident. */
+  color: var(--vscode-editor-foreground, var(--vscode-foreground));
+  opacity: 0.72;
   font-size: 0.78em;
   white-space: nowrap;
   flex-shrink: 0;
@@ -260,7 +264,11 @@ button:focus {
   font-size: 0.9em;
 }
 
-.col-key.pk { color: var(--s-pk); }
+/* charts-yellow is nearly the card background in a light theme, and this
+   glyph is how you tell a primary key from a column. */
+.col-key.pk {
+  color: color-mix(in srgb, var(--s-pk) 75%, var(--vscode-editor-foreground, #000));
+}
 .col-key.fk { color: var(--s-fk); }
 
 .col-name {
@@ -885,4 +893,16 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
 }
 .table.affected[data-severity='safe'] .table-head {
   background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 16%, transparent);
+}
+
+/* The tint says "this is where it happens" and was dark enough in a light
+   theme to swallow the name it was pointing at. The head keeps the editor's
+   own foreground rather than inheriting whatever sits behind the tint. */
+.table.affected .table-title {
+  color: var(--vscode-editor-foreground, var(--vscode-foreground));
+}
+
+.table.affected .table-meta {
+  color: var(--vscode-editor-foreground, var(--vscode-foreground));
+  opacity: 0.8;
 }
