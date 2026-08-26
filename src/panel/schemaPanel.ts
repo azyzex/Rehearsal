@@ -593,7 +593,7 @@ export class SchemaPanel {
       return;
     }
 
-    const path = findJoinPath(this.baseline, from, to);
+    const path = findJoinPath(this.baseline, from, to, this.session.language.engine);
     this.post({
       type: 'joinPath',
       from,

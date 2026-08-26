@@ -1,4 +1,4 @@
-import { SchemaSnapshot } from '../adapters/types';
+import { Engine, SchemaSnapshot } from '../adapters/types';
 
 /**
  * How do I get from this table to that one?
@@ -40,6 +40,7 @@ export function findJoinPath(
   snapshot: SchemaSnapshot,
   from: string,
   to: string,
+  engine: Engine = 'postgres',
 ): JoinPath | undefined {
   if (from === to) {
     // Asking for the route from a table to itself is only an interesting
@@ -65,7 +66,7 @@ export function findJoinPath(
       to,
       steps,
       tables: steps.length > 0 ? [from, to] : [from],
-      sql: toSelect(from, steps),
+      sql: toSelect(from, steps, engine),
       pipeline: toPipeline(from, steps),
     };
   }
@@ -112,7 +113,7 @@ export function findJoinPath(
         previous.set(step.to, step);
 
         if (step.to === to) {
-          return build(from, to, previous);
+          return build(from, to, previous, engine);
         }
         next.push(step.to);
       }
@@ -124,7 +125,12 @@ export function findJoinPath(
   return undefined;
 }
 
-function build(from: string, to: string, previous: Map<string, JoinStep>): JoinPath {
+function build(
+  from: string,
+  to: string,
+  previous: Map<string, JoinStep>,
+  engine: Engine,
+): JoinPath {
   const steps: JoinStep[] = [];
   let cursor = to;
 
@@ -143,7 +149,7 @@ function build(from: string, to: string, previous: Map<string, JoinStep>): JoinP
     to,
     steps,
     tables,
-    sql: toSelect(from, steps),
+    sql: toSelect(from, steps, engine),
     pipeline: toPipeline(from, steps),
   };
 }
@@ -155,9 +161,14 @@ function build(from: string, to: string, previous: Map<string, JoinStep>): JoinP
  * — `users → orders → users` is a real shape when a table has two foreign keys
  * into the same place — and unaliased self-joins are ambiguous.
  */
-function toSelect(from: string, steps: readonly JoinStep[]): string {
+function toSelect(from: string, steps: readonly JoinStep[], engine: Engine): string {
+  // MySQL reads a double-quoted word as a string literal, so a route quoted the
+  // ANSI way is a query that will not run for the person being handed it.
+  const ident = engine === 'mysql' ? backtick : quoteIdent;
+  const qualify = (table: string): string => table.split('.').map(ident).join('.');
+
   const alias = (index: number): string => `t${index}`;
-  const lines = [`SELECT *`, `  FROM ${quote(from)} AS ${alias(0)}`];
+  const lines = [`SELECT *`, `  FROM ${qualify(from)} AS ${alias(0)}`];
 
   steps.forEach((step, index) => {
     const left = alias(index);
@@ -165,11 +176,11 @@ function toSelect(from: string, steps: readonly JoinStep[]): string {
     const on = step.fromColumns
       .map((column, position) => {
         const target = step.toColumns[position] ?? step.toColumns[0] ?? column;
-        return `${left}.${quoteIdent(column)} = ${right}.${quoteIdent(target)}`;
+        return `${left}.${ident(column)} = ${right}.${ident(target)}`;
       })
       .join(' AND ');
 
-    lines.push(`  JOIN ${quote(step.to)} AS ${right} ON ${on}`);
+    lines.push(`  JOIN ${qualify(step.to)} AS ${right} ON ${on}`);
   });
 
   return lines.join('\n');
@@ -261,8 +272,9 @@ function json(value: string): string {
   return JSON.stringify(value);
 }
 
-function quote(table: string): string {
-  return table.split('.').map(quoteIdent).join('.');
+/** MySQL: backticks, doubled to escape one. */
+function backtick(name: string): string {
+  return `\`${name.replace(/`/g, '``')}\``;
 }
 
 function quoteIdent(name: string): string {

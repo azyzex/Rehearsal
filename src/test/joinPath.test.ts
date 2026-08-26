@@ -152,3 +152,65 @@ describe('findJoinPath', () => {
     assert.match(path.sql, /JOIN "billing"\."invoices" AS t1/);
   });
 });
+
+describe('the route, in each engine', () => {
+  const table = (name: string) => ({
+    schema: 'public',
+    name,
+    qualified: name,
+    rows: 1,
+    bytes: 1,
+    partitioned: false,
+    columns: [],
+  });
+
+  const snapshot = {
+    schemas: ['public'],
+    tables: ['orders', 'users', 'orgs'].map(table),
+    foreignKeys: [
+      {
+        name: 'orders_user_id_fkey',
+        fromTable: 'orders',
+        fromColumns: ['user_id'],
+        toTable: 'users',
+        toColumns: ['id'],
+      },
+      {
+        name: 'users_org_id_fkey',
+        fromTable: 'users',
+        fromColumns: ['org_id'],
+        toTable: 'orgs',
+        toColumns: ['id'],
+      },
+    ],
+  };
+
+  it('quotes Postgres the ANSI way', () => {
+    const route = findJoinPath(snapshot, 'orders', 'users', 'postgres');
+    assert.match(route!.sql, /FROM "orders" AS t0/);
+    assert.doesNotMatch(route!.sql, /`/);
+  });
+
+  it('quotes MySQL with backticks, which is the only form it accepts', () => {
+    // A route quoted the ANSI way is a query that will not run for the person
+    // being handed it — `"orders"` is a string literal to MySQL.
+    const route = findJoinPath(snapshot, 'orders', 'users', 'mysql');
+    assert.match(route!.sql, /FROM `orders` AS t0/);
+    assert.match(route!.sql, /t0\.`user_id` = t1\.`id`/);
+    assert.doesNotMatch(route!.sql, /"orders"|"users"|"user_id"/);
+  });
+
+  it('defaults to Postgres when nothing says otherwise', () => {
+    assert.match(findJoinPath(snapshot, 'orders', 'users')!.sql, /"orders"/);
+  });
+
+  it('reaches through the second hop with the right prefix, for MongoDB', () => {
+    // After `$unwind: "$users"` the next lookup's local field is at
+    // `users.org_id`, not `org_id`. Getting that wrong gives a pipeline that
+    // runs, returns nothing, and looks correct.
+    const route = findJoinPath(snapshot, 'orders', 'orgs', 'mongo');
+    assert.match(route!.pipeline, /localField: "user_id"/);
+    assert.match(route!.pipeline, /localField: "users\.org_id"/);
+    assert.doesNotMatch(route!.pipeline, /SELECT|JOIN/i);
+  });
+});
