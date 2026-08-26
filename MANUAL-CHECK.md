@@ -16,8 +16,11 @@ What is left is what nothing but a person in a real editor can see:
    survives being started twice.
 2. **The real theme.** The harness uses stand-ins for the VS Code colour
    variables. They are taken from the real themes, but they are still stand-ins.
-3. **A real database round trip through the UI.** Every adapter is tested
-   against a real server; none of those tests goes through a panel.
+3. **A real database round trip through the UI, in a real editor.**
+   `endToEnd.test.ts` now runs commands against a real Postgres through a stub
+   VS Code and reads what arrives at the webview, which covers the wiring. What
+   it cannot cover is the rendering of that data by a real webview in a real
+   window — the two halves are each tested, and only you can see them joined.
 4. **Whether the whole thing is pleasant to use**, which no test has an
    opinion about.
 

@@ -14,8 +14,19 @@
  * activation actually did.
  */
 
+/** One webview panel the extension opened, and everything it sent to it. */
+export interface RecordedPanel {
+  readonly viewType: string;
+  readonly title: string;
+  readonly posted: Record<string, unknown>[];
+}
+
 export interface Recorded {
   readonly commands: Map<string, (...args: unknown[]) => unknown>;
+  /** Every panel opened, in the order they were opened. */
+  readonly panels: RecordedPanel[];
+  /** Documents opened with `openTextDocument({ content })`. */
+  readonly documents: { language?: string; content: string }[];
   readonly webviewViewProviders: Map<string, unknown>;
   readonly outputChannels: string[];
   readonly diagnosticCollections: string[];
@@ -131,6 +142,8 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
   const webviewViewProviders = new Map<string, unknown>();
   const outputChannels: string[] = [];
   const diagnosticCollections: string[] = [];
+  const panels: RecordedPanel[] = [];
+  const documents: { language?: string; content: string }[] = [];
   const shown: Recorded['shown'] = [];
   let disposed = 0;
 
@@ -148,12 +161,15 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     },
   });
 
-  const webview = () => ({
+  const webview = (record: RecordedPanel) => ({
     html: '',
     options: {},
     cspSource: 'vscode-webview:',
     asWebviewUri: (target: { path: string }) => uri(target.path),
-    postMessage: async () => true,
+    postMessage: async (message: Record<string, unknown>) => {
+      record.posted.push(message);
+      return true;
+    },
     onDidReceiveMessage: nothing,
   });
 
@@ -256,9 +272,12 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
           },
         };
       },
-      createWebviewPanel: (_type: string, title: string) => ({
+      createWebviewPanel: (viewType: string, title: string) => {
+        const record: RecordedPanel = { viewType, title, posted: [] };
+        panels.push(record);
+        return {
         title,
-        webview: webview(),
+        webview: webview(record),
         visible: true,
         active: true,
         viewColumn: 1,
@@ -268,7 +287,8 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
         dispose: () => {
           disposed += 1;
         },
-      }),
+        };
+      },
       createTextEditorDecorationType: () => ({
         key: 'decoration',
         dispose: () => {
@@ -312,7 +332,18 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
       }),
       onDidChangeTextDocument: nothing,
       onDidChangeConfiguration: nothing,
-      openTextDocument: async () => ({ getText: () => '', uri: uri('/untitled'), lineCount: 0 }),
+      openTextDocument: async (options?: { language?: string; content?: string }) => {
+        const content = options?.content ?? '';
+        if (options && 'content' in options) {
+          documents.push({ language: options.language, content });
+        }
+        return {
+          getText: () => content,
+          uri: uri('/untitled'),
+          lineCount: content.split(String.fromCharCode(10)).length,
+          languageId: options?.language ?? 'plaintext',
+        };
+      },
       findFiles: async () => [],
       asRelativePath: (target: unknown) =>
         typeof target === 'string' ? target : ((target as { path?: string }).path ?? ''),
@@ -360,6 +391,8 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     webviewViewProviders,
     outputChannels,
     diagnosticCollections,
+    panels,
+    documents,
     shown,
     get disposed() {
       return disposed;
