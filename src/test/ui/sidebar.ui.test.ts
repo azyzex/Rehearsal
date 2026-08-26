@@ -209,6 +209,62 @@ describe('the sidebar, rendered', () => {
       assert.ok(posted.some((message) => message.type === 'forget' && message.id === 'a'));
     });
 
+    describe('renaming one', () => {
+      // The label is whatever the connection string produced, which for Neon is
+      // `shop on ep-cool-mode.neon.tech` — accurate, and useless once there are
+      // three of them. The handler for this was written and no control had ever
+      // posted it, so the extension could rename a connection and nobody could.
+
+      it('turns the row into a text box holding the current name', async () => {
+        await panel.click('.saved-row:nth-of-type(1) .saved-rename');
+        assert.equal(await visible(panel.page, '.saved-row .saved-edit'), true);
+        assert.equal(await panel.page.inputValue('.saved-row .saved-edit'), SAVED[0]!.label);
+      });
+
+      it('sends the new name on enter', async () => {
+        await panel.page.fill('.saved-row .saved-edit', 'shop, production');
+        await panel.page.press('.saved-row .saved-edit', 'Enter');
+
+        const posted = (await panel.posted()) as { type?: string; id?: string; label?: string }[];
+        const rename = posted.filter((message) => message.type === 'rename');
+        assert.equal(rename.length, 1, `posted ${posted.length} messages, none a rename`);
+        assert.equal(rename[0]!.id, 'a');
+        assert.equal(rename[0]!.label, 'shop, production');
+      });
+
+      it('puts the row back when the rename is abandoned', async () => {
+        await panel.send({ type: 'state', connected: null, saved: SAVED });
+        await panel.click('.saved-row:nth-of-type(1) .saved-rename');
+        await panel.page.press('.saved-row .saved-edit', 'Escape');
+
+        assert.equal(await visible(panel.page, '.saved-row .saved-edit'), false);
+        assert.equal(await count(panel.page, '.saved-row'), SAVED.length);
+        assert.deepEqual(await texts(panel.page, '.saved-name'), SAVED.map((one) => one.label));
+      });
+
+      it('reads an empty name as a cancel rather than as a name', async () => {
+        // A row named nothing is a row with nothing to click on.
+        await panel.send({ type: 'state', connected: null, saved: SAVED });
+        await panel.click('.saved-row:nth-of-type(2) .saved-rename');
+        await panel.page.fill('.saved-row .saved-edit', '   ');
+        await panel.page.press('.saved-row .saved-edit', 'Enter');
+
+        // Scoped to this row: `posted()` accumulates for the life of the panel,
+        // and the test above deliberately renamed the first one.
+        const posted = (await panel.posted()) as { type?: string; id?: string }[];
+        assert.equal(
+          posted.filter((message) => message.type === 'rename' && message.id === 'b').length,
+          0,
+        );
+        assert.deepEqual(await texts(panel.page, '.saved-name'), SAVED.map((one) => one.label));
+      });
+
+      it('is readable while being quiet', async () => {
+        await panel.send({ type: 'state', connected: null, saved: SAVED });
+        assert.ok((await contrast(panel.page, '.saved-rename')) >= 3);
+      });
+    });
+
     it('keeps a long label from pushing the buttons off the edge', async () => {
       // The sidebar is 300px and a Neon hostname is longer than that.
       const overflow = (await panel.page.evaluate(`

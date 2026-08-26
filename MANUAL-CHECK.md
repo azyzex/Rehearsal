@@ -1,15 +1,22 @@
 # The pass only you can do
 
 The browser harness renders the real markup, stylesheet and scripts, and drives
-them with real clicks. It cannot see four things:
+them with real clicks, in both a dark and a light theme. Two other things now
+also happen without you: `contract.test.ts` reads both halves of every panel and
+checks that each message posted has a listener at the other end and each
+listener has something that posts it — so a dead button or a command that sends
+nothing no longer needs finding by hand.
 
-1. **Whether the extension actually sends those messages.** The harness posts
-   them by hand. If a command never posts one, every UI test still passes.
-2. **A real theme.** The harness uses stand-ins for Dark+ and has never rendered
-   a light theme at all.
-3. **The extension host.** Command registration, keybindings, activation errors,
+What is left is what nothing but a person in a real editor can see:
+
+1. **The extension host.** Command registration, keybindings, activation errors,
    the Problems view, the modal dialogs.
-4. **A real database round trip through the UI.**
+2. **The real theme.** The harness uses stand-ins for the VS Code colour
+   variables. They are taken from the real themes, but they are still stand-ins.
+3. **A real database round trip through the UI.** Every adapter is tested
+   against a real server; none of those tests goes through a panel.
+4. **Whether the whole thing is pleasant to use**, which no test has an
+   opinion about.
 
 So this is a list of exactly what to press. It is ordered by how likely each
 one is to be broken, not by how the extension is organised.
@@ -57,6 +64,10 @@ These are the newest and least verified. Tick as you go.
 - [ ] Connect with **Remember this one** ticked, then disconnect. **Expect:**
       the connection appears under **Saved**, and clicking it reconnects
       without retyping anything.
+- [ ] Click the **pencil** on a saved row, type a shorter name, press enter.
+      **Expect:** the row keeps the new name after a reload of the window
+      (`ctrl + shift + p`, then "Developer: Reload Window"). Press escape
+      instead and it should go back to the old name unchanged.
 - [ ] **The thing to catch:** it says connected but the actions do nothing, or
       a saved connection fails with "password is not in the keychain".
 

@@ -120,7 +120,11 @@
     renderSaved(state.saved || []);
   }
 
+  /** The last list drawn, so an abandoned rename can put the row back. */
+  let lastSaved = [];
+
   function renderSaved(saved) {
+    lastSaved = saved;
     el.savedSection.hidden = saved.length === 0;
     el.saved.replaceChildren();
 
@@ -149,6 +153,14 @@
 
       row.appendChild(open);
 
+      const rename = document.createElement('button');
+      rename.className = 'saved-rename';
+      rename.type = 'button';
+      rename.title = 'Rename this connection';
+      rename.textContent = '✎';
+      rename.addEventListener('click', () => startRename(row, entry));
+      row.appendChild(rename);
+
       const forget = document.createElement('button');
       forget.className = 'saved-forget';
       forget.type = 'button';
@@ -159,6 +171,63 @@
 
       el.saved.appendChild(row);
     }
+  }
+
+  /**
+   * Turns one saved row into a text box.
+   *
+   * The label is whatever the connection string happened to produce —
+   * `shop on ep-cool-mode-a1b2c3.eu-central-1.aws.neon.tech` — which is
+   * accurate and useless once there are three of them. Editing happens in the
+   * row rather than in a dialog, because the sidebar is 300px wide and a modal
+   * over it hides the list you are naming things against.
+   */
+  function startRename(row, entry) {
+    const input = document.createElement('input');
+    input.className = 'saved-edit';
+    input.type = 'text';
+    input.value = entry.label;
+    input.setAttribute('aria-label', 'Name for this connection');
+
+    let settled = false;
+
+    function commit() {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const label = input.value.trim();
+      // An empty name would leave a row with nothing to click on, so it is
+      // read as a cancel rather than as a name.
+      if (label.length === 0 || label === entry.label) {
+        renderSaved(lastSaved);
+        return;
+      }
+      vscode.postMessage({ type: 'rename', id: entry.id, label });
+    }
+
+    function cancel() {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      renderSaved(lastSaved);
+    }
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        commit();
+      } else if (event.key === 'Escape') {
+        cancel();
+      }
+    });
+    // Clicking away keeps what was typed. Losing a rename because the mouse
+    // moved is the more annoying of the two mistakes.
+    input.addEventListener('blur', commit);
+
+    row.replaceChildren(input);
+    input.focus();
+    input.select();
   }
 
   function renderDetection(detection) {
