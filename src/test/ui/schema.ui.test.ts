@@ -423,8 +423,14 @@ describe('the schema explorer, rendered', () => {
     it('keeps every control on one line', async () => {
       // It used to solve a narrow window by wrapping "Re-layout" across two
       // lines and growing taller, which reads as broken rather than as tight.
+      // Only the controls actually on screen. The Now/After toggle is hidden
+      // until there are changes, and a hidden button measures zero — which is
+      // not a button that has wrapped.
       const heights = (await panel.page.evaluate(`
-        Array.prototype.map.call(document.querySelectorAll('#toolbar button'), function (button) {
+        Array.prototype.filter.call(
+          document.querySelectorAll('#toolbar button'),
+          function (button) { return button.getBoundingClientRect().height > 0; }
+        ).map(function (button) {
           return Math.round(button.getBoundingClientRect().height);
         })
       `)) as number[];
@@ -596,7 +602,9 @@ describe('the schema explorer, rendered', () => {
       // in the table only after applying." The column was in the After view
       // all along, behind a toggle in the corner nobody had reason to press.
       await panel.send({ type: 'changeset', changes: [], diff: EMPTY_DIFF, projected: SNAPSHOT, sql: '' });
-      await panel.click('#view-before');
+      // No changes, so there is no After picture to offer and no toggle to
+      // press: this is the Now view by construction.
+      assert.equal(await visible(panel.page, '#view-toggle'), false);
 
       const withColumn = {
         ...SNAPSHOT,
@@ -626,7 +634,7 @@ describe('the schema explorer, rendered', () => {
 
     it('does not flip for a row edit, which changes no structure', async () => {
       await panel.send({ type: 'changeset', changes: [], diff: EMPTY_DIFF, projected: SNAPSHOT, sql: '' });
-      await panel.click('#view-before');
+      assert.equal(await visible(panel.page, '#view-toggle'), false);
 
       await panel.send({
         type: 'changeset',

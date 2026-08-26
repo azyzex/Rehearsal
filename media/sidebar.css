@@ -5,6 +5,17 @@
  * stacks, nothing sits side by side, and no line depends on having room.
  */
 
+/* The `hidden` attribute, honoured.
+ *
+ * A browser's own rule for it is `[hidden] { display: none }`, which any rule
+ * naming a display on the element beats — `main { display: flex }` is enough,
+ * and then setting `.hidden = true` changes nothing on screen.
+ *
+ * Declared once, at the top, so nothing below has to remember. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: var(--vscode-font-family);
   font-size: 13px;

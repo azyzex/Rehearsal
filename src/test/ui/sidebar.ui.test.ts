@@ -52,6 +52,15 @@ describe('the sidebar, rendered', () => {
     assert.equal(await visible(panel.page, '#connection'), true);
   });
 
+  it('shows nothing about an engine before anything has been typed', async () => {
+    // `.detected { display: flex }` beat the `hidden` attribute, so the chip
+    // that names the engine sat there empty from the moment the view opened,
+    // in every window, before there was anything to detect.
+    assert.equal(await visible(panel.page, '#detected'), false);
+    assert.equal(await visible(panel.page, '#error'), false);
+    assert.equal(await visible(panel.page, '#busy'), false);
+  });
+
   it('says what it does, once, in a sentence', async () => {
     assert.match(
       (await panel.page.textContent('.lede')) ?? '',

@@ -19,6 +19,18 @@
                    makes a long SQL line push the whole panel sideways */
 }
 
+/* The `hidden` attribute, honoured.
+ *
+ * A browser's own rule for it is `[hidden] { display: none }`, which any rule
+ * naming a display on the element beats — `main { display: flex }` is enough.
+ * The result was a Diagram tab that drew the diagram with the entire statement
+ * list still laid out underneath it, for as long as this panel has existed.
+ *
+ * Declared once, at the top, so nothing below has to remember. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   padding: 0;
