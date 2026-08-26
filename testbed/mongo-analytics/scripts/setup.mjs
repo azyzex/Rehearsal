@@ -271,12 +271,16 @@ function buildEvents() {
               ? { referrer: i % 6 === 0 ? 'organic' : `campaign-${i % 25}` }
               : { path: `/page/${i % 200}`, ms: 20 + (i % 900) };
 
+    // A third carry no user_id. Two thirds of *those* hold an explicit null and
+    // the rest omit the field entirely — which is the distinction that makes
+    // `{ user_id: null }` match far more than its author expects, because in
+    // MongoDB that filter matches both.
+    const anonymous = i % 3 === 0;
+    const missing = i % 9 === 0;
+
     return {
       _id: id,
-      // A third carry no user_id, which is what makes a later "required field"
-      // migration interesting — and what makes `{ user_id: null }` match far
-      // more than its author expects.
-      user_id: i % 3 === 0 ? null : 1 + (i % USERS),
+      ...(anonymous ? (missing ? {} : { user_id: null }) : { user_id: 1 + (i % USERS) }),
       session_id: 1 + (i % SESSIONS),
       name,
       props,
