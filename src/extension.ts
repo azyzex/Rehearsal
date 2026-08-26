@@ -882,14 +882,22 @@ function reportError(
 
   if (error instanceof ConnectionResolutionError) {
     output.appendLine(error.message);
-    // Rather than leaving the user to work out where the extension is looking,
-    // let them point at the file. Only the path is kept; the credential inside
-    // it is read fresh each time and never stored.
     if (quiet) {
       return;
     }
+
+    // There is a front door now. "No connection string found" used to be the
+    // end of the road — a message about a file the user had not written, with
+    // nothing to press. Opening the panel that exists to answer it is a better
+    // answer than explaining where the extension looked.
+    Sidebar.reveal();
+
     void vscode.window
-      .showErrorMessage(error.message, 'Select .env file…')
+      .showWarningMessage(
+        'Dry Run is not connected to anything yet. Paste a connection string in the ' +
+          'Dry Run panel, or point it at a .env file.',
+        'Select .env file…',
+      )
       .then(async (choice) => {
         if (choice !== 'Select .env file…' || !connections) {
           return;

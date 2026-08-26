@@ -57,12 +57,15 @@
     connection: /** @type {HTMLElement} */ (document.getElementById('connection')),
     overlay: /** @type {HTMLSelectElement} */ (document.getElementById('overlay')),
     overlayNote: /** @type {HTMLElement} */ (document.getElementById('overlay-note')),
+    crowded: /** @type {HTMLElement} */ (document.getElementById('crowded')),
   };
 
   // How many columns to draw before collapsing the rest into a "+N more" line.
   // A card listing sixty columns is a wall, and at that point the useful
   // information is the table's name and its relationships, not every field.
   const MAX_COLUMNS = 12;
+  // Above this, fitting everything on screen shows a knot rather than a schema.
+  const CROWDED = 40;
   const CARD_WIDTH = 210;
   const HEAD_HEIGHT = 30;
   const ROW_HEIGHT = 19;
@@ -223,6 +226,18 @@
     el.stats.textContent =
       `${tables.length} ${tables.length === 1 ? 'table' : 'tables'}, ` +
       `${keys.length} ${keys.length === 1 ? 'relationship' : 'relationships'}`;
+
+    // Past a certain size "the whole schema" is a picture of nothing. Two
+    // hundred tables draw in a quarter of a second and fit on screen as an
+    // unreadable knot, and pretending otherwise wastes the time it takes
+    // someone to zoom in and find that out. The tools that do work are right
+    // there, so the honest thing is to point at them.
+    el.crowded.hidden = tables.length <= CROWDED;
+    if (tables.length > CROWDED) {
+      el.crowded.textContent =
+        `${tables.length} tables is more than fits legibly at once. Search for one by ` +
+        `name, or open a table and use focus mode to see just its neighbourhood.`;
+    }
   }
 
   /**

@@ -152,6 +152,7 @@ export function schemaPanelHtml(options: HtmlOptions): string {
   <div id="changes-body"></div>
 </section>
 
+<div id="crowded" class="crowded" hidden></div>
 <div id="overlay-note" class="overlay-note" hidden></div>
 <footer id="legend">
   <span><i class="swatch pk"></i> primary key</span>

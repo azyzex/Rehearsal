@@ -906,3 +906,15 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
   color: var(--vscode-editor-foreground, var(--vscode-foreground));
   opacity: 0.8;
 }
+
+/* Said when the whole schema stops being a picture of anything.
+   Two hundred tables draw in a quarter of a second and fit on screen as an
+   unreadable knot; the tools that do work are in the toolbar above this. */
+.crowded {
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-top: 1px solid var(--s-border);
+  border-left: 2px solid var(--vscode-charts-blue, #3794ff);
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.1));
+}
