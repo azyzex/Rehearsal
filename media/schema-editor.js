@@ -745,7 +745,21 @@
     }
 
     const editable = detail.primaryKey.length > 0;
+    // The declared columns, plus anything the rows actually carry.
+    //
+    // For SQL those are always the same list. For MongoDB they are not: the
+    // field list is inferred from a sample of documents and the rows shown are
+    // a different query, so a document can hold a field the inference missed.
+    // Showing a row while quietly hiding part of it is the one thing a table
+    // of real data must not do.
     const columns = detail.columns.map((c) => c.name);
+    for (const row of detail.sample || []) {
+      for (const key of Object.keys(row)) {
+        if (!columns.includes(key)) {
+          columns.push(key);
+        }
+      }
+    }
 
     const wrap = document.createElement('div');
     wrap.className = 'data-table-wrap';

@@ -167,6 +167,15 @@ export class SchemaPanel {
       destructive: false,
       blocking: false,
       canApply: false,
+      // A migration file previewed with the explorer open lands on the diagram
+      // too. There is no reason the picture should only work for changes made
+      // by clicking — the question "where does this happen" is the same one.
+      affected: affectedTables(
+        options.findings as readonly {
+          severity: Severity;
+          classification: { table?: string };
+        }[],
+      ),
     });
   }
 
