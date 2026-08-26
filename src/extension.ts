@@ -23,7 +23,7 @@ import { MigrationFile, findMigrations } from './migrations/discover';
 import { readLedger } from './migrations/ledger';
 import { healthReport } from './analysis/healthReport';
 import { compareSchemas, comparisonReport } from './analysis/compare';
-import { PostgresAdapter } from './adapters/postgres';
+import { adapterFor } from './adapters/select';
 import { APPLICATION_NAME } from './constants';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -430,7 +430,22 @@ async function compareWithAnother(
     return;
   }
 
-  const second = new PostgresAdapter();
+  // The adapter the *other* string asks for, not a Postgres one. This was
+  // hardcoded, so comparing two MySQL databases opened a Postgres driver
+  // against the second and failed with an error about the wrong protocol.
+  const second = adapterFor(other.trim());
+
+  if (second.engine !== connection.adapter.engine) {
+    // Two engines describe a schema in different vocabularies — a MongoDB
+    // collection has no nullability to differ on and no foreign keys to be
+    // missing — so a diff between them would be a list of differences that are
+    // not differences.
+    void vscode.window.showWarningMessage(
+      `Dry Run compares two databases of the same kind. This connection is ` +
+        `${connection.adapter.engine} and the one you gave is ${second.engine}.`,
+    );
+    return;
+  }
 
   try {
     const { left, right } = await vscode.window.withProgress(

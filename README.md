@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 1,068 tests: against a real Postgres, a
+> **Status: working, not yet published.** 1,075 tests: against a real Postgres, a
 > real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
 > click them. The demo recording and the marketplace listing are the remaining
 > work.

@@ -501,3 +501,69 @@ describe('the questions the editor asks for the schema explorer', () => {
     assert.deepEqual(changes(), [], 'escaping a question still changed something');
   });
 });
+
+/**
+ * Comparing against a second database, from the command.
+ *
+ * Two bugs lived here, and both only appeared away from the happy path.
+ *
+ * The command asked for the second connection string before checking there was
+ * a first one, so with nothing connected the box opened, a password was typed
+ * into it, the box closed, and nothing happened at all.
+ *
+ * And the adapter for that second database was hardcoded to Postgres — so
+ * comparing two MySQL databases opened a Postgres driver against the second and
+ * failed with an error about the wrong protocol, and comparing a Postgres
+ * schema against a MongoDB one was offered as though it meant something.
+ */
+describe('comparing against another database', () => {
+  it('asks for the connection it will compare against, naming this one', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    const before = recorded.asked.length;
+    recorded.answers.push(undefined); // escape
+
+    await recorded.commands.get('dryrun.compareSchemas')!();
+
+    assert.ok(recorded.asked.length > before, 'it asked nothing at all');
+    const asked = recorded.asked[recorded.asked.length - 1]!;
+    assert.match(
+      String(asked.options['prompt']),
+      /dryrun_test/,
+      'the question does not say which database is being compared against',
+    );
+  });
+
+  it('refuses a second database of a different kind, and says which is which', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    // A MongoDB collection has no nullability to differ on and no foreign keys
+    // to be missing, so a diff against one would be a list of differences that
+    // are not differences.
+    const before = recorded.shown.length;
+    recorded.answers.push('mongodb://127.0.0.1:27017/other');
+
+    await recorded.commands.get('dryrun.compareSchemas')!();
+
+    const said = recorded.shown.slice(before).map((one) => one.message).join('\n');
+    assert.match(said, /same kind/i);
+    assert.match(said, /postgres/i);
+    assert.match(said, /mongo/i);
+  });
+
+  it('does not try a Postgres driver against a MySQL string', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    // The refusal above is what stops it now. Before, this reached a Postgres
+    // client pointed at port 3306 and failed with a protocol error that named
+    // neither engine.
+    const before = recorded.shown.length;
+    recorded.answers.push('mysql://root@127.0.0.1:3306/blog');
+
+    await recorded.commands.get('dryrun.compareSchemas')!();
+
+    const said = recorded.shown.slice(before).map((one) => one.message).join('\n');
+    assert.match(said, /same kind/i);
+    assert.doesNotMatch(said, /protocol|ECONNREFUSED/i);
+  });
+});
