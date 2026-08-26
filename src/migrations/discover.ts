@@ -1,3 +1,4 @@
+import { Engine } from '../adapters/types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -48,8 +49,8 @@ export interface MigrationLayout {
  * files is the fallback: common, unambiguous to read, and impossible to match
  * against a ledger because there is not one.
  */
-export function findMigrations(root: string): MigrationLayout | undefined {
-  return prismaLayout(root) ?? drizzleLayout(root) ?? plainLayout(root);
+export function findMigrations(root: string, engine: Engine = 'postgres'): MigrationLayout | undefined {
+  return prismaLayout(root) ?? drizzleLayout(root) ?? plainLayout(root, engine);
 }
 
 function prismaLayout(root: string): MigrationLayout | undefined {
@@ -107,15 +108,29 @@ function drizzleLayout(root: string): MigrationLayout | undefined {
   return undefined;
 }
 
-function plainLayout(root: string): MigrationLayout | undefined {
-  for (const folder of ['migrations', 'db/migrations', 'sql/migrations']) {
+function plainLayout(root: string, engine: Engine): MigrationLayout | undefined {
+  // A folder of migrations does not have to be a folder of SQL. A MongoDB
+  // project keeps `.js` — mongosh scripts — and looking only for `.sql` meant
+  // "Preview Pending Migrations" answered "none found" for a project with a
+  // directory full of them.
+  //
+  // `operations` is included because that is what the word means when the
+  // statements are not SQL, and it is what this project's own testbed uses.
+  const folders =
+    engine === 'mongo'
+      ? ['migrations', 'operations', 'db/migrations', 'db/operations']
+      : ['migrations', 'db/migrations', 'sql/migrations'];
+
+  const wanted = engine === 'mongo' ? ['.js', '.mongodb.js'] : ['.sql'];
+
+  for (const folder of folders) {
     const directory = path.join(root, ...folder.split('/'));
     if (!isDirectory(directory)) {
       continue;
     }
 
     const migrations = readdir(directory)
-      .filter((entry) => entry.toLowerCase().endsWith('.sql'))
+      .filter((entry) => wanted.some((suffix) => entry.toLowerCase().endsWith(suffix)))
       .sort()
       .map((entry) => ({
         name: entry,

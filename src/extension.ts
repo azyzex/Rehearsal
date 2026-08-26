@@ -557,21 +557,35 @@ async function pendingMigrations(
   output: vscode.OutputChannel,
   diagnostics: FindingDiagnostics,
 ): Promise<void> {
+  // The connection first, because what counts as a migration file depends on
+  // the engine: a MongoDB project keeps `.js`, and looking for `.sql` in it
+  // answered "none found" for a directory full of them.
+  let connection;
+  try {
+    connection = await connections.acquire();
+  } catch (error) {
+    reportError(error, output, connections);
+    return;
+  }
+
+  const engine = connection.adapter.engine;
   const folders = vscode.workspace.workspaceFolders ?? [];
   const layout = folders
-    .map((folder) => findMigrations(folder.uri.fsPath))
+    .map((folder) => findMigrations(folder.uri.fsPath, engine))
     .find((found) => found !== undefined);
 
   if (!layout) {
     void vscode.window.showWarningMessage(
-      'Dry Run found no migrations. It looks for prisma/migrations, a Drizzle folder ' +
-        'with meta/_journal.json, or a migrations folder of .sql files.',
+      engine === 'mongo'
+        ? 'Dry Run found no operations. It looks for a migrations or operations folder ' +
+            'of .js files.'
+        : 'Dry Run found no migrations. It looks for prisma/migrations, a Drizzle folder ' +
+            'with meta/_journal.json, or a migrations folder of .sql files.',
     );
     return;
   }
 
   try {
-    const connection = await connections.acquire();
     const status = await readLedger(connection.adapter, layout);
 
     output.appendLine(

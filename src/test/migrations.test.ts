@@ -263,3 +263,69 @@ describe('the ledger', () => {
     );
   });
 });
+
+describe('finding operations for an engine that does not write SQL', () => {
+  // "Preview Pending Migrations" answered "none found" for a MongoDB project
+  // with a directory full of them, because it only ever looked for `.sql`.
+  let root: string;
+
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-mongo-migrations-'));
+    const operations = path.join(root, 'operations');
+    fs.mkdirSync(operations);
+
+    fs.writeFileSync(
+      path.join(operations, '0001_cleanup.mongodb.js'),
+      'db.users.deleteMany({ tier: "free" })\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(operations, '0002_backfill.js'),
+      'db.users.updateMany({}, { $set: { seen: true } })\n',
+      'utf8',
+    );
+    // Not a migration. Present to make sure the filter is a filter.
+    fs.writeFileSync(path.join(operations, 'notes.md'), 'nothing here\n', 'utf8');
+  });
+
+  it('finds .js operations when the engine is MongoDB', () => {
+    const layout = findMigrations(root, 'mongo');
+
+    assert.ok(layout, 'found nothing at all');
+    assert.equal(layout.migrations.length, 2);
+    assert.deepEqual(
+      layout.migrations.map((one) => one.name),
+      ['0001_cleanup.mongodb.js', '0002_backfill.js'],
+      'and in order, because order is what "pending" means',
+    );
+  });
+
+  it('finds none of them for an engine that writes SQL', () => {
+    // A folder of JavaScript is not a folder of migrations for Postgres, and
+    // offering to run it as SQL would be worse than finding nothing.
+    assert.equal(findMigrations(root, 'postgres'), undefined);
+  });
+
+  it('still finds a plain SQL folder for the engines that use one', () => {
+    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-sql-migrations-'));
+    const directory = path.join(sqlRoot, 'migrations');
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, '0001_init.sql'), 'CREATE TABLE a (id int);\n', 'utf8');
+
+    const layout = findMigrations(sqlRoot, 'postgres');
+    assert.ok(layout);
+    assert.equal(layout.migrations.length, 1);
+
+    // And not for MongoDB, which cannot run it.
+    assert.equal(findMigrations(sqlRoot, 'mongo'), undefined);
+  });
+
+  it('defaults to SQL when nothing says otherwise', () => {
+    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-default-migrations-'));
+    const directory = path.join(sqlRoot, 'migrations');
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, '0001_init.sql'), 'SELECT 1;\n', 'utf8');
+
+    assert.ok(findMigrations(sqlRoot));
+  });
+});
