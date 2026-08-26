@@ -513,7 +513,10 @@ async function schemaHealth(
 
     const document = await vscode.workspace.openTextDocument({
       language: 'markdown',
-      content: healthReport(health, { connection: connection.identity.display }),
+      content: healthReport(health, {
+        connection: connection.identity.display,
+        engine: connection.adapter.engine,
+      }),
     });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
   } catch (error) {

@@ -1,4 +1,4 @@
-import { SchemaHealth } from "../adapters/types";
+import { Engine, SchemaHealth } from "../adapters/types";
 
 /**
  * The schema health report, as markdown.
@@ -18,6 +18,15 @@ export interface ReportOptions {
   /** Below this many rows a table is too small for any of this to matter. */
   readonly smallTable?: number;
   readonly now?: Date;
+  /**
+   * Which engine this is about, so the fix it suggests is one that runs.
+   *
+   * `CREATE INDEX CONCURRENTLY` was recommended to everybody: a syntax error on
+   * MySQL, and meaningless on a database with no CREATE INDEX at all. Postgres
+   * by default, because that is what this report was written against and an
+   * older caller that does not say should not silently change behaviour.
+   */
+  readonly engine?: Engine;
 }
 
 export function healthReport(
@@ -38,7 +47,7 @@ export function healthReport(
     "",
   ];
 
-  lines.push(...foreignKeySection(health, small));
+  lines.push(...foreignKeySection(health, small, options.engine ?? "postgres"));
   lines.push(...redundantSection(health));
   lines.push(...unusedSection(health, now));
   lines.push(...staleSection(health, small));
@@ -99,7 +108,7 @@ function windowCaveat(health: SchemaHealth, now: Date): string {
   return `> Statistics have been accumulating for ${describeAge(health.statsSince, now)}.`;
 }
 
-function foreignKeySection(health: SchemaHealth, small: number): string[] {
+function foreignKeySection(health: SchemaHealth, small: number, engine: Engine): string[] {
   const worth = health.unindexedForeignKeys.filter((key) => key.rows >= small);
   if (worth.length === 0) {
     return [];
@@ -118,7 +127,7 @@ function foreignKeySection(health: SchemaHealth, small: number): string[] {
 
   for (const key of worth) {
     const columns = key.columns.join(", ");
-    const fix = `\`CREATE INDEX CONCURRENTLY ON ${key.table} (${columns});\``;
+    const fix = `\`${indexFix(engine, key.table, key.columns)}\``;
     lines.push(
       `| \`${key.table}\` | \`${columns}\` | \`${key.referencedTable}\` | ` +
         `${key.rows.toLocaleString()} | ${fix} |`,
@@ -300,4 +309,36 @@ function formatBytes(bytes: number): string {
     unit += 1;
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+/**
+ * The statement that builds this index, in a form that runs on this engine.
+ *
+ * Every one of them can build an index without taking the table down, and no
+ * two of them spell it the same way. Recommending Postgres's spelling to
+ * everybody cost a MySQL reader the time to try it and the trust they had in
+ * the rest of the report — the same reason index advice elsewhere is already
+ * per-engine.
+ */
+function indexFix(engine: Engine, table: string, columns: readonly string[]): string {
+  switch (engine) {
+    case "mysql":
+      // ALGORITHM=INPLACE, LOCK=NONE is the online build, and stating it makes
+      // the statement fail loudly rather than quietly locking the table when
+      // this particular index cannot be built that way.
+      return (
+        `ALTER TABLE \`${table}\` ADD INDEX (${columns
+          .map((column) => `\`${column}\``)
+          .join(", ")}), ALGORITHM=INPLACE, LOCK=NONE;`
+      );
+
+    case "mongo":
+      // Background by default since 4.2, so there is no flag to add.
+      return `db.getCollection(${JSON.stringify(table)}).createIndex({ ${columns
+        .map((column) => `${JSON.stringify(column)}: 1`)
+        .join(", ")} })`;
+
+    default:
+      return `CREATE INDEX CONCURRENTLY ON ${table} (${columns.join(", ")});`;
+  }
 }

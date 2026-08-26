@@ -243,3 +243,59 @@ describe("the health report", () => {
     });
   });
 });
+
+describe('the fix it suggests, per engine', () => {
+  // `CREATE INDEX CONCURRENTLY` was recommended to everybody: a syntax error on
+  // MySQL, and meaningless on a database that has no CREATE INDEX at all. A
+  // reader who tries it and watches it fail stops believing the rest of the
+  // report, which is the expensive part.
+  const health: SchemaHealth = {
+    unindexedForeignKeys: [
+      {
+        constraint: 'orders_user_id_fkey',
+        table: 'orders',
+        columns: ['user_id'],
+        referencedTable: 'users',
+        rows: 300_000,
+      },
+    ],
+    unusedIndexes: [],
+    redundantIndexes: [],
+    tables: [],
+    statsSince: new Date('2026-01-01T00:00:00.000Z'),
+  };
+
+  const fixFor = (engine: 'postgres' | 'mysql' | 'mongo'): string =>
+    healthReport(health, {
+      connection: 'shop',
+      engine,
+      now: new Date('2026-08-01T00:00:00.000Z'),
+    });
+
+  it('offers CONCURRENTLY only to the engine that has it', () => {
+    assert.match(fixFor('postgres'), /CREATE INDEX CONCURRENTLY ON orders \(user_id\)/);
+    assert.doesNotMatch(fixFor('mysql'), /CONCURRENTLY/);
+    assert.doesNotMatch(fixFor('mongo'), /CONCURRENTLY/);
+  });
+
+  it('offers MySQL the online build, spelled the way MySQL spells it', () => {
+    const report = fixFor('mysql');
+    assert.match(report, /ALTER TABLE `orders` ADD INDEX \(`user_id`\)/);
+    assert.match(report, /ALGORITHM=INPLACE, LOCK=NONE/);
+  });
+
+  it('offers MongoDB a createIndex, not any SQL at all', () => {
+    const report = fixFor('mongo');
+    assert.match(report, /db\.getCollection\("orders"\)\.createIndex\(\{ "user_id": 1 \}\)/);
+    assert.doesNotMatch(report, /CREATE INDEX|ALTER TABLE/);
+  });
+
+  it('still says Postgres when nothing said otherwise', () => {
+    // An older caller that does not pass an engine should not silently change
+    // behaviour.
+    assert.match(
+      healthReport(health, { connection: 'shop', now: new Date('2026-08-01T00:00:00.000Z') }),
+      /CREATE INDEX CONCURRENTLY/,
+    );
+  });
+});

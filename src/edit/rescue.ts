@@ -1,5 +1,6 @@
 import { DatabaseAdapter, Row } from "../adapters/types";
-import { Edit, quoteIdentifier } from "./changeset";
+import { Edit } from "./changeset";
+import { RescueWriter, rescueWriterFor } from "./rescueWriter";
 
 /**
  * What was there before, written down before it stops being there.
@@ -11,9 +12,12 @@ import { Edit, quoteIdentifier } from "./changeset";
  * not a count, the actual rows, in a form that puts them back.
  *
  * It is read-only and runs before the transaction that applies anything. The
- * file it produces is plain SQL: reviewable, diffable, and runnable by hand
- * with no tooling from here, because a rescue that depends on the tool that
- * caused the problem is not much of a rescue.
+ * file it produces is reviewable, diffable, and runnable by hand with no
+ * tooling from here, because a rescue that depends on the tool that caused the
+ * problem is not much of a rescue. Which language it is written in belongs to
+ * the engine — see `rescueWriter.ts`, which also owns the filters used to find
+ * the rows, because building those here in one engine's dialect is how the
+ * file came to be empty on one engine and full of the wrong rows on another.
  */
 
 export interface RescuedRows {
@@ -54,8 +58,10 @@ export async function captureRescue(
   const limit = options.limit ?? DEFAULT_LIMIT;
   const sections: RescuedRows[] = [];
 
+  const writer = rescueWriterFor(adapter.engine);
+
   for (const change of changes) {
-    const section = await capture(adapter, change, limit);
+    const section = await capture(adapter, writer, change, limit);
     if (section && section.total > 0) {
       sections.push(section);
     }
@@ -63,7 +69,7 @@ export async function captureRescue(
 
   return {
     sections,
-    sql: render(sections),
+    sql: render(sections, writer),
     incomplete: sections.some((section) => section.truncated !== undefined),
     totalRows: sections.reduce((sum, section) => sum + section.rows.length, 0),
   };
@@ -71,6 +77,7 @@ export async function captureRescue(
 
 async function capture(
   adapter: DatabaseAdapter,
+  writer: RescueWriter,
   change: Edit,
   limit: number,
 ): Promise<RescuedRows | undefined> {
@@ -84,7 +91,7 @@ async function capture(
         rows,
         total,
         limit,
-        (row) => insertOf(change.table, row),
+        (row) => writer.insert(change.table, row),
       );
     }
 
@@ -92,7 +99,7 @@ async function capture(
       // Only rows that actually hold something. A column that is null
       // everywhere loses nothing, and a rescue file full of nulls hides the
       // one row that did have a value.
-      const where = `${quoteIdentifier(change.column)} IS NOT NULL`;
+      const where = writer.hasValue(change.column);
       const total = await adapter.countRows(change.table, where);
       if (total === 0) {
         return undefined;
@@ -107,12 +114,7 @@ async function capture(
         kept,
         total,
         limit,
-        (row) =>
-          keys.length > 0
-            ? `UPDATE ${quoteIdentifier(change.table)} SET ${quoteIdentifier(change.column)} = ` +
-              `${literal(row[change.column])} WHERE ${keyPredicate(row, keys)};`
-            : `-- no primary key on ${change.table}; this row cannot be addressed: ` +
-              `${JSON.stringify(row)}`,
+        (row) => writer.restore(change.table, [change.column], row, keys),
       );
     }
 
@@ -121,7 +123,7 @@ async function capture(
       if (keys.length === 0) {
         return undefined;
       }
-      const where = keyPredicate(change.key, keys);
+      const where = writer.byKey(change.key);
       const rows = await adapter.rowsMatching(change.table, where, 1);
       return section(
         `DELETE FROM ${change.table}`,
@@ -129,7 +131,7 @@ async function capture(
         rows,
         rows.length,
         limit,
-        (row) => insertOf(change.table, row),
+        (row) => writer.insert(change.table, row),
       );
     }
 
@@ -138,7 +140,7 @@ async function capture(
       if (keys.length === 0) {
         return undefined;
       }
-      const where = keyPredicate(change.key, keys);
+      const where = writer.byKey(change.key);
       const rows = await adapter.rowsMatching(change.table, where, 1);
       const columns = Object.keys(change.set);
       const kept = rows.map((row) => project(row, [...keys, ...columns]));
@@ -149,15 +151,7 @@ async function capture(
         kept,
         kept.length,
         limit,
-        (row) =>
-          `UPDATE ${quoteIdentifier(change.table)} SET ` +
-          columns
-            .map(
-              (column) =>
-                `${quoteIdentifier(column)} = ${literal(row[column])}`,
-            )
-            .join(", ") +
-          ` WHERE ${keyPredicate(row, keys)};`,
+        (row) => writer.restore(change.table, columns, row, keys),
       );
     }
 
@@ -165,7 +159,7 @@ async function capture(
       // A narrowing cast rewrites values in place, and the old ones are gone
       // whether or not the cast succeeds.
       const keys = await adapter.primaryKeyColumns(change.table);
-      const where = `${quoteIdentifier(change.column)} IS NOT NULL`;
+      const where = writer.hasValue(change.column);
       const total = await adapter.countRows(change.table, where);
       if (total === 0) {
         return undefined;
@@ -179,11 +173,7 @@ async function capture(
         kept,
         total,
         limit,
-        (row) =>
-          keys.length > 0
-            ? `UPDATE ${quoteIdentifier(change.table)} SET ${quoteIdentifier(change.column)} = ` +
-              `${literal(row[change.column])} WHERE ${keyPredicate(row, keys)};`
-            : `-- no primary key on ${change.table}: ${JSON.stringify(row)}`,
+        (row) => writer.restore(change.table, [change.column], row, keys),
       );
     }
 
@@ -227,23 +217,6 @@ function project(row: Row, columns: readonly string[]): Row {
   return kept;
 }
 
-function insertOf(table: string, row: Row): string {
-  const columns = Object.keys(row);
-  return (
-    `INSERT INTO ${quoteIdentifier(table)} (${columns.map(quoteIdentifier).join(", ")}) VALUES ` +
-    `(${columns.map((column) => literal(row[column])).join(", ")});`
-  );
-}
-
-function keyPredicate(row: Row, keys: readonly string[]): string {
-  return keys
-    .map((key) =>
-      row[key] === null || row[key] === undefined
-        ? `${quoteIdentifier(key)} IS NULL`
-        : `${quoteIdentifier(key)} = ${literal(row[key])}`,
-    )
-    .join(" AND ");
-}
 
 /**
  * A value as SQL text.
@@ -283,28 +256,30 @@ function quoteString(value: string): string {
     : `'${escaped}'`;
 }
 
-function render(sections: readonly RescuedRows[]): string {
+function render(sections: readonly RescuedRows[], writer: RescueWriter): string {
   if (sections.length === 0) {
     return "";
   }
 
+  const mark = writer.comment;
+
   const lines: string[] = [
-    "-- Dry Run rescue file",
-    `-- Written ${new Date().toISOString()}, before applying a changeset that destroys data.`,
-    "--",
-    "-- These statements put back what the changeset removed. Read them before",
-    "-- running them: restoring a row into a table whose shape has since changed",
-    "-- will not work, and putting back a row someone else has already replaced",
-    "-- would undo their work as well as yours.",
+    `${mark} Dry Run rescue file`,
+    `${mark} Written ${new Date().toISOString()}, before applying a changeset that destroys data.`,
+    mark,
+    `${mark} These ${writer.noun} put back what the changeset removed. Read them before`,
+    `${mark} running them: restoring a row into a table whose shape has since changed`,
+    `${mark} will not work, and putting back a row someone else has already replaced`,
+    `${mark} would undo their work as well as yours.`,
     "",
   ];
 
   for (const section of sections) {
     lines.push(
-      `-- ${section.change} — ${section.rows.length.toLocaleString()} rows`,
+      `${mark} ${section.change} — ${section.rows.length.toLocaleString()} rows`,
     );
     if (section.truncated) {
-      lines.push(`-- INCOMPLETE: ${section.truncated}`);
+      lines.push(`${mark} INCOMPLETE: ${section.truncated}`);
     }
     lines.push(...section.restore, "");
   }
