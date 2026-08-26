@@ -354,3 +354,150 @@ describe('previewing a migration against real rows', () => {
 function wording(finding: Record<string, unknown>): string {
   return [finding['headline'], finding['detail']].filter(Boolean).join(' ');
 }
+
+/**
+ * The questions the editor asks on the webview's behalf.
+ *
+ * Rename, Type and Drop table used `window.prompt`, which a webview cannot
+ * show: VS Code sandboxes the iframe without `allow-modals`, so prompt()
+ * returned null and every one of those buttons did nothing at all, in every
+ * window, for as long as they existed.
+ *
+ * They now post an intent and the extension asks with `showInputBox`. This is
+ * the other half of that: the question really is asked, it is asked about the
+ * right thing, and the answers it refuses are the ones that would produce a
+ * nonsense edit.
+ */
+describe('the questions the editor asks for the schema explorer', () => {
+  /** The message handler the panel registered, whatever panel is open. */
+  async function ask(message: Record<string, unknown>): Promise<void> {
+    await recorded.commands.get('dryrun.exploreSchema')!();
+    await waitForMessage(recorded, 'schema');
+    await deliver(message);
+  }
+
+  before(async () => {
+    // Opened once here, so the panel exists before the first question.
+    await recorded.commands.get('dryrun.exploreSchema')!();
+    await waitForMessage(recorded, 'schema');
+  });
+
+  /**
+   * The schema panel, by view type.
+   *
+   * Not the most recently opened one: the preview tests above leave a preview
+   * panel behind, and `exploreSchema` reveals the existing schema panel rather
+   * than making a second.
+   */
+  function schemaPanel() {
+    const panel = recorded.panels.filter((one) => one.viewType === 'dryrun.schema').at(-1);
+    assert.ok(panel, 'the schema panel is not open');
+    return panel;
+  }
+
+  /** Hands one message to the schema panel, the way its script would. */
+  async function deliver(message: Record<string, unknown>): Promise<void> {
+    await schemaPanel().receive(message);
+  }
+
+  /** The changeset the schema panel last posted. */
+  function changes(): { label?: string }[] {
+    const last = schemaPanel()
+      .posted.filter((message) => message['type'] === 'changeset')
+      .pop();
+    return (last?.['changes'] as { label?: string }[]) ?? [];
+  }
+
+  before(async () => {
+    recorded.answers.length = 0;
+    recorded.asked.length = 0;
+  });
+
+  it('asks before renaming a table, and offers the name it has', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    recorded.answers.push('people');
+    await ask({ type: 'renameTable', table: 'users' });
+
+    const question = recorded.asked.at(-1);
+    assert.ok(question, 'nothing was asked');
+    assert.match(String(question.options['title']), /users/);
+    assert.equal(question.options['value'], 'users', 'the box opens on the current name');
+
+    assert.ok(
+      changes().some((change) => /people/.test(change.label ?? '')),
+      `the rename did not reach the changeset: ${changes().map((c) => c.label).join(' | ')}`,
+    );
+  });
+
+  it('refuses the answers that would produce a nonsense rename', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    recorded.answers.push('anything');
+    await ask({ type: 'renameTable', table: 'users' });
+
+    const { validate } = recorded.asked.at(-1)!;
+    assert.ok(validate(''), 'an empty name was accepted');
+    assert.ok(validate('   '), 'a name of spaces was accepted');
+    assert.ok(validate('users'), 'renaming a table to its own name was accepted');
+    assert.ok(validate('orgs'), 'renaming onto an existing table was accepted');
+    assert.equal(validate('people'), undefined, 'a good name was refused');
+  });
+
+  it('will not drop a table until the name is typed exactly', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    recorded.answers.push('yes');
+    await ask({ type: 'dropTable', table: 'users', rows: 100 });
+
+    const question = recorded.asked.at(-1)!;
+    assert.match(String(question.options['prompt']), /100/, 'the question says how many rows');
+    assert.match(String(question.options['prompt']), /Type the table name/);
+
+    assert.ok(question.validate('yes'), '"yes" was accepted as a confirmation');
+    assert.ok(question.validate('USERS'), 'the wrong case was accepted');
+    assert.equal(question.validate('users'), undefined);
+
+    assert.ok(
+      !changes().some((change) => /Drop table/i.test(change.label ?? '')),
+      'a wrong answer dropped the table',
+    );
+  });
+
+  it('drops it when the name is right', { timeout: RUN_TIMEOUT }, async () => {
+    recorded.answers.push('users');
+    await ask({ type: 'dropTable', table: 'users', rows: 100 });
+
+    assert.ok(
+      changes().some((change) => /drop/i.test(change.label ?? '')),
+      `no drop in: ${changes().map((c) => c.label).join(' | ')}`,
+    );
+  });
+
+  it('asks about the column it was told about, with the type it has', {
+    timeout: RUN_TIMEOUT,
+  }, async () => {
+    recorded.answers.push('citext');
+    await ask({ type: 'changeType', table: 'users', column: 'email', from: 'text' });
+
+    const question = recorded.asked.at(-1)!;
+    assert.match(String(question.options['title']), /email/);
+    assert.equal(question.options['value'], 'text');
+    assert.match(
+      String(question.options['prompt']),
+      /Every existing value has to convert/,
+      'and says what that costs before the answer, not after',
+    );
+
+    assert.ok(question.validate('text'), 'changing a type to itself was accepted');
+    assert.ok(question.validate(''), 'an empty type was accepted');
+  });
+
+  it('adds nothing when the question is escaped', { timeout: RUN_TIMEOUT }, async () => {
+    // An empty answer queue answers undefined, which is what escape does.
+    await deliver({ type: 'clearEdits' });
+    await ask({ type: 'renameTable', table: 'users' });
+
+    assert.deepEqual(changes(), [], 'escaping a question still changed something');
+  });
+});

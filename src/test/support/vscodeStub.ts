@@ -19,10 +19,32 @@ export interface RecordedPanel {
   readonly viewType: string;
   readonly title: string;
   readonly posted: Record<string, unknown>[];
+  /**
+   * Hands a message to whatever this panel registered with
+   * `onDidReceiveMessage`, the way a webview does when its script posts one.
+   */
+  receive(message: unknown): Promise<void>;
+}
+
+/** One question the extension asked, and how it was answered. */
+export interface Asked {
+  readonly options: Record<string, unknown>;
+  readonly answer: string | undefined;
+  /** The options' own `validateInput`, so a test can try answers against it. */
+  validate(value: string): string | undefined;
 }
 
 export interface Recorded {
   readonly commands: Map<string, (...args: unknown[]) => unknown>;
+  /** Every `showInputBox` the extension opened. */
+  readonly asked: Asked[];
+  /**
+   * Answers for the next `showInputBox` calls, in order.
+   *
+   * Shifted one per call; an empty queue answers undefined, which is what
+   * pressing escape does.
+   */
+  readonly answers: (string | undefined)[];
   /** Every panel opened, in the order they were opened. */
   readonly panels: RecordedPanel[];
   /** Documents opened with `openTextDocument({ content })`. */
@@ -144,6 +166,8 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
   const diagnosticCollections: string[] = [];
   const panels: RecordedPanel[] = [];
   const documents: { language?: string; content: string }[] = [];
+  const asked: Asked[] = [];
+  const answers: (string | undefined)[] = [];
   const shown: Recorded['shown'] = [];
   let disposed = 0;
 
@@ -161,7 +185,7 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     },
   });
 
-  const webview = (record: RecordedPanel) => ({
+  const webview = (record: RecordedPanel, listeners: ((message: unknown) => unknown)[]) => ({
     html: '',
     options: {},
     cspSource: 'vscode-webview:',
@@ -170,7 +194,10 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
       record.posted.push(message);
       return true;
     },
-    onDidReceiveMessage: nothing,
+    onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
+      listeners.push(listener);
+      return { dispose: () => undefined };
+    },
   });
 
   const api = {
@@ -273,11 +300,21 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
         };
       },
       createWebviewPanel: (viewType: string, title: string) => {
-        const record: RecordedPanel = { viewType, title, posted: [] };
+        const listeners: ((message: unknown) => unknown)[] = [];
+        const record: RecordedPanel = {
+          viewType,
+          title,
+          posted: [],
+          receive: async (message: unknown) => {
+            for (const listener of listeners) {
+              await listener(message);
+            }
+          },
+        };
         panels.push(record);
         return {
         title,
-        webview: webview(record),
+        webview: webview(record, listeners),
         visible: true,
         active: true,
         viewColumn: 1,
@@ -313,7 +350,26 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
         shown.push({ kind: 'info', message });
         return undefined;
       },
-      showInputBox: async () => undefined,
+      showInputBox: async (options?: Record<string, unknown>) => {
+        const answer = answers.length > 0 ? answers.shift() : undefined;
+        const validate = options?.['validateInput'] as
+          | ((value: string) => string | undefined)
+          | undefined;
+
+        asked.push({
+          options: options ?? {},
+          answer,
+          validate: (value: string) => validate?.(value),
+        });
+
+        // An answer `validateInput` rejects could never have been given: VS
+        // Code keeps the OK button disabled until it passes. Returning it
+        // anyway would let a test prove something the editor cannot do.
+        if (answer !== undefined && validate?.(answer)) {
+          return undefined;
+        }
+        return answer;
+      },
       showQuickPick: async () => undefined,
       showOpenDialog: async () => undefined,
       showTextDocument: async () => ({ document: {}, selection: {}, revealRange: () => undefined }),
@@ -393,6 +449,8 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     diagnosticCollections,
     panels,
     documents,
+    asked,
+    answers,
     shown,
     get disposed() {
       return disposed;

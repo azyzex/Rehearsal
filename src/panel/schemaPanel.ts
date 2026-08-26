@@ -232,6 +232,36 @@ export class SchemaPanel {
           await this.newTable();
           break;
 
+        // Everything below is a question. It is asked here rather than in the
+        // webview because a webview cannot ask one: VS Code renders it in a
+        // sandboxed iframe without `allow-modals`, so `prompt()` returns null
+        // and `confirm()` returns false without anything appearing on screen.
+        // Rename, Type and Drop table did nothing at all, in every window, for
+        // as long as they have existed.
+        case 'renameTable':
+          await this.renameTable(String(message.table));
+          break;
+
+        case 'renameColumn':
+          await this.renameColumn(String(message.table), String(message.column));
+          break;
+
+        case 'changeType':
+          await this.changeType(
+            String(message.table),
+            String(message.column),
+            String(message.from ?? ''),
+          );
+          break;
+
+        case 'dropTable':
+          await this.dropTable(String(message.table), Number(message.rows ?? 0));
+          break;
+
+        case 'notDrawn':
+          this.sayNotDrawn((message.tables as string[] | undefined) ?? []);
+          break;
+
         case 'health':
           await this.sendHealth();
           break;
@@ -601,6 +631,131 @@ export class SchemaPanel {
       table: name.trim(),
       columns: [{ name: 'id', type: 'bigserial', nullable: false, primaryKey: true }],
     });
+    this.clearPreview();
+    this.postChangeset();
+  }
+
+  /**
+   * Renames a table, asking first.
+   *
+   * `validateInput` rather than a silent no-op on a bad answer: a rename that
+   * quietly does not happen is indistinguishable from a broken button, which is
+   * what these all were.
+   */
+  private async renameTable(table: string): Promise<void> {
+    const to = await vscode.window.showInputBox({
+      title: `Rename ${table}`,
+      prompt: 'New name for the table',
+      value: table,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'A table needs a name.';
+        if (trimmed === table) return 'That is the name it already has.';
+        if (this.baseline?.tables.some((t) => t.qualified === trimmed || t.name === trimmed)) {
+          return `There is already a table called ${trimmed}.`;
+        }
+        return undefined;
+      },
+    });
+
+    if (!to?.trim() || to.trim() === table) {
+      return;
+    }
+
+    this.addEdit({ kind: 'rename_table', table, to: to.trim() });
+  }
+
+  private async renameColumn(table: string, column: string): Promise<void> {
+    const columns = this.baseline?.tables.find(
+      (one) => one.qualified === table || one.name === table,
+    )?.columns;
+
+    const to = await vscode.window.showInputBox({
+      title: `Rename ${column}`,
+      prompt: `New name for this column in ${table}`,
+      value: column,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'A column needs a name.';
+        if (trimmed === column) return 'That is the name it already has.';
+        if (columns?.some((one) => one.name === trimmed)) {
+          return `${table} already has a column called ${trimmed}.`;
+        }
+        return undefined;
+      },
+    });
+
+    if (!to?.trim() || to.trim() === column) {
+      return;
+    }
+
+    this.addEdit({ kind: 'rename_column', table, column, to: to.trim() });
+  }
+
+  private async changeType(table: string, column: string, from: string): Promise<void> {
+    const to = await vscode.window.showInputBox({
+      title: `Change the type of ${column}`,
+      prompt:
+        'Every existing value has to convert. The preview counts the ones that cannot, ' +
+        'before anything runs.',
+      value: from,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'A column needs a type.';
+        if (trimmed === from) return `That is the type it already has.`;
+        return undefined;
+      },
+    });
+
+    if (!to?.trim() || to.trim() === from) {
+      return;
+    }
+
+    this.addEdit({ kind: 'alter_type', table, column, to: to.trim() });
+  }
+
+  /**
+   * Drops a table, after the name has been typed out.
+   *
+   * Typing it is not ceremony. This is the most destructive thing the editor
+   * can add to a changeset, and a button that does it on one press is a button
+   * someone eventually hits by accident. `validateInput` means the OK button
+   * stays disabled until the answer is exactly right, which is stronger than
+   * checking afterwards.
+   */
+  private async dropTable(table: string, rows: number): Promise<void> {
+    const typed = await vscode.window.showInputBox({
+      title: `Drop ${table}`,
+      prompt: `This drops ${table} and all ${rows.toLocaleString()} rows in it. Type the table name to confirm.`,
+      placeHolder: table,
+      validateInput: (value) =>
+        value.trim() === table ? undefined : `Type ${table} exactly to confirm.`,
+    });
+
+    if (typed?.trim() !== table) {
+      return;
+    }
+
+    this.addEdit({ kind: 'drop_table', table });
+  }
+
+  /**
+   * Says that what you asked to be shown is not on screen.
+   *
+   * Silently doing nothing reads as a broken button, and the diagram is the one
+   * place where "nothing happened" is also a plausible correct outcome.
+   */
+  private sayNotDrawn(tables: readonly string[]): void {
+    void vscode.window.showWarningMessage(
+      tables.length === 1
+        ? `${tables[0]} is not currently drawn — the schema filter or focus mode is hiding it.`
+        : 'Those tables are not currently drawn — the schema filter or focus mode is hiding them.',
+    );
+  }
+
+  /** One edit, plus the two things that always follow it. */
+  private addEdit(edit: Edit): void {
+    this.session.add(edit);
     this.clearPreview();
     this.postChangeset();
   }

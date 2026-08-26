@@ -399,20 +399,14 @@
         if (!host.locate(detail.table)) {
           // Focus mode or a schema filter can have hidden it entirely, and
           // silently doing nothing would read as a broken button.
-          window.alert(
-            `${detail.table} is not currently drawn — the schema filter or focus ` +
-              `mode is hiding it.`,
-          );
+          vscode.postMessage({ type: 'notDrawn', tables: [detail.table] });
         }
       }),
     );
 
     bar.appendChild(
       miniButton('Rename table', () => {
-        const to = window.prompt(`Rename ${detail.table} to:`, detail.table);
-        if (to && to.trim() && to.trim() !== detail.table) {
-          addEdit({ kind: 'rename_table', table: detail.table, to: to.trim() });
-        }
+        vscode.postMessage({ type: 'renameTable', table: detail.table });
       }),
     );
 
@@ -420,17 +414,15 @@
       miniButton(
         'Drop table',
         () => {
-          // Typing the name is not ceremony. Dropping a table is the single most
-          // destructive thing in here, and a button that does it on one click is
-          // a button someone eventually hits by accident.
-          const typed = window.prompt(
-            `Drop ${detail.table} and all ${Number(detail.rows).toLocaleString()} rows?\n\n` +
-              `Type the table name to confirm.`,
-          );
-          if (typed?.trim() === detail.table) {
-            addEdit({ kind: 'drop_table', table: detail.table });
-            closeDrawer();
-          }
+          // The question is asked by the editor, which is the only place it can
+          // be asked at all. Dropping a table is the most destructive thing in
+          // here, and a button that does it on one press is a button someone
+          // eventually hits by accident.
+          vscode.postMessage({
+            type: 'dropTable',
+            table: detail.table,
+            rows: Number(detail.rows),
+          });
         },
         true,
       ),
@@ -461,34 +453,22 @@
 
       actions.appendChild(
         miniButton('Rename', () => {
-          const to = window.prompt(`Rename ${column.name} to:`, column.name);
-          if (to && to.trim() && to !== column.name) {
-            addEdit({
-              kind: 'rename_column',
-              table: detail.table,
-              column: column.name,
-              to: to.trim(),
-            });
-          }
+          vscode.postMessage({
+            type: 'renameColumn',
+            table: detail.table,
+            column: column.name,
+          });
         }),
       );
 
       actions.appendChild(
         miniButton('Type', () => {
-          const to = window.prompt(
-            `Change ${column.name} from ${column.type} to:\n\n` +
-              `Every existing value has to convert. The preview will count the ` +
-              `ones that cannot before anything runs.`,
-            column.type,
-          );
-          if (to && to.trim() && to.trim() !== column.type) {
-            addEdit({
-              kind: 'alter_type',
-              table: detail.table,
-              column: column.name,
-              to: to.trim(),
-            });
-          }
+          vscode.postMessage({
+            type: 'changeType',
+            table: detail.table,
+            column: column.name,
+            from: column.type,
+          });
         }),
       );
 
@@ -991,22 +971,15 @@
     // Frames all of them at once. Centring on one is the wrong answer when a
     // changeset touches four cards in different corners.
     if (!host.frameAffected()) {
-      window.alert('Those tables are not currently drawn — the schema filter or focus mode is hiding them.');
+      vscode.postMessage({ type: 'notDrawn', tables: [] });
     }
   });
 
   ui.apply.addEventListener('click', () => {
-    // Asked here, and asked again by the editor itself for anything
-    // destructive — the second one is a modal dialog that cannot be dismissed
-    // by muscle memory.
-    if (previewDestructive) {
-      const ok = window.confirm(
-        'These changes destroy data that cannot be recovered.\n\nContinue?',
-      );
-      if (!ok) {
-        return;
-      }
-    }
+    // Asked once, by the editor, in a modal that cannot be dismissed by muscle
+    // memory. There used to be a `confirm()` here first — which a webview
+    // cannot show, so it returned false and Apply did nothing at all for
+    // exactly the destructive changesets it was meant to guard.
     vscode.postMessage({ type: 'applyChanges', confirmed: true });
   });
 

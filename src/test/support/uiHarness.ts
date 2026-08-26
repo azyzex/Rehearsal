@@ -153,6 +153,31 @@ const VSCODE_SHIM = `
       getState: function () { return window.__state; }
     };
   };
+
+  // A webview cannot open a dialog, and the harness has to be that strict or it
+  // is not testing a webview.
+  //
+  // VS Code renders webviews in a sandboxed iframe without \`allow-modals\`, so
+  // the browser ignores alert(), confirm() and prompt() and returns undefined,
+  // false and null without anything appearing. Plain Chromium shows all three
+  // happily, which is how Rename, Type and Drop table came to have passing
+  // tests and do nothing whatsoever in the editor.
+  //
+  // Every call is recorded so a test can say what was attempted rather than
+  // only that a button did nothing.
+  window.__modals = [];
+  window.alert = function (message) {
+    window.__modals.push({ kind: 'alert', message: String(message) });
+    return undefined;
+  };
+  window.confirm = function (message) {
+    window.__modals.push({ kind: 'confirm', message: String(message) });
+    return false;
+  };
+  window.prompt = function (message) {
+    window.__modals.push({ kind: 'prompt', message: String(message) });
+    return null;
+  };
 `;
 
 let browser: Browser | undefined;
@@ -175,6 +200,13 @@ export interface Panel {
   send(message: unknown): Promise<void>;
   /** Everything the page has posted back, oldest first. */
   posted(): Promise<unknown[]>;
+  /**
+   * Every dialog the page tried to open, and could not.
+   *
+   * Any entry here is a bug: a webview cannot show one, so whatever the code
+   * was going to do with the answer does not happen.
+   */
+  modals(): Promise<{ kind: string; message: string }[]>;
   /** Clicks something and lets the page settle. */
   click(selector: string): Promise<void>;
   /** Saves a PNG under ui-shots/ and returns its path. */
@@ -243,6 +275,9 @@ export async function openPanel(
     },
 
     posted: () => page.evaluate('window.__posted') as Promise<unknown[]>,
+
+    modals: () =>
+      page.evaluate('window.__modals') as Promise<{ kind: string; message: string }[]>,
 
     click: async (selector: string) => {
       await page.click(selector);

@@ -6,16 +6,21 @@ import { Panel, closeBrowser, openPanel } from '../support/uiHarness';
 /**
  * The visual editor's own buttons.
  *
- * These are the ones that change the database. They live in the drawer, they
- * are built at render time rather than declared in the markup, and every one of
- * them asks a question through `window.prompt` first — which is why none had
- * ever been pressed by a test: Playwright dismisses a dialog nobody handles, so
- * a naive click looks exactly like a cancel and passes whatever it does.
+ * These are the ones that change the database, and until now they asked their
+ * questions with `window.prompt`. A webview cannot ask a question that way: VS
+ * Code renders it in a sandboxed iframe without `allow-modals`, so the browser
+ * ignores prompt() and returns null with nothing appearing on screen. Rename
+ * table, Rename, Type and Drop table therefore did nothing at all, in every
+ * window, for as long as they had existed.
  *
- * The cancel path is tested alongside every confirm path, because the two
- * mistakes are not symmetrical. A rename that does not happen is an annoyance.
- * A drop that happens after someone pressed escape is the worst thing this
- * extension could possibly do.
+ * The tests did not catch it because plain Chromium shows dialogs happily. The
+ * harness now blocks them the way the editor does and records every attempt, so
+ * a button that reaches for one fails here instead of shipping.
+ *
+ * What each button does now is post an intent and let the extension ask, which
+ * is where `showInputBox` lives. So what is checked here is the intent: the
+ * right message, naming the right table and the right column. Whether the
+ * question is any good is checked on the other side, in schemaPanel's tests.
  */
 
 const column = (name: string, type = 'text', extra: Record<string, unknown> = {}) => ({
@@ -80,37 +85,43 @@ const DETAIL = {
   sampleRaw: [],
 };
 
-type Edit = { kind?: string; table?: string; column?: string; to?: string };
+interface Posted {
+  type?: string;
+  table?: string;
+  column?: string;
+  from?: string;
+  rows?: number;
+  tables?: string[];
+  index?: number;
+  edit?: { kind?: string; table?: string; column?: string };
+}
 
 describe('the visual editor, using its own buttons', () => {
   let panel: Panel;
 
-  /**
-   * Answers the next dialog with `answer`, or dismisses it when null.
-   *
-   * Returns what the dialog actually said, because the wording is half of what
-   * makes a confirmation a confirmation.
-   */
-  function answerNextDialog(answer: string | null): Promise<string> {
-    return new Promise((resolve) => {
-      panel.page.once('dialog', (dialog) => {
-        const message = dialog.message();
-        void (answer === null ? dialog.dismiss() : dialog.accept(answer)).then(() =>
-          resolve(message),
-        );
-      });
-    });
+  async function posted(): Promise<Posted[]> {
+    return (await panel.posted()) as Posted[];
   }
 
-  /** The edits posted since the panel opened. */
-  async function edits(): Promise<Edit[]> {
-    const posted = (await panel.posted()) as { type?: string; edit?: Edit }[];
-    return posted.filter((message) => message.type === 'addEdit').map((message) => message.edit!);
+  /** The last message of this type, if the page sent one at all. */
+  async function last(type: string): Promise<Posted | undefined> {
+    return (await posted()).filter((message) => message.type === type).pop();
   }
 
-  /** Presses the drawer button with this label. */
+  /** Every edit the page added by itself. */
+  async function edits(): Promise<NonNullable<Posted['edit']>[]> {
+    return (await posted())
+      .filter((message) => message.type === 'addEdit')
+      .map((message) => message.edit!);
+  }
+
   async function pressLabelled(label: string): Promise<void> {
     await panel.page.click(`#drawer button:text-is("${label}")`);
+  }
+
+  /** A button on the row for one column. */
+  async function pressOnColumn(name: string, label: string): Promise<void> {
+    await panel.page.click(`#drawer .drawer-col:has-text("${name}") button:text-is("${label}")`);
   }
 
   before(async () => {
@@ -119,10 +130,9 @@ describe('the visual editor, using its own buttons', () => {
   });
 
   beforeEach(async () => {
-    // Both messages, in the order the extension really sends them. Clicking a
-    // table asks for it, `tableLoading` opens the drawer, and `tableDetail`
-    // fills it in — so `tableDetail` on its own never reopens a drawer that
-    // something closed, and dropping a table closes it.
+    // Both messages, in the order the extension really sends them: clicking a
+    // table asks for it, `tableLoading` opens the drawer, `tableDetail` fills
+    // it in.
     await panel.send({ type: 'tableLoading', table: DETAIL.table });
     await panel.send({ type: 'tableDetail', detail: DETAIL });
   });
@@ -132,189 +142,93 @@ describe('the visual editor, using its own buttons', () => {
     await closeBrowser();
   });
 
+  it('never reaches for a dialog it cannot open', async () => {
+    // The guard for the whole class, and the one test that would have caught
+    // this in the first place. Pressing every button in the drawer must not
+    // attempt a single alert, confirm or prompt.
+    for (const label of ['Show on diagram', 'Rename table', 'Drop table']) {
+      await pressLabelled(label);
+    }
+    for (const label of ['Rename', 'Type', 'Drop']) {
+      await pressOnColumn('email', label);
+    }
+
+    assert.deepEqual(await panel.modals(), [], 'a button reached for a dialog');
+    assert.deepEqual(panel.problems, []);
+  });
+
   describe('renaming a table', () => {
-    it('asks, and sends the new name', async () => {
-      const asked = answerNextDialog('people');
+    it('asks the editor to ask, naming the table', async () => {
       await pressLabelled('Rename table');
-      assert.match(await asked, /Rename users to/);
 
-      const rename = (await edits()).filter((edit) => edit.kind === 'rename_table');
-      assert.equal(rename.length, 1);
-      assert.deepEqual(rename[0], { kind: 'rename_table', table: 'users', to: 'people' });
+      const asked = await last('renameTable');
+      assert.ok(asked, 'Rename table posted nothing at all');
+      assert.equal(asked.table, 'users');
     });
 
-    it('sends nothing when the question is cancelled', async () => {
-      const before = (await edits()).length;
-      const asked = answerNextDialog(null);
-      await pressLabelled('Rename table');
-      await asked;
-
-      assert.equal((await edits()).length, before);
-      assert.deepEqual(panel.problems, []);
-    });
-
-    it('sends nothing for a name that is only whitespace', async () => {
-      // An empty name would produce `ALTER TABLE users RENAME TO ""`.
-      const before = (await edits()).length;
-      const asked = answerNextDialog('   ');
-      await pressLabelled('Rename table');
-      await asked;
-
-      assert.equal((await edits()).length, before);
-    });
-
-    it('sends nothing when the name is unchanged', async () => {
-      // A rename to the same name is a no-op the user would have to notice and
-      // remove from the changeset by hand.
-      const before = (await edits()).length;
-      const asked = answerNextDialog('users');
-      await pressLabelled('Rename table');
-      await asked;
-
-      assert.equal((await edits()).length, before);
+    it('adds no edit by itself', async () => {
+      // The page does not know the new name and must not add anything on its
+      // own. The extension adds it once it has an answer.
+      assert.deepEqual(
+        (await edits()).filter((edit) => edit.kind === 'rename_table'),
+        [],
+      );
     });
   });
 
   describe('renaming a column', () => {
-    it('asks, and sends the new name against the right column', async () => {
-      const asked = answerNextDialog('phone');
-      await panel.page.click(
-        '#drawer .drawer-col:has-text("phone_number") button:text-is("Rename")',
-      );
-      assert.match(await asked, /Rename phone_number to/);
+    it('names the column it sits next to, not the first one', async () => {
+      await pressOnColumn('phone_number', 'Rename');
 
-      const rename = (await edits()).filter((edit) => edit.kind === 'rename_column');
-      assert.equal(rename.length, 1);
-      assert.deepEqual(rename[0], {
-        kind: 'rename_column',
-        table: 'users',
-        column: 'phone_number',
-        to: 'phone',
-      });
-    });
-
-    it('sends nothing when cancelled', async () => {
-      const before = (await edits()).length;
-      const asked = answerNextDialog(null);
-      await panel.page.click('#drawer .drawer-col:has-text("email") button:text-is("Rename")');
-      await asked;
-
-      assert.equal((await edits()).length, before);
-    });
-  });
-
-  describe('dropping a table', () => {
-    it('will not do it on one press', async () => {
-      // The single most destructive thing available here. A button that does it
-      // on one click is a button someone eventually hits by accident.
-      const before = (await edits()).length;
-      const asked = answerNextDialog(null);
-      await pressLabelled('Drop table');
-
-      const message = await asked;
-      assert.match(message, /Drop users/);
-      assert.match(message, /50,000 rows/, 'and says how many rows that is');
-      assert.match(message, /Type the table name/);
-
-      assert.equal((await edits()).length, before);
-    });
-
-    it('refuses a confirmation that is not the table name', async () => {
-      // Typing "yes" is the reflex the confirmation exists to defeat.
-      const before = (await edits()).length;
-      const asked = answerNextDialog('yes');
-      await pressLabelled('Drop table');
-      await asked;
-
-      assert.equal((await edits()).length, before, 'a wrong answer dropped the table');
-    });
-
-    it('does it when the name is typed exactly', async () => {
-      const asked = answerNextDialog('users');
-      await pressLabelled('Drop table');
-      await asked;
-
-      const drops = (await edits()).filter((edit) => edit.kind === 'drop_table');
-      assert.equal(drops.length, 1);
-      assert.deepEqual(drops[0], { kind: 'drop_table', table: 'users' });
-    });
-  });
-
-  describe('showing a table on the diagram', () => {
-    it('says so when the table is not currently drawn, rather than doing nothing', async () => {
-      // Focus mode or a schema filter can have hidden it entirely, and a button
-      // that silently does nothing reads as a broken button.
-      await panel.send({ type: 'tableDetail', detail: { ...DETAIL, table: 'not_drawn' } });
-
-      const asked = answerNextDialog('');
-      await pressLabelled('Show on diagram');
-
-      assert.match(await asked, /not currently drawn/);
-      assert.deepEqual(panel.problems, []);
-    });
-
-    it('says nothing at all when the table is right there', async () => {
-      let alerted = false;
-      // Removed by the same reference it was added with. Passing a different
-      // function to `off` leaves the handler attached, and it then fights the
-      // next test's handler over who answers the dialog — which hangs the run
-      // rather than failing it. Found the hard way, here.
-      const listener = (dialog: { dismiss(): Promise<void> }) => {
-        alerted = true;
-        void dialog.dismiss();
-      };
-      panel.page.on('dialog', listener);
-
-      try {
-        await pressLabelled('Show on diagram');
-        await panel.page.waitForTimeout(80);
-      } finally {
-        panel.page.off('dialog', listener);
-      }
-
-      assert.equal(alerted, false, 'it warned about a table that is on screen');
-      assert.deepEqual(panel.problems, []);
+      const asked = await last('renameColumn');
+      assert.ok(asked, 'Rename posted nothing at all');
+      assert.equal(asked.table, 'users');
+      assert.equal(asked.column, 'phone_number');
     });
   });
 
   describe('changing a column type', () => {
-    it('says what has to happen to the existing values, and sends the change', async () => {
-      // A type change is the edit most likely to fail against real data, so the
-      // question has to say that before the answer, not after.
-      const asked = answerNextDialog('citext');
-      await panel.page.click('#drawer .drawer-col:has-text("email") button:text-is("Type")');
+    it('carries the type it has now, so the question can offer it', async () => {
+      await pressOnColumn('email', 'Type');
 
-      const message = await asked;
-      assert.match(message, /Change email from text to/);
-      assert.match(message, /Every existing value has to convert/);
+      const asked = await last('changeType');
+      assert.ok(asked, 'Type posted nothing at all');
+      assert.equal(asked.table, 'users');
+      assert.equal(asked.column, 'email');
+      assert.equal(asked.from, 'text');
+    });
+  });
 
-      const changes = (await edits()).filter((edit) => edit.kind === 'alter_type');
-      assert.equal(changes.length, 1);
-      assert.deepEqual(changes[0], {
-        kind: 'alter_type',
-        table: 'users',
-        column: 'email',
-        to: 'citext',
-      });
+  describe('dropping a table', () => {
+    it('asks the editor, and carries the row count so the question can say it', async () => {
+      await pressLabelled('Drop table');
+
+      const asked = await last('dropTable');
+      assert.ok(asked, 'Drop table posted nothing at all');
+      assert.equal(asked.table, 'users');
+      assert.equal(asked.rows, 50_000);
     });
 
-    it('sends nothing when the type is left as it was', async () => {
-      // The prompt is pre-filled with the current type, so pressing enter
-      // without editing is the likeliest answer of all.
-      const before = (await edits()).length;
-      const asked = answerNextDialog('text');
-      await panel.page.click('#drawer .drawer-col:has-text("email") button:text-is("Type")');
-      await asked;
-
-      assert.equal((await edits()).length, before);
+    it('adds nothing on its own, whatever is pressed', async () => {
+      // The confirmation belongs to the editor, and it is the only thing that
+      // can turn this into an edit.
+      assert.deepEqual(
+        (await edits()).filter((edit) => edit.kind === 'drop_table'),
+        [],
+      );
     });
   });
 
   describe('dropping a column', () => {
     it('sends the drop for the column it sits next to', async () => {
-      await panel.page.click('#drawer .drawer-col:has-text("phone_number") button:text-is("Drop")');
+      // No question to ask, so this one is still added directly.
+      await pressOnColumn('phone_number', 'Drop');
 
-      const drops = (await edits()).filter((edit) => edit.kind === 'drop_column');
+      // Scoped to this column: the dialog guard above presses Drop on `email`,
+      // and `posted()` accumulates for the life of the panel.
+      const drops = (await edits()).filter(
+        (edit) => edit.kind === 'drop_column' && edit.column === 'phone_number',
+      );
       assert.equal(drops.length, 1);
       assert.deepEqual(drops[0], {
         kind: 'drop_column',
@@ -325,11 +239,33 @@ describe('the visual editor, using its own buttons', () => {
 
     it('is not offered on the primary key', async () => {
       // Dropping it is legal SQL and almost never what anyone means by
-      // clicking a small button next to a column.
+      // pressing a small button next to a column.
       const onKey = await panel.page.$$(
         '#drawer .drawer-col:has-text("id") button:text-is("Drop")',
       );
       assert.equal(onKey.length, 0);
+    });
+  });
+
+  describe('showing a table on the diagram', () => {
+    it('tells the editor to say so when the table is not drawn', async () => {
+      await panel.send({ type: 'tableLoading', table: 'not_drawn' });
+      await panel.send({ type: 'tableDetail', detail: { ...DETAIL, table: 'not_drawn' } });
+      await pressLabelled('Show on diagram');
+
+      const said = await last('notDrawn');
+      assert.ok(said, 'it silently did nothing, which reads as a broken button');
+      assert.deepEqual(said.tables, ['not_drawn']);
+    });
+
+    it('says nothing at all when the table is right there', async () => {
+      const before = (await posted()).filter((message) => message.type === 'notDrawn').length;
+
+      await pressLabelled('Show on diagram');
+
+      const after = (await posted()).filter((message) => message.type === 'notDrawn').length;
+      assert.equal(after, before, 'it complained about a table that is on screen');
+      assert.deepEqual(panel.problems, []);
     });
   });
 
@@ -402,7 +338,11 @@ describe('the visual editor, using its own buttons', () => {
       await panel.send({
         type: 'changeset',
         changes: [
-          { index: 0, label: 'Drop column email from users', sql: 'ALTER TABLE users DROP COLUMN email' },
+          {
+            index: 0,
+            label: 'Drop column email from users',
+            sql: 'ALTER TABLE users DROP COLUMN email',
+          },
           { index: 1, label: 'Rename users to people', sql: 'ALTER TABLE users RENAME TO people' },
           { index: 2, label: 'Drop table orders', sql: 'DROP TABLE orders' },
         ],
@@ -413,11 +353,13 @@ describe('the visual editor, using its own buttons', () => {
 
       await panel.page.click('.change:has-text("Rename users to people") button:text-is("Remove")');
 
-      const removals = ((await panel.posted()) as { type?: string; index?: number }[]).filter(
-        (message) => message.type === 'removeEdit',
-      );
+      const removals = (await posted()).filter((message) => message.type === 'removeEdit');
       assert.equal(removals.length, 1);
       assert.equal(removals[0]!.index, 1, 'removed the wrong change');
     });
+  });
+
+  it('reached for no dialog at any point', async () => {
+    assert.deepEqual(await panel.modals(), []);
   });
 });
