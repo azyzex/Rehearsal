@@ -2,8 +2,10 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 343 tests, all against a real Postgres.
-> The demo recording and the marketplace listing are the remaining work.
+> **Status: working, not yet published.** 912 tests: against a real Postgres, a
+> real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
+> click them. The demo recording and the marketplace listing are the remaining
+> work.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
      press Ctrl+Alt+D, land on four rows — red, red, amber, green — with the real
@@ -413,8 +415,11 @@ queries instead.
   connection to `dryrun.allowedConnections`, or you don't connect.
 - **Applying anything destructive is confirmed twice**, the second time in a
   modal that cannot be dismissed by muscle memory.
-- **Credentials are never stored.** The connection string is read from your
-  environment or `.env` on every connect and held in memory only.
+- **Credentials never touch the disk in plain text.** A string you do not save is
+  read from your environment or `.env` on every connect and held in memory only.
+  One you save with **Remember this one** goes to `SecretStorage`, which is the
+  OS keychain; only its label is written to extension storage, so the saved list
+  can be drawn without a credential being read at all.
 - **Sessions are tagged** `vscode-dryrun` in `pg_stat_activity`, so a DBA can see
   what these connections are and kill them.
 
@@ -422,9 +427,14 @@ queries instead.
 
 Stated plainly, because a README that hides them makes the rest less believable.
 
-- **Postgres only.** MySQL and MongoDB are scaffolded but not implemented. MySQL
-  commits DDL implicitly, so only the DML half of the mechanism ports; Mongo needs
-  a replica set for the transactions this depends on.
+- **The three engines answer differently, and two of them answer less.** All
+  three are implemented; what changes is how much the preview can promise. On
+  Postgres a schema change is really executed and really rolled back. MySQL
+  commits DDL implicitly, so schema changes there are measured by counting and
+  never run, and a changeset containing one cannot be applied as a single unit.
+  MongoDB needs a replica set for transactions at all — against a standalone
+  server it refuses to preview rather than running something it could not take
+  back. See the table above for which is which.
 - **Results reflect the database you connect to.** Pointed at an empty local dev
   database, every answer is zero and none of them are useful. Point it at staging
   or a replica.
@@ -459,7 +469,9 @@ or in settings, as an environment-variable reference — never a pasted password
 { "dryrun.connectionString": "${env:DATABASE_URL}" }
 ```
 
-Press `F5` to launch the extension host, then:
+Then click the database icon in the activity bar and connect. Everything below
+is also on the command palette, and `f5` launches a second window running from
+source if you are changing the code.
 
 | Command | What it does |
 |---|---|
@@ -475,6 +487,27 @@ Press `F5` to launch the extension host, then:
 
 In the explorer, **Export** writes the schema as a Mermaid ER diagram — GitHub
 renders it natively, so it can live in a README and stay readable in a diff.
+
+### Settings
+
+The defaults are the ones to leave alone. The two worth knowing about are
+`productionPatterns`, which is what refuses to connect to anything that looks
+like production, and `explainAnalyze`, which is off because it doubles how long
+a preview takes.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `dryrun.connectionString` | `""` | Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root. |
+| `dryrun.envFile` | `".env"` | Path (relative to the workspace root) of the .env file to read the connection string from. |
+| `dryrun.productionPatterns` | `["prod", "production", "live"]` | Case-insensitive regular expressions. If a connection string matches any of them, Dry Run refuses to connect. |
+| `dryrun.allowedConnections` | `[]` | Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override. |
+| `dryrun.statementTimeoutMs` | `5000` | statement_timeout applied inside every preview transaction. |
+| `dryrun.lockTimeoutMs` | `2000` | lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue. |
+| `dryrun.sampleSize` | `20` | How many affected rows to show in a before/after sample. |
+| `dryrun.cautionRowThreshold` | `100` | Rows affected above which a statement is marked 'caution'. |
+| `dryrun.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
+| `dryrun.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
+| `dryrun.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
 
 ## Development
 

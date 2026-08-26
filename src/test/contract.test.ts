@@ -244,3 +244,59 @@ describe('the command identifiers', () => {
     assert.deepEqual(missing(referenced, declared), []);
   });
 });
+
+/**
+ * The README, against what the extension actually contributes.
+ *
+ * Documentation drifts silently and is read by exactly the people who cannot
+ * check it. This file already found the two worst kinds: a Limitations section
+ * still saying "Postgres only. MySQL and MongoDB are scaffolded but not
+ * implemented" three hundred lines under a table describing how all three
+ * behave, and a Safety section promising "credentials are never stored" after
+ * saved connections started going to the OS keychain. The first is
+ * embarrassing; the second is a safety claim that was not true.
+ *
+ * Only presence is checked. Whether the sentence next to it is any good is not
+ * something a test can know.
+ */
+describe('the README, against what the extension contributes', () => {
+  const readme = read('README.md');
+  const manifest = JSON.parse(read('package.json')) as {
+    contributes: {
+      commands?: { command: string; title: string }[];
+      configuration?: { properties?: Record<string, unknown> };
+    };
+  };
+
+  it('documents every setting', () => {
+    const settings = Object.keys(manifest.contributes.configuration?.properties ?? {});
+    assert.ok(settings.length > 0);
+    assert.deepEqual(
+      settings.filter((name) => !readme.includes(name)),
+      [],
+      'these are configurable and nothing says so',
+    );
+  });
+
+  it('documents every command', () => {
+    const titles = (manifest.contributes.commands ?? []).map((one) => one.title);
+    assert.ok(titles.length > 0);
+    assert.deepEqual(
+      titles.filter((title) => !readme.includes(title)),
+      [],
+      'these appear in the palette and nothing says what they do',
+    );
+  });
+
+  it('does not still say the other two engines are unimplemented', () => {
+    // The specific sentence that was wrong, kept as a tripwire: this claim is
+    // the one most likely to be reintroduced by someone copying an old section.
+    assert.doesNotMatch(readme, /scaffolded but not implemented/i);
+    assert.doesNotMatch(readme, /\bPostgres only\b/i);
+  });
+
+  it('does not claim credentials are never stored, because they can be', () => {
+    assert.doesNotMatch(readme, /[Cc]redentials are never stored/);
+    assert.match(readme, /SecretStorage|keychain/, 'and says where they go instead');
+  });
+});
