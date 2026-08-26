@@ -21,6 +21,14 @@ import { describe, it } from 'node:test';
  *
  * It found `rename`: the sidebar could rename a saved connection, the handler
  * was written, and no button had ever posted it.
+ *
+ * This supersedes the two message checks that used to live in
+ * webview.test.ts. Those matched `case 'x':` literally, so the schema
+ * explorer — which dispatches with `if (message.type === 'x')` — had to be
+ * left out of the one that mattered, and neither ever looked for a handler
+ * with nothing behind it. webview.test.ts keeps the checks that are its own:
+ * that each script parses, acquires the API once, and reaches only for
+ * elements the markup renders.
  */
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -101,12 +109,12 @@ function handles(source: string): Set<string> {
 
   for (const match of source.matchAll(/switch\s*\(\s*(?:\w+\.)?type\s*\)\s*\{/g)) {
     const body = blockAt(source, match.index + match[0].length - 1);
-    for (const label of body.matchAll(/case\s+'([A-Za-z]+)'/g)) {
+    for (const label of body.matchAll(/case\s+'([A-Za-z0-9]+)'/g)) {
       found.add(label[1]!);
     }
   }
 
-  for (const match of source.matchAll(/(?:\w+\.type|\w+\['type'\])\s*===\s*'([A-Za-z]+)'/g)) {
+  for (const match of source.matchAll(/(?:\w+\.type|\w+\['type'\])\s*===\s*'([A-Za-z0-9]+)'/g)) {
     found.add(match[1]!);
   }
 
@@ -122,7 +130,7 @@ function handles(source: string): Set<string> {
  */
 function posts(source: string): Set<string> {
   const found = new Set<string>();
-  for (const match of source.matchAll(/\bpost(?:Message)?\(\s*\{\s*type:\s*'([A-Za-z]+)'/g)) {
+  for (const match of source.matchAll(/\bpost(?:Message)?\(\s*\{\s*type:\s*'([A-Za-z0-9]+)'/g)) {
     found.add(match[1]!);
   }
   return found;
@@ -177,4 +185,62 @@ describe('the message contract between each panel and its webview', () => {
       });
     });
   }
+});
+
+/**
+ * The other contract: command identifiers.
+ *
+ * A command declared in the manifest and never registered still appears in the
+ * palette, and running it says "command 'dryrun.x' not found" — which reads as
+ * the extension being broken rather than as one string being wrong. A command
+ * registered and never declared cannot be found at all. A `data-command` on a
+ * sidebar button that names neither is a button that does nothing, which is the
+ * same silent failure as a missing message handler and is caught the same way.
+ */
+describe('the command identifiers', () => {
+  const manifest = JSON.parse(read('package.json')) as {
+    contributes: {
+      commands?: { command: string }[];
+      keybindings?: { command: string }[];
+      menus?: Record<string, { command: string }[]>;
+    };
+  };
+
+  const declared = new Set((manifest.contributes.commands ?? []).map((one) => one.command));
+
+  const registered = new Set(
+    [...read('src/extension.ts').matchAll(/registerCommand\(\s*'([^']+)'/g)].map((m) => m[1]!),
+  );
+
+  const onButtons = new Set(
+    [...read('src/panel/html.ts').matchAll(/data-command="([^"]+)"/g)].map((m) => m[1]!),
+  );
+
+  it('reads all three lists', () => {
+    assert.ok(declared.size > 0);
+    assert.ok(registered.size > 0);
+    assert.ok(onButtons.size > 0);
+  });
+
+  it('registers every command the manifest declares', () => {
+    assert.deepEqual(missing(declared, registered), [], 'these appear in the palette and fail');
+  });
+
+  it('declares every command it registers', () => {
+    assert.deepEqual(missing(registered, declared), [], 'these cannot be found from the palette');
+  });
+
+  it('puts a real command behind every button in the sidebar', () => {
+    assert.deepEqual(missing(onButtons, declared), [], 'these buttons do nothing');
+  });
+
+  it('binds keys and menu entries to commands that exist', () => {
+    const referenced = new Set([
+      ...(manifest.contributes.keybindings ?? []).map((one) => one.command),
+      ...Object.values(manifest.contributes.menus ?? {}).flatMap((entries) =>
+        entries.map((one) => one.command),
+      ),
+    ]);
+    assert.deepEqual(missing(referenced, declared), []);
+  });
 });
