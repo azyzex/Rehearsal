@@ -44,7 +44,9 @@ export function activate(context: vscode.ExtensionContext): void {
     connections,
     saved,
     run: (command) => void vscode.commands.executeCommand(command),
-    report: (error) => reportError(error, output, connections),
+    // Quiet: the sidebar puts the failure in a red box of its own, and a
+    // notification repeating it word for word is the tool talking over itself.
+    report: (error) => reportError(error, output, connections, true),
   });
 
   context.subscriptions.push(
@@ -848,13 +850,25 @@ function errorMessage(error: unknown): string {
   return describeError(error);
 }
 
+/**
+ * Where a failure goes.
+ *
+ * `quiet` is for callers that are already showing the failure themselves. The
+ * sidebar puts it in a red box two inches from the cursor; raising a
+ * notification saying the same sentence again is the tool talking over itself,
+ * and the second copy is the one that has to be dismissed.
+ */
 function reportError(
   error: unknown,
   output: vscode.OutputChannel,
   connections?: ConnectionManager,
+  quiet = false,
 ): void {
   if (error instanceof ProductionRefusedError) {
     output.appendLine(`Refused: ${error.message}`);
+    if (quiet) {
+      return;
+    }
     void vscode.window.showErrorMessage(error.message, 'Open Settings').then((choice) => {
       if (choice === 'Open Settings') {
         void vscode.commands.executeCommand(
@@ -871,6 +885,9 @@ function reportError(
     // Rather than leaving the user to work out where the extension is looking,
     // let them point at the file. Only the path is kept; the credential inside
     // it is read fresh each time and never stored.
+    if (quiet) {
+      return;
+    }
     void vscode.window
       .showErrorMessage(error.message, 'Select .env file…')
       .then(async (choice) => {
@@ -895,7 +912,9 @@ function reportError(
 
   const message = errorMessage(error);
   output.appendLine(`Error: ${message}`);
-  void vscode.window.showErrorMessage(`Dry Run: ${message}`);
+  if (!quiet) {
+    void vscode.window.showErrorMessage(`Dry Run: ${message}`);
+  }
 }
 
 export { rankSeverity };
