@@ -1,5 +1,7 @@
-import { Engine } from '../adapters/types';
+import { DatabaseAdapter, Engine } from '../adapters/types';
 import { Edit, GeneratedStatement, inlineParams, toStatement } from './changeset';
+import { DownMigration, downMigration } from './down';
+import { mongoDownMigration } from './mongoDown';
 import { toMongoScript, toMongoStatement } from './mongoStatements';
 
 /**
@@ -57,12 +59,16 @@ export interface EditDialect {
   /**
    * Whether Dry Run can generate the migration that undoes a changeset here.
    *
-   * `down.ts` reads the live schema and writes SQL, and there is no MongoDB
-   * version of it yet. The button is hidden rather than offered and refused —
-   * and hiding it is better than the alternative that shipped first, which was
-   * handing a MongoDB user a SQL down migration.
+   * True on all three now. It was false on MongoDB for exactly one commit,
+   * while the alternative on offer was a SQL down migration.
    */
   readonly hasDownMigration: boolean;
+
+  /** Builds the script that undoes a changeset, read against the live database. */
+  downMigration(
+    adapter: DatabaseAdapter,
+    edits: readonly Edit[],
+  ): Promise<DownMigration>;
 }
 
 const SQL: EditDialect = {
@@ -81,6 +87,7 @@ const SQL: EditDialect = {
   hasForeignKeys: true,
   hasDefaults: true,
   hasDownMigration: true,
+  downMigration,
 };
 
 const MYSQL: EditDialect = { ...SQL, engine: 'mysql' };
@@ -100,7 +107,8 @@ const MONGO: EditDialect = {
   hasNullability: false,
   hasForeignKeys: false,
   hasDefaults: false,
-  hasDownMigration: false,
+  hasDownMigration: true,
+  downMigration: mongoDownMigration,
 };
 
 export function dialectFor(engine: Engine): EditDialect {

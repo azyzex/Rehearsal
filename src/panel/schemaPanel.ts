@@ -5,7 +5,6 @@ import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds, Severity } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
-import { downMigration } from '../edit/down';
 import { schemaPanelHtml } from './html';
 import { htmlOptionsFor } from './htmlOptions';
 import { ChangesetHistory } from '../edit/history';
@@ -351,10 +350,12 @@ export class SchemaPanel {
     // Both are generated before anything runs, because both need the schema as
     // it is now: after the apply, the column's type and its contents are gone.
     const state = this.session.state();
-    const down = await downMigration(
-      this.requireAdapter(),
-      state.changes.map((change) => change.edit),
-    ).catch(() => undefined);
+    const down = await this.session.language
+      .downMigration(
+        this.requireAdapter(),
+        state.changes.map((change) => change.edit),
+      )
+      .catch(() => undefined);
 
     let rescuePath: string | undefined;
 
@@ -505,20 +506,6 @@ export class SchemaPanel {
    * wrong: they are written against the wrong version of the schema.
    */
   private async exportDown(): Promise<void> {
-    if (!this.session.language.hasDownMigration) {
-      // The button is hidden on this engine, so getting here means something
-      // sent the message anyway. Say what is missing rather than falling
-      // through to the SQL generator, which is what used to happen.
-      this.post({
-        type: 'error',
-        message:
-          'Dry Run cannot generate a down migration for MongoDB yet. Undoing a $rename or a ' +
-          'createIndex is straightforward and undoing a $unset is not possible at all, and ' +
-          'until it can say which is which for a whole changeset it will not offer one.',
-      });
-      return;
-    }
-
     const state = this.session.state();
     if (state.changes.length === 0) {
       this.post({ type: 'error', message: 'There are no pending changes to reverse.' });
@@ -526,7 +513,7 @@ export class SchemaPanel {
     }
 
     try {
-      const down = await downMigration(
+      const down = await this.session.language.downMigration(
         this.requireAdapter(),
         state.changes.map((change) => change.edit),
       );

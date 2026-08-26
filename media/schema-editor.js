@@ -936,9 +936,9 @@
     ui.preview.hidden = readOnly;
     ui.discard.hidden = readOnly;
     ui.exportSql.hidden = readOnly;
-    // Hidden where Dry Run cannot generate one, rather than offered and
-    // refused. Better than what shipped first, which was a SQL down migration
-    // handed to a MongoDB user.
+    // Every engine has one now. The flag stays because the next engine might
+    // not, and because a button that is offered and refuses is worse than one
+    // that is not offered.
     ui.exportDown.hidden = readOnly || !dialect.hasDownMigration;
     ui.preview.textContent = findings.length > 0 ? 'Preview again' : 'Preview';
 
