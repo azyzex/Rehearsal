@@ -84,7 +84,22 @@ export async function analyzeDdl(
     }
 
     case 'set_not_null': {
-      const nulls = await adapter.countRows(table!, `${identifier(column!)} IS NULL`);
+      // Counted as "every row, minus the ones with a value", rather than with a
+      // `column IS NULL` predicate.
+      //
+      // That predicate had to quote the column name, and it quoted it the ANSI
+      // way. MySQL's default sql_mode reads `"email"` as the string 'email',
+      // not as a column, so `WHERE "email" IS NULL` asks whether a constant is
+      // null — always false. The count came back 0 and the panel said "every
+      // row already has a value in email. This will apply cleanly." about a
+      // statement that fails against twelve rows.
+      //
+      // Telling someone a migration is safe when it will fail is the worst
+      // wrong answer this extension can give, so the raw predicate is gone:
+      // `countRows` and `countNonNull` both quote for their own engine, and
+      // neither takes SQL from here.
+      const total = await adapter.countRows(table!);
+      const nulls = total - (await adapter.countNonNull(table!, column!));
       if (nulls === 0) {
         return {
           severity: 'safe',
@@ -280,10 +295,6 @@ function capitalize(text: string): string {
 }
 
 /** Quotes a column name for use inside a WHERE fragment. */
-function identifier(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
-}
-
 export { blastRadiusSeverity, type Finding };
 
 
