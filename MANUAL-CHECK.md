@@ -9,8 +9,11 @@ nothing no longer needs finding by hand.
 
 What is left is what nothing but a person in a real editor can see:
 
-1. **The extension host.** Command registration, keybindings, activation errors,
-   the Problems view, the modal dialogs.
+1. **The extension host.** Keybindings, the Problems view, and the modal
+   dialogs. Activation itself no longer needs you: `activation.test.ts` starts
+   the extension against a stub VS Code and checks that it registers every
+   command, puts the view in the activity bar, says nothing on the way up, and
+   survives being started twice.
 2. **The real theme.** The harness uses stand-ins for the VS Code colour
    variables. They are taken from the real themes, but they are still stand-ins.
 3. **A real database round trip through the UI.** Every adapter is tested
