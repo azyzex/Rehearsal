@@ -1,3 +1,5 @@
+import * as fs from 'node:fs/promises';
+import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Client } from 'pg';
@@ -20,40 +22,86 @@ export interface PostgresFixture {
 
 const DB_NAME = 'dryrun_test';
 
+/**
+ * A port nothing is listening on, from the operating system.
+ *
+ * This used to be `5000 + random(10000)`. Twenty-three test files each start
+ * one of these and `node --test` runs files in parallel, which is a birthday
+ * problem with about a one-in-forty chance of two of them choosing the same
+ * port — and the loser fails in a `before` hook, which cancels every test
+ * under it and reads as a broken feature rather than as a collision. The range
+ * also overlapped whatever else the machine had listening on 5000–15000.
+ *
+ * Binding to port 0 and asking what was assigned leaves a gap between closing
+ * this socket and Postgres opening one, so the caller still retries.
+ */
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      probe.close(() => (port ? resolve(port) : reject(new Error('no port assigned'))));
+    });
+  });
+}
+
 export async function startPostgres(): Promise<PostgresFixture> {
   // `embedded-postgres` is ESM-only, so it is loaded dynamically from our CJS build.
   const { default: EmbeddedPostgres } = await import('embedded-postgres');
 
-  const port = 5000 + Math.floor(Math.random() * 10_000);
-  const databaseDir = path.join(os.tmpdir(), `dryrun-pg-${process.pid}-${port}`);
+  let last: unknown;
 
-  const pg = new EmbeddedPostgres({
-    databaseDir,
-    user: 'postgres',
-    password: 'postgres',
-    port,
-    persistent: false,
-    onLog: () => {
-      /* quiet */
-    },
-    onError: () => {
-      /* quiet; failures surface as thrown errors */
-    },
-  });
+  // Three tries, because a free port can stop being free between asking for
+  // one and using it. Anything that fails all three is a real fault.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const port = await freePort();
+    const databaseDir = path.join(os.tmpdir(), `dryrun-pg-${process.pid}-${port}`);
 
-  await pg.initialise();
-  await pg.start();
-  await pg.createDatabase(DB_NAME);
+    const pg = new EmbeddedPostgres({
+      databaseDir,
+      user: 'postgres',
+      password: 'postgres',
+      port,
+      persistent: false,
+      onLog: () => {
+        /* quiet */
+      },
+      onError: () => {
+        /* quiet; failures surface as thrown errors */
+      },
+    });
 
-  const connectionString = `postgresql://postgres:postgres@localhost:${port}/${DB_NAME}`;
-  await seed(connectionString);
+    try {
+      await pg.initialise();
+      await pg.start();
+      await pg.createDatabase(DB_NAME);
 
-  return {
-    connectionString,
-    stop: async () => {
-      await pg.stop();
-    },
-  };
+      const connectionString = `postgresql://postgres:postgres@localhost:${port}/${DB_NAME}`;
+      await seed(connectionString);
+
+      return {
+        connectionString,
+        stop: async () => {
+          await pg.stop();
+        },
+      };
+    } catch (error) {
+      last = error;
+      // A half-started cluster leaves its data directory behind, and these are
+      // hundreds of megabytes each. Cleaning up here is the only chance.
+      await pg.stop().catch(() => undefined);
+      await fs.rm(databaseDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  throw new Error(
+    `could not start a Postgres fixture in three attempts: ${
+      last instanceof Error ? last.message : String(last)
+    }`,
+  );
 }
 
 /**
