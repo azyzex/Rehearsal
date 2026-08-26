@@ -119,6 +119,11 @@ describe('the visual editor, using its own buttons', () => {
   });
 
   beforeEach(async () => {
+    // Both messages, in the order the extension really sends them. Clicking a
+    // table asks for it, `tableLoading` opens the drawer, and `tableDetail`
+    // fills it in — so `tableDetail` on its own never reopens a drawer that
+    // something closed, and dropping a table closes it.
+    await panel.send({ type: 'tableLoading', table: DETAIL.table });
     await panel.send({ type: 'tableDetail', detail: DETAIL });
   });
 
@@ -250,19 +255,141 @@ describe('the visual editor, using its own buttons', () => {
 
     it('says nothing at all when the table is right there', async () => {
       let alerted = false;
-      const listener = () => {
+      // Removed by the same reference it was added with. Passing a different
+      // function to `off` leaves the handler attached, and it then fights the
+      // next test's handler over who answers the dialog — which hangs the run
+      // rather than failing it. Found the hard way, here.
+      const listener = (dialog: { dismiss(): Promise<void> }) => {
         alerted = true;
-      };
-      panel.page.on('dialog', (dialog) => {
-        listener();
         void dialog.dismiss();
-      });
+      };
+      panel.page.on('dialog', listener);
 
-      await pressLabelled('Show on diagram');
-      await panel.page.waitForTimeout(80);
-      panel.page.off('dialog', listener);
+      try {
+        await pressLabelled('Show on diagram');
+        await panel.page.waitForTimeout(80);
+      } finally {
+        panel.page.off('dialog', listener);
+      }
 
       assert.equal(alerted, false, 'it warned about a table that is on screen');
+      assert.deepEqual(panel.problems, []);
+    });
+  });
+
+  describe('changing a column type', () => {
+    it('says what has to happen to the existing values, and sends the change', async () => {
+      // A type change is the edit most likely to fail against real data, so the
+      // question has to say that before the answer, not after.
+      const asked = answerNextDialog('citext');
+      await panel.page.click('#drawer .drawer-col:has-text("email") button:text-is("Type")');
+
+      const message = await asked;
+      assert.match(message, /Change email from text to/);
+      assert.match(message, /Every existing value has to convert/);
+
+      const changes = (await edits()).filter((edit) => edit.kind === 'alter_type');
+      assert.equal(changes.length, 1);
+      assert.deepEqual(changes[0], {
+        kind: 'alter_type',
+        table: 'users',
+        column: 'email',
+        to: 'citext',
+      });
+    });
+
+    it('sends nothing when the type is left as it was', async () => {
+      // The prompt is pre-filled with the current type, so pressing enter
+      // without editing is the likeliest answer of all.
+      const before = (await edits()).length;
+      const asked = answerNextDialog('text');
+      await panel.page.click('#drawer .drawer-col:has-text("email") button:text-is("Type")');
+      await asked;
+
+      assert.equal((await edits()).length, before);
+    });
+  });
+
+  describe('dropping a column', () => {
+    it('sends the drop for the column it sits next to', async () => {
+      await panel.page.click('#drawer .drawer-col:has-text("phone_number") button:text-is("Drop")');
+
+      const drops = (await edits()).filter((edit) => edit.kind === 'drop_column');
+      assert.equal(drops.length, 1);
+      assert.deepEqual(drops[0], {
+        kind: 'drop_column',
+        table: 'users',
+        column: 'phone_number',
+      });
+    });
+
+    it('is not offered on the primary key', async () => {
+      // Dropping it is legal SQL and almost never what anyone means by
+      // clicking a small button next to a column.
+      const onKey = await panel.page.$$(
+        '#drawer .drawer-col:has-text("id") button:text-is("Drop")',
+      );
+      assert.equal(onKey.length, 0);
+    });
+  });
+
+  describe('the route between two tables', () => {
+    // Per test rather than once: the outer `beforeEach` re-renders the drawer,
+    // which takes the result with it.
+    async function showRoute(): Promise<void> {
+      await panel.send({
+        type: 'joinPath',
+        from: 'users',
+        to: 'orders',
+        found: true,
+        tables: ['users', 'orders'],
+        joins: 1,
+        sql: 'SELECT * FROM users JOIN orders ON orders.user_id = users.id',
+      });
+    }
+
+    it('lights up the cards it goes through', async () => {
+      await showRoute();
+      assert.equal(await panel.page.$$eval('.table.on-route', (cards) => cards.length), 2);
+    });
+
+    it('puts the route on the clipboard as SQL', async () => {
+      await showRoute();
+      // The real clipboard is not reachable from a page loaded this way —
+      // reading it back blocks on a permission prompt that never comes — so
+      // what is checked is the call, which is the part this code owns.
+      // `defineProperty`, not assignment: navigator.clipboard is a read-only
+      // accessor on the prototype, so `navigator.clipboard = {...}` fails
+      // silently and the stub is never installed.
+      await panel.page.evaluate(`
+        window.__copied = [];
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: {
+            writeText: function (value) {
+              window.__copied.push(value);
+              return Promise.resolve();
+            }
+          }
+        });
+      `);
+
+      await panel.page.click('.path-result button:text-is("Copy SQL")');
+
+      const copied = (await panel.page.evaluate('window.__copied')) as string[];
+      assert.equal(copied.length, 1, 'Copy SQL copied nothing');
+      assert.match(copied[0]!, /JOIN orders ON orders\.user_id = users\.id/);
+      assert.deepEqual(panel.problems, []);
+    });
+
+    it('takes the route back off the diagram when asked', async () => {
+      await showRoute();
+      assert.equal(await panel.page.$$eval('.table.on-route', (cards) => cards.length), 2);
+
+      await panel.page.click('.path-result button:text-is("Clear route")');
+      await panel.page.waitForTimeout(60);
+
+      assert.equal(await panel.page.$$eval('.table.on-route', (cards) => cards.length), 0);
       assert.deepEqual(panel.problems, []);
     });
   });
