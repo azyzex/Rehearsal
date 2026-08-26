@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 980 tests: against a real Postgres, a
+> **Status: working, not yet published.** 986 tests: against a real Postgres, a
 > real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
 > click them. The demo recording and the marketplace listing are the remaining
 > work.
@@ -255,6 +255,12 @@ enforced in code rather than described in a comment.
 | **Postgres** | roll back | roll back | nothing special | `RETURNING`, exact |
 | **MySQL** | roll back | **commit silently** — refused by the adapter | nothing special | read before and after |
 | **MongoDB** | roll back | **refused by the server** | a replica set | read before and after |
+
+One number differs between them on purpose. An `UPDATE` that matches five rows
+where one already holds the new value is five on Postgres and MySQL, which
+rewrite every matched row, and four on MongoDB, which reports `modifiedCount`.
+Both are true about their own engine. It is the only place the same migration
+gets two different answers, so it is written down rather than left to be found.
 
 The last column is the one that surprised me. Postgres learns exactly which rows
 a statement touched by appending `RETURNING` — including rows a join dragged in,

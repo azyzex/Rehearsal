@@ -67,6 +67,7 @@ describe('the same migration, against a real MySQL', () => {
   let recorded: Recorded;
   let previousUrl: string | undefined;
   let uninstall: () => void;
+  let context: { subscriptions: { dispose(): void }[] };
 
   before(async () => {
     fixture = await startMysql();
@@ -82,6 +83,7 @@ describe('the same migration, against a real MySQL', () => {
 
     const stub = makeVscodeStub();
     recorded = stub.recorded;
+    context = stub.context;
     uninstall = installVscode(stub.api);
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -92,6 +94,14 @@ describe('the same migration, against a real MySQL', () => {
   });
 
   after(async () => {
+    // Everything the extension opened, closed. Without this the database
+    // client it is still holding keeps the event loop alive and the file times
+    // out after every one of its tests has passed — which reports as a failure
+    // with nothing failing in it.
+    for (const subscription of context.subscriptions) {
+      subscription.dispose();
+    }
+
     uninstall();
     if (previousUrl === undefined) {
       delete process.env['DATABASE_URL'];

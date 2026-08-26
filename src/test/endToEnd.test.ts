@@ -64,6 +64,7 @@ let fixture: PostgresFixture;
 let recorded: Recorded;
 let api: ReturnType<typeof makeVscodeStub>['api'];
 let uninstall: () => void;
+let context: { subscriptions: { dispose(): void }[] };
 let previousUrl: string | undefined;
 
 before(async () => {
@@ -77,6 +78,7 @@ before(async () => {
   const stub = makeVscodeStub();
   recorded = stub.recorded;
   api = stub.api;
+  context = stub.context;
   uninstall = installVscode(stub.api);
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -85,6 +87,14 @@ before(async () => {
 });
 
 after(async () => {
+  // Everything the extension opened, closed. Without this the database client
+  // it is still holding keeps the event loop alive and the file times out after
+  // every one of its tests has passed — which reports as a failure with nothing
+  // failing in it.
+  for (const subscription of context.subscriptions) {
+    subscription.dispose();
+  }
+
   uninstall();
   if (previousUrl === undefined) {
     delete process.env['DATABASE_URL'];
