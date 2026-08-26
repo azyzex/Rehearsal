@@ -36,6 +36,41 @@ cloud database is for driving the extension by hand and recording the demo.
 
 ---
 
+## The short way: all three, locally, with nothing to sign up for
+
+```
+npm run testbed:db      # Postgres  — embedded-postgres
+npm run testbed:mysql   # MySQL     — mysql-memory-server
+npm run testbed:mongo   # MongoDB   — mongodb-memory-server, as a replica set
+```
+
+Each starts a real server, seeds it with the messy data below, writes the
+project's `.env`, prints a connection string to paste into the sidebar, and
+holds the terminal until you press Ctrl+C. They reuse the binaries the test
+suite already downloaded, so there is nothing new to install and nothing that
+needs administrator rights — no Windows service to enable, no root password to
+remember, no cloud account.
+
+Ports are pinned (5432‑ish neighbours: 54329, 54331, 54330), so a connection you
+save in the sidebar still works tomorrow.
+
+Two things worth knowing:
+
+- **Mongo runs as a single-node replica set, deliberately.** Previews need
+  multi-document transactions, a standalone `mongod` does not have them, and Dry
+  Run refuses to connect to one rather than run something it could not undo — so
+  a standalone would show you the refusal instead of the feature. One node is
+  enough: the election is instant and the transaction semantics are the ones
+  Atlas provides.
+- **MySQL keeps nothing between runs**, so it reseeds each time and its `.env`
+  is rewritten rather than left alone. Postgres and Mongo keep their data, so a
+  second run starts in a second.
+
+This is the fast path. The cloud setup below is still the right way to record
+the demo, for the latency reasons above.
+
+---
+
 ## Setting up Postgres on Neon
 
 Neon is free, needs no credit card, and gives you a plain Postgres connection

@@ -199,6 +199,8 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "testbed:db": "node testbed/postgres-shop/scripts/local-db.mjs",
+    "testbed:mysql": "node testbed/mysql-blog/scripts/local-db.mjs",
+    "testbed:mongo": "node testbed/mongo-analytics/scripts/local-db.mjs",
     "testbed:seed": "node testbed/postgres-shop/scripts/setup.mjs"
   },
   "dependencies": {

@@ -53,6 +53,27 @@ Use `f5` instead only when you are changing the extension's own code — that
 launches a second window running from source, and the sidebar behaves the same
 way in it.
 
+### The other two engines
+
+Both run locally, with nothing to sign up for and nothing needing administrator
+rights. In a separate terminal:
+
+```
+npm run testbed:mysql   # prints mysql://root@127.0.0.1:54331/blog
+npm run testbed:mongo   # prints mongodb://127.0.0.1:54330/analytics?replicaSet=...
+```
+
+Each seeds itself, writes its project's `.env`, prints the string to paste into
+the sidebar, and holds the terminal open until Ctrl+C. Leave it running while
+you test.
+
+The Mongo one is a single-node replica set on purpose: a standalone `mongod`
+has no multi-document transactions, and Dry Run refuses to connect to one
+rather than run something it could not undo — so a standalone would show you
+the refusal instead of the feature. If you ever want to see that refusal
+deliberately, point it at a standalone and check the message says what is wrong
+and what would fix it.
+
 ---
 
 ## The ten minutes that matter most
