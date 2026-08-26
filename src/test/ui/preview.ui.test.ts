@@ -311,3 +311,123 @@ describe('the preview panel, rendered', () => {
     await panel.shot('preview-panel');
   });
 });
+
+/**
+ * The other three kinds of offending row.
+ *
+ * The scan answers four different questions — empty, orphaned, duplicated, and
+ * would-fail-the-new-rule — and only the first had ever been rendered. Reading
+ * the other three found that two of them said "1 row point at something that
+ * does not exist" and "1 row share a value", because nobody had drawn them.
+ */
+describe('every kind of offending row', () => {
+  let panel: Panel;
+
+  const send = (offenders: Record<string, unknown>) =>
+    panel.send({ type: 'offenders', statementIndex: 0, offenders });
+
+  const headline = () => panel.page.textContent('.offenders');
+
+  before(async () => {
+    panel = await openPanel(previewPanelHtml, { width: 900, height: 800 });
+    await panel.send({
+      type: 'begin',
+      file: 'migrations/0012.sql',
+      connection: 'shop@neon',
+      statements: [
+        {
+          index: 0,
+          sql: 'ALTER TABLE orders ADD FOREIGN KEY (user_id) REFERENCES users (id)',
+          startLine: 0,
+          endLine: 0,
+        },
+      ],
+    });
+
+    // The box only exists on a finding whose kind has offending rows to show,
+    // which is what makes "where are they" a question worth offering.
+    await panel.send({
+      type: 'finding',
+      finding: {
+        statementIndex: 0,
+        kind: 'add_foreign_key',
+        classification: {
+          kind: 'add_foreign_key',
+          table: 'orders',
+          columns: ['user_id'],
+          references: { table: 'users', columns: ['id'] },
+        },
+        severity: 'blocking',
+        headline: 'Will fail',
+        detail: '12 rows in orders reference a user that is not there.',
+        rowCount: 12,
+      },
+    });
+  });
+
+  after(async () => {
+    await panel.close();
+    await closeBrowser();
+  });
+
+  it('says orphaned rows point at something that is not there', async () => {
+    await send({
+      kind: 'orphan',
+      table: 'orders',
+      column: 'user_id',
+      total: 12,
+      rows: [{ id: '1', user_id: '99' }],
+    });
+
+    const said = (await headline()) ?? '';
+    assert.match(said, /12 rows in orders\.user_id point at something that does not exist/);
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('says one of them points, not point', async () => {
+    await send({ kind: 'orphan', table: 'orders', column: 'user_id', total: 1, rows: [] });
+    assert.match((await headline()) ?? '', /1 row in orders\.user_id points at/);
+  });
+
+  it('says duplicated rows share a value', async () => {
+    await send({
+      kind: 'duplicate',
+      table: 'users',
+      column: 'email',
+      total: 8,
+      rows: [{ id: '1', email: 'dupe@example.com' }],
+    });
+
+    assert.match((await headline()) ?? '', /8 rows in users\.email share a value with another row/);
+  });
+
+  it('says one of them shares, not share', async () => {
+    await send({ kind: 'duplicate', table: 'users', column: 'email', total: 1, rows: [] });
+    assert.match((await headline()) ?? '', /1 row in users\.email shares a value/);
+  });
+
+  it('says a violation would fail the new rule', async () => {
+    await send({
+      kind: 'violation',
+      table: 'orders',
+      column: 'total_cents',
+      total: 3,
+      rows: [{ id: '1', total_cents: '-5' }],
+    });
+
+    assert.match((await headline()) ?? '', /3 rows in orders\.total_cents would fail the new rule/);
+  });
+
+  it('says nothing is in the way when nothing is', async () => {
+    // The one answer that has to read as good news rather than as a blank box.
+    await send({ kind: 'violation', table: 'orders', column: 'total_cents', total: 0, rows: [] });
+
+    assert.match((await headline()) ?? '', /Nothing in orders\.total_cents is in the way/);
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('names the table alone when the question is not about one column', async () => {
+    await send({ kind: 'duplicate', table: 'users', total: 4, rows: [] });
+    assert.match((await headline()) ?? '', /4 rows in users share a value/);
+  });
+});

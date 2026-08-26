@@ -1142,13 +1142,25 @@
       return 'Nothing in ' + where + ' is in the way.';
     }
     const n = formatCount(state.total);
+    // Singular and plural for each, because "1 row point at something that
+    // does not exist" is what three of these said — they had never been drawn,
+    // so nobody had read them.
+    const one = state.total === 1;
+
     switch (state.kind) {
       case 'null':
-        return n + ' in ' + where + (state.total === 1 ? ' is empty.' : ' are empty.');
+        return n + ' in ' + where + (one ? ' is empty.' : ' are empty.');
       case 'orphan':
-        return n + ' in ' + where + ' point at something that does not exist.';
+        return (
+          n + ' in ' + where + (one ? ' points' : ' point') + ' at something that does not exist.'
+        );
       case 'duplicate':
-        return n + ' in ' + where + ' share a value with another row.';
+        return (
+          n +
+          ' in ' +
+          where +
+          (one ? ' shares a value with another row.' : ' share a value with another row.')
+        );
       case 'violation':
         return n + ' in ' + where + ' would fail the new rule.';
       default:
