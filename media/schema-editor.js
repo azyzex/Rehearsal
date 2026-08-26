@@ -348,6 +348,16 @@
     const bar = document.createElement('div');
     bar.className = 'drawer-actions';
 
+    // Re-reading is now something you ask for rather than something that
+    // happens every time you click the card, so it needs a way to be asked.
+    bar.appendChild(
+      miniButton('Refresh', () => {
+        const table = detail.table;
+        detail = null;
+        openTable(table);
+      }),
+    );
+
     bar.appendChild(
       miniButton('Show on diagram', () => {
         if (!host.locate(detail.table)) {
@@ -1010,6 +1020,15 @@
   // work: the card stops it propagating so that the stage does not clear the
   // selection the click just made, which means it never reaches anything above.
   host.onTableActivate((table) => {
+    // Already on screen. Clicking the background and then the same table again
+    // used to throw the drawer away and read the whole thing back from the
+    // database — a round trip to redraw what was already there, with a
+    // "loading…" flash in the middle of it. The drawer has a Refresh button
+    // for when the answer might have changed.
+    if (detail && detail.table === table && !ui.drawer.hidden) {
+      host.markOpened(table);
+      return;
+    }
     openTable(table);
   });
 

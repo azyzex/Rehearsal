@@ -30,6 +30,7 @@ import {
 import { executionMs, indexNames, totalCost } from './planShape';
 import { CommittableStatement, CommittedResult, runCommittedOn } from './commit';
 import { findTransactionControl } from '../parser/transactionControl';
+import { describeError } from '../errors';
 
 /**
  * Postgres adapter.
@@ -48,6 +49,8 @@ export class PostgresAdapter implements DatabaseAdapter {
   readonly supportsTransactionalDDL = true;
 
   private client: Client | null = null;
+  /** Set when the socket has died and the client can never be used again. */
+  private broken = false;
   private config: ConnectionConfig | null = null;
   /** Tail of the serialization queue. */
   private queue: Promise<unknown> = Promise.resolve();
@@ -56,6 +59,11 @@ export class PostgresAdapter implements DatabaseAdapter {
     if (this.client) {
       throw new Error('Already connected. Dispose the adapter before reconnecting.');
     }
+    await this.open(config);
+  }
+
+  /** Opens the socket. Separate from `connect` so reconnecting can reuse it. */
+  private async open(config: ConnectionConfig): Promise<void> {
 
     const client = new Client({
       connectionString: config.connectionString,
@@ -65,9 +73,18 @@ export class PostgresAdapter implements DatabaseAdapter {
       connectionTimeoutMillis: 10_000,
     });
 
+    // A client that has errored is unusable for ever afterwards, and `pg`
+    // reports that by emitting on the client rather than by rejecting the next
+    // query. Without a listener the process would also take an unhandled
+    // 'error' event, which in an extension host is worse than a dead socket.
+    client.on('error', () => {
+      this.broken = true;
+    });
+
     await client.connect();
     this.client = client;
     this.config = config;
+    this.broken = false;
 
     // Session-level ceilings, so read-only probes running outside a
     // transaction are bounded too.
@@ -98,7 +115,15 @@ export class PostgresAdapter implements DatabaseAdapter {
    * in this class that issues a COMMIT.
    */
   async withRollback<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    return this.serialize(async () => {
+    // Safe to retry in full. Nothing inside a preview can commit — that is
+    // enforced by `query` refusing transaction control, and it is the property
+    // the whole extension is built on — so a socket that dies mid-preview
+    // means the server has already thrown the transaction away. Running it
+    // again on a new connection repeats work, not effects.
+    return this.serialize(() => this.withReconnect(() => this.runRolledBack(fn)));
+  }
+
+  private async runRolledBack<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
       const client = this.requireClient();
       const config = this.config!;
 
@@ -135,7 +160,6 @@ export class PostgresAdapter implements DatabaseAdapter {
           /* connection lost: the server discards the transaction for us */
         });
       }
-    });
   }
 
   /**
@@ -145,17 +169,43 @@ export class PostgresAdapter implements DatabaseAdapter {
    * the sole file exempt from the no-commit rule, so that this capability lives
    * somewhere it can be read in one sitting rather than being spread out.
    */
+  /**
+   * The one thing that is never retried.
+   *
+   * Everything else here reconnects and runs again, because everything else
+   * either reads or rolls back. This commits. A socket that dies while a
+   * COMMIT is in flight leaves the outcome genuinely unknown — the server may
+   * have applied it and lost the acknowledgement — and running it a second
+   * time could apply it twice.
+   *
+   * So it fails, and says which of the two it is: never started, or unknown.
+   * Guessing on the user's behalf is the one thing that would be worse than
+   * either.
+   */
   async runCommitted(statements: readonly CommittableStatement[]): Promise<CommittedResult> {
     return this.serialize(async () => {
       const config = this.config!;
-      return runCommittedOn(
-        this.requireClient(),
-        {
-          statementTimeoutMs: config.statementTimeoutMs,
-          lockTimeoutMs: config.lockTimeoutMs,
-        },
-        statements,
-      );
+
+      if (this.broken) {
+        await this.reconnect();
+      }
+
+      try {
+        return await runCommittedOn(
+          this.requireClient(),
+          {
+            statementTimeoutMs: config.statementTimeoutMs,
+            lockTimeoutMs: config.lockTimeoutMs,
+          },
+          statements,
+        );
+      } catch (error) {
+        if (isConnectionDead(error)) {
+          this.broken = true;
+          throw new UncertainApplyError(describeError(error));
+        }
+        throw error;
+      }
     });
   }
 
@@ -1247,12 +1297,60 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   // ---- internals --------------------------------------------------------
 
+/**
+   * Opens a fresh socket after the old one died.
+   *
+   * The connection string is still in `config` and nowhere else — it was never
+   * written to disk — so reconnecting needs nothing from the user.
+   */
+  private async reconnect(): Promise<void> {
+    const config = this.config;
+    if (!config) {
+      throw new Error('Not connected.');
+    }
+
+    const dead = this.client;
+    this.client = null;
+    this.broken = false;
+    // Ended rather than left to be collected: an abandoned client keeps a
+    // handle open and, on some failures, keeps retrying on its own.
+    await dead?.end().catch(() => undefined);
+
+    await this.open(config);
+  }
+
+  /**
+   * Runs something, and if the connection turns out to be dead, opens a new
+   * one and runs it again.
+   *
+   * Once only. A second failure is a failure, not a pattern to keep repeating
+   * at a server that is telling us something.
+   */
+  private async withReconnect<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      if (this.broken) {
+        await this.reconnect();
+      }
+      return await work();
+    } catch (error) {
+      if (!isConnectionDead(error)) {
+        throw error;
+      }
+      await this.reconnect();
+      return work();
+    }
+  }
+
   private async probe(sql: string, params?: readonly unknown[]): Promise<QueryResult> {
-    return this.serialize(async () => {
-      const client = this.requireClient();
-      const result = await client.query(sql, params ? [...params] : undefined);
-      return { rows: result.rows as Row[], rowCount: result.rowCount };
-    });
+    return this.serialize(() =>
+      // A read is idempotent, so running it again on a new socket produces the
+      // same answer it would have produced on the old one.
+      this.withReconnect(async () => {
+        const client = this.requireClient();
+        const result = await client.query(sql, params ? [...params] : undefined);
+        return { rows: result.rows as Row[], rowCount: result.rowCount };
+      }),
+    );
   }
 
   /** Serializes work on the single connection. */
@@ -1383,4 +1481,68 @@ function escapesRollback(source: string): string[] {
   check(/\bperform\s+\w*\.?send/i, 'calls something named "send"');
 
   return found;
+}
+
+
+/**
+ * Whether this failure means the socket is gone rather than the query was bad.
+ *
+ * `pg` reports a dead client with one sentence and no code, which is why the
+ * text is matched as well as the codes: "Client has encountered a connection
+ * error and is not queryable" is the whole of what it says, and it says it for
+ * every query afterwards, for ever.
+ */
+export function isConnectionDead(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const code = String((error as { code?: unknown }).code ?? '');
+  if (
+    [
+      'ECONNRESET',
+      'EPIPE',
+      'ETIMEDOUT',
+      'ENOTCONN',
+      'ECONNREFUSED',
+      // Postgres shutting the session down on purpose.
+      '57P01', // admin_shutdown
+      '57P02', // crash_shutdown
+      '57P03', // cannot_connect_now
+      '08006', // connection_failure
+      '08003', // connection_does_not_exist
+      '08000', // connection_exception
+    ].includes(code)
+  ) {
+    return true;
+  }
+
+  const message = String((error as { message?: unknown }).message ?? '');
+  return (
+    /connection error and is not queryable/i.test(message) ||
+    /Connection terminated/i.test(message) ||
+    /server closed the connection unexpectedly/i.test(message) ||
+    /Client has already been connected/i.test(message) ||
+    /terminating connection due to administrator command/i.test(message)
+  );
+}
+
+
+/**
+ * Thrown when the connection died during an apply.
+ *
+ * The distinction it carries is the whole reason it exists: a failure before
+ * the COMMIT means nothing happened, and a failure during one means nobody
+ * knows. Reporting both as "apply failed" would leave someone to find out by
+ * looking, which is fine — as long as they are told to look.
+ */
+export class UncertainApplyError extends Error {
+  constructor(cause: string) {
+    super(
+      `The connection died while applying, so Dry Run does not know whether the ` +
+        `changes went through (${cause}). It has not retried, because applying twice ` +
+        `is worse than applying once. Check the database before running this again.`,
+    );
+    this.name = 'UncertainApplyError';
+  }
 }

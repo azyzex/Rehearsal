@@ -212,6 +212,77 @@ describe('the schema explorer, rendered', () => {
     });
   });
 
+  describe('re-opening a table that is already on screen', () => {
+    it('does not read the whole thing back again', async () => {
+      // Clicking the background and then the same table used to throw the
+      // drawer away and fetch it from the database again — a round trip to
+      // redraw what was already there, with a "loading…" flash in the middle.
+      const before = ((await panel.posted()) as { type?: string }[]).filter(
+        (message) => message.type === 'openTable',
+      ).length;
+
+      await panel.click('#stage');
+      await panel.click('.table[data-table="users"] .table-head');
+
+      const after = ((await panel.posted()) as { type?: string }[]).filter(
+        (message) => message.type === 'openTable',
+      ).length;
+
+      assert.equal(after, before, 'it asked the extension again');
+      assert.equal(await visible(panel.page, '#drawer'), true, 'and the drawer is still up');
+      assert.match((await panel.page.textContent('#drawer')) ?? '', /a@example\.com/);
+    });
+
+    it('still fetches a different table', async () => {
+      const before = ((await panel.posted()) as { type?: string }[]).filter(
+        (message) => message.type === 'openTable',
+      ).length;
+
+      await panel.click('.table[data-table="orders"] .table-head');
+
+      const posted = (await panel.posted()) as { type?: string; table?: string }[];
+      assert.equal(
+        posted.filter((message) => message.type === 'openTable').length,
+        before + 1,
+      );
+      assert.equal(posted[posted.length - 1]!.table, 'orders');
+    });
+
+    it('offers a way to read it again on purpose', async () => {
+      // Re-reading is now something you ask for, so there has to be a way to
+      // ask. Re-open users first, since the click above moved to orders.
+      await panel.send({
+        type: 'tableDetail',
+        detail: {
+          table: 'users',
+          rows: 50_000,
+          rowsEstimated: false,
+          primaryKey: ['id'],
+          columns: SNAPSHOT.tables[0]!.columns,
+          indexes: [],
+          constraints: [],
+          sample: [{ id: '1', email: 'a@example.com', tier: 'pro', phone_number: '+1' }],
+          sampleRaw: [{ id: 1, email: 'a@example.com', tier: 'pro', phone_number: '+1' }],
+        },
+      });
+
+      const labels = await texts(panel.page, '#drawer .drawer-actions button');
+      assert.ok(labels.includes('Refresh'), `buttons are ${labels.join(', ')}`);
+
+      const before = ((await panel.posted()) as { type?: string }[]).filter(
+        (message) => message.type === 'openTable',
+      ).length;
+
+      await panel.page.click('#drawer .drawer-actions button:has-text("Refresh")');
+      await panel.page.waitForTimeout(50);
+
+      const after = ((await panel.posted()) as { type?: string }[]).filter(
+        (message) => message.type === 'openTable',
+      ).length;
+      assert.equal(after, before + 1, 'Refresh really re-reads it');
+    });
+  });
+
   describe('the buttons in the drawer', () => {
     it('are all readable against their own background', async () => {
       // The red-on-red Drop button. Every one of these is checked rather than
