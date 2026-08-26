@@ -402,9 +402,11 @@
 
     el.tables.replaceChildren(fragment);
 
-    // Cards are rebuilt from scratch on every layout, so the overlay has to be
-    // put back or it silently disappears the first time anything re-renders.
+    // Cards are rebuilt from scratch on every layout, so both of these have to
+    // be put back or they silently disappear the first time anything
+    // re-renders.
     applyOverlay();
+    applyAffected();
   }
 
   function renderColumn(column, fkColumns) {
@@ -1209,6 +1211,87 @@
     setMeta(node, `${abbreviate(node.table.rows)} · ${bytes(node.table.bytes)}`);
   }
 
+  // ---- what a preview would touch ----------------------------------------
+
+  /**
+   * Tables a preview lands on, keyed by name, valued by severity.
+   * @type {Record<string, string>}
+   */
+  let affected = {};
+
+  /**
+   * Outlines the tables a preview would touch.
+   *
+   * Previewing used to answer in a sentence at the bottom of the screen. Zoomed
+   * out over twenty-one cards, a sentence cannot point at anything — so the
+   * cards say it themselves, in the colour of the worst thing happening to
+   * each one.
+   */
+  function markAffected(next) {
+    affected = next || {};
+    applyAffected();
+  }
+
+  function applyAffected() {
+    for (const node of nodes.values()) {
+      if (!node.el) {
+        continue;
+      }
+      const severity = affected[node.table.qualified] ?? affected[node.table.name];
+      if (severity) {
+        node.el.classList.add('affected');
+        node.el.dataset.severity = severity;
+      } else {
+        node.el.classList.remove('affected');
+        delete node.el.dataset.severity;
+      }
+    }
+  }
+
+  /**
+   * Frames every affected table at once.
+   *
+   * `locate` centres on one card, which is the wrong answer when a changeset
+   * touches four of them in different corners.
+   */
+  function frameAffected() {
+    const marked = [...nodes.values()].filter(
+      (node) => affected[node.table.qualified] ?? affected[node.table.name],
+    );
+    if (marked.length === 0) {
+      return false;
+    }
+
+    const minX = Math.min(...marked.map((node) => node.x));
+    const minY = Math.min(...marked.map((node) => node.y));
+    const maxX = Math.max(...marked.map((node) => node.x + node.width));
+    const maxY = Math.max(...marked.map((node) => node.y + node.height));
+
+    const frame = el.stage.getBoundingClientRect();
+    const margin = 60;
+    const scale = Math.min(
+      (frame.width - margin * 2) / Math.max(maxX - minX, 1),
+      (frame.height - margin * 2) / Math.max(maxY - minY, 1),
+      1.2,
+    );
+
+    view.scale = Math.max(0.25, scale);
+    view.x = frame.width / 2 - ((minX + maxX) / 2) * view.scale;
+    view.y = frame.height / 2 - ((minY + maxY) / 2) * view.scale;
+    apply();
+
+    for (const node of marked) {
+      if (!node.el) {
+        continue;
+      }
+      node.el.classList.remove('locating');
+      void node.el.offsetWidth;
+      node.el.classList.add('locating');
+      setTimeout(() => node.el && node.el.classList.remove('locating'), 2000);
+    }
+    return true;
+  }
+
   // ---- bridge ------------------------------------------------------------
 
   /**
@@ -1257,6 +1340,14 @@
      */
     postMessage(message) {
       vscode.postMessage(message);
+    },
+    /** Outlines the tables a preview would touch. */
+    markAffected(next) {
+      markAffected(next);
+    },
+    /** Frames all of them at once. Returns false when none are drawn. */
+    frameAffected() {
+      return frameAffected();
     },
     /** Centres the view on a table and pulses it. Returns false if unknown. */
     locate(name) {

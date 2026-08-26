@@ -2,7 +2,7 @@ import * as os from 'node:os';
 import { describeError } from '../errors';
 import * as vscode from 'vscode';
 import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
-import { Thresholds } from '../analysis/types';
+import { Thresholds, Severity } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
 import { downMigration } from '../edit/down';
@@ -46,6 +46,13 @@ export class SchemaPanel {
   private host: SchemaHost | undefined;
   private previewToken: string | undefined;
   private previewDestructive = false;
+  /**
+   * Bumped whenever the changeset changes.
+   *
+   * A preview started before the bump describes a changeset that no longer
+   * exists, and its result is dropped rather than shown.
+   */
+  private generation = 0;
   /** The verdict the preview gave, kept for the history entry. */
   private previewSummary = '';
   /** The database being edited, as it should be named in the history. */
@@ -260,7 +267,20 @@ export class SchemaPanel {
 
     this.post({ type: 'previewStarted' });
 
+    const startedAt = this.generation;
     const result = await this.session.preview(adapter, this.host!.thresholds());
+
+    if (startedAt !== this.generation) {
+      // Something was edited while this was running. Showing it would put a
+      // measurement of the old changeset next to the new one and turn Apply
+      // back on for a token that will be refused.
+      this.post({
+        type: 'previewStale',
+        message: 'The changes moved while that was measuring. Preview them again.',
+      });
+      return;
+    }
+
     this.previewToken = result.token;
     this.previewDestructive = result.destructive;
     this.previewSummary = result.summary;
@@ -272,6 +292,9 @@ export class SchemaPanel {
       destructive: result.destructive,
       blocking: result.blocking,
       canApply: true,
+      // Which tables this lands on, so the diagram can say where rather than
+      // leaving someone to find it among twenty-one cards.
+      affected: affectedTables(result.findings),
     });
   }
 
@@ -591,6 +614,9 @@ export class SchemaPanel {
   private clearPreview(): void {
     this.previewToken = undefined;
     this.previewDestructive = false;
+    this.previewSummary = '';
+    // Anything in flight is now describing something that is not there.
+    this.generation += 1;
   }
 
   private requireAdapter(): DatabaseAdapter {
@@ -682,4 +708,37 @@ export function formatValue(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+
+/**
+ * Which tables a set of findings lands on, and how badly.
+ *
+ * "Preview" used to answer in a sentence at the bottom of the screen. Zoomed
+ * out over twenty-one cards, a sentence does not tell you where anything is
+ * about to happen — so the answer goes on the diagram as well, and the worst
+ * thing happening to a table is what colours it.
+ */
+export function affectedTables(
+  findings: readonly { severity: Severity; classification: { table?: string } }[],
+): Record<string, Severity> {
+  const rank: Record<Severity, number> = {
+    safe: 0,
+    caution: 1,
+    blocking: 2,
+    destructive: 3,
+  };
+
+  const worst: Record<string, Severity> = {};
+  for (const finding of findings) {
+    const table = finding.classification.table;
+    if (!table) {
+      continue;
+    }
+    const current = worst[table];
+    if (current === undefined || (rank[finding.severity] ?? 0) > (rank[current] ?? 0)) {
+      worst[table] = finding.severity;
+    }
+  }
+  return worst;
 }

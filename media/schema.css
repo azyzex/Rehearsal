@@ -842,3 +842,47 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
   opacity: 0.85;
   border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
 }
+
+/* Where a preview lands.
+   Previewing used to answer in a sentence at the bottom of the screen, and a
+   sentence cannot point at one card among twenty-one. Each affected table is
+   outlined in the colour of the worst thing happening to it. */
+.table.affected {
+  border-width: 2px;
+  box-shadow: 0 0 0 3px var(--affected-glow, transparent);
+}
+
+.table.affected[data-severity='safe'] {
+  --affected-glow: color-mix(in srgb, var(--vscode-charts-green, #89d185) 30%, transparent);
+  border-color: var(--vscode-charts-green, #89d185);
+}
+
+.table.affected[data-severity='caution'] {
+  --affected-glow: color-mix(in srgb, var(--vscode-charts-yellow, #cca700) 30%, transparent);
+  border-color: var(--vscode-charts-yellow, #cca700);
+}
+
+.table.affected[data-severity='blocking'] {
+  --affected-glow: color-mix(in srgb, var(--vscode-charts-orange, #d18616) 35%, transparent);
+  border-color: var(--vscode-charts-orange, #d18616);
+}
+
+.table.affected[data-severity='destructive'] {
+  --affected-glow: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 40%, transparent);
+  border-color: var(--vscode-charts-red, #f14c4c);
+}
+
+/* The head takes a tint too, so the card reads at a zoom where a 2px border
+   is a single pixel of nothing. */
+.table.affected[data-severity='destructive'] .table-head {
+  background: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 22%, transparent);
+}
+.table.affected[data-severity='blocking'] .table-head {
+  background: color-mix(in srgb, var(--vscode-charts-orange, #d18616) 20%, transparent);
+}
+.table.affected[data-severity='caution'] .table-head {
+  background: color-mix(in srgb, var(--vscode-charts-yellow, #cca700) 18%, transparent);
+}
+.table.affected[data-severity='safe'] .table-head {
+  background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 16%, transparent);
+}

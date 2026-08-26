@@ -39,6 +39,8 @@
   let findings = [];
   let previewSummary = '';
   let canApply = false;
+  /** How many tables the last preview marked, for the "show me where" button. */
+  let affectedCount = 0;
   let previewDestructive = false;
   let showingAfter = false;
   /** True when the pending list came from a file rather than from clicking. */
@@ -55,6 +57,7 @@
     discard: /** @type {HTMLButtonElement} */ (document.getElementById('discard')),
     exportSql: /** @type {HTMLButtonElement} */ (document.getElementById('export')),
     exportDown: /** @type {HTMLButtonElement} */ (document.getElementById('export-down')),
+    showAffected: /** @type {HTMLButtonElement} */ (document.getElementById('show-affected')),
     toggle: /** @type {HTMLElement} */ (document.getElementById('view-toggle')),
     before: /** @type {HTMLButtonElement} */ (document.getElementById('view-before')),
     after: /** @type {HTMLButtonElement} */ (document.getElementById('view-after')),
@@ -110,24 +113,42 @@
         renderJoinPath(message);
         break;
 
-      case 'changeset':
+      case 'changeset': {
         readOnly = Boolean(message.readOnly);
         source = message.source || '';
+        const hadStructure = changesStructure(changes);
         changes = message.changes;
         diff = message.diff;
         projected = message.projected;
+
+        // The first structural change flips the picture to what it would
+        // become. "I added a column and pressed preview and nothing happened"
+        // — the column was in the After view all along, behind a toggle in the
+        // corner nobody had reason to press. The change is the thing you asked
+        // to see, so it is shown.
+        if (!showingAfter && !hadStructure && changesStructure(changes)) {
+          setViewMode(true);
+        } else if (showingAfter) {
+          // Already there: redraw, since the projection has moved.
+          setViewMode(true);
+        }
         // Any edit invalidates the last preview: what was measured is no longer
         // what would run.
         findings = [];
         previewSummary = '';
         canApply = false;
+        affectedCount = 0;
+        host.markAffected({});
         renderChanges();
         markPending();
         break;
+      }
 
       case 'previewStarted':
         previewSummary = 'Measuring against your data…';
         findings = [];
+        affectedCount = 0;
+        host.markAffected({});
         renderChanges();
         break;
 
@@ -136,6 +157,21 @@
         previewSummary = message.summary;
         previewDestructive = message.destructive;
         canApply = message.canApply;
+        // Where, not just what. A sentence at the bottom of the screen cannot
+        // point at one card among twenty-one.
+        affectedCount = Object.keys(message.affected || {}).length;
+        host.markAffected(message.affected || {});
+        renderChanges();
+        break;
+
+      case 'previewStale':
+        // A preview that finished after the changeset moved on. Its numbers
+        // describe something that is no longer there, so they are not shown.
+        findings = [];
+        canApply = false;
+        previewSummary = message.message;
+        affectedCount = 0;
+        host.markAffected({});
         renderChanges();
         break;
 
@@ -864,6 +900,10 @@
     // A file's changes belong to whatever migration tool owns it, so the
     // buttons that would act on them are not offered.
     ui.apply.hidden = readOnly || !canApply;
+    // Keyed on what is actually marked. A preview can land on a table without
+    // producing a row for it, and a button that flies to nothing is worse than
+    // no button.
+    ui.showAffected.hidden = affectedCount === 0;
     ui.preview.hidden = readOnly;
     ui.discard.hidden = readOnly;
     ui.exportSql.hidden = readOnly;
@@ -928,6 +968,14 @@
   ui.exportSql.addEventListener('click', () => vscode.postMessage({ type: 'exportSql' }));
   ui.exportDown.addEventListener('click', () => vscode.postMessage({ type: 'exportDown' }));
 
+  ui.showAffected.addEventListener('click', () => {
+    // Frames all of them at once. Centring on one is the wrong answer when a
+    // changeset touches four cards in different corners.
+    if (!host.frameAffected()) {
+      window.alert('Those tables are not currently drawn — the schema filter or focus mode is hiding them.');
+    }
+  });
+
   ui.apply.addEventListener('click', () => {
     // Asked here, and asked again by the editor itself for anything
     // destructive — the second one is a modal dialog that cannot be dismissed
@@ -942,6 +990,16 @@
     }
     vscode.postMessage({ type: 'applyChanges', confirmed: true });
   });
+
+  /**
+   * Whether a changeset contains anything the diagram can draw.
+   *
+   * A row edit changes data and leaves the picture alone, so flipping to the
+   * "after" view for one would be a redraw of the identical thing.
+   */
+  function changesStructure(list) {
+    return (list || []).some((change) => !/^(Update|Delete|Insert) /.test(change.label || ''));
+  }
 
   // ---- before / after ----------------------------------------------------
 

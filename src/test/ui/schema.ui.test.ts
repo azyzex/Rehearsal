@@ -94,6 +94,9 @@ const SNAPSHOT = {
   ],
 };
 
+/** The shape schemaPanel really posts, which the webview iterates over. */
+const EMPTY_DIFF = { tables: [], columns: [], relationships: [], dataEdits: 0 };
+
 describe('the schema explorer, rendered', () => {
   let panel: Panel;
 
@@ -451,6 +454,193 @@ describe('the schema explorer, rendered', () => {
       `)) as boolean;
 
       assert.equal(clipped, false, 'the opened table is fully on screen');
+    });
+  });
+
+  describe('where a preview lands', () => {
+    before(async () => {
+      await panel.send({
+        type: 'changeset',
+        changes: [
+          { index: 0, label: 'Add column poopy to orders', sql: 'ALTER TABLE orders ADD COLUMN poopy text' },
+          { index: 1, label: 'Drop column status from orders', sql: 'ALTER TABLE orders DROP COLUMN status' },
+        ],
+        diff: EMPTY_DIFF,
+        projected: SNAPSHOT,
+        sql: '',
+      });
+
+      await panel.send({
+        type: 'preview',
+        summary: '1 would destroy data. Out of 2 changes.',
+        destructive: true,
+        blocking: false,
+        canApply: true,
+        findings: [],
+        affected: { orders: 'destructive', users: 'safe' },
+      });
+    });
+
+    it('outlines the tables it touches', async () => {
+      // "When I'm zoomed out and click preview I don't know WHERE on the
+      // schema things are going to happen."
+      assert.equal(await count(panel.page, '.table.affected'), 2);
+      assert.equal(
+        await panel.page.getAttribute('.table[data-table="orders"]', 'data-severity'),
+        'destructive',
+      );
+      assert.equal(
+        await panel.page.getAttribute('.table[data-table="users"]', 'data-severity'),
+        'safe',
+      );
+    });
+
+    it('leaves the untouched tables alone', async () => {
+      assert.equal(
+        await panel.page.getAttribute('.table[data-table="order_items"]', 'data-severity'),
+        null,
+      );
+    });
+
+    it('colours the worst one differently from the safe one', async () => {
+      // A colour scale that paints every affected card the same has drawn
+      // nothing.
+      const colours = (await panel.page.evaluate(`
+        Array.prototype.map.call(document.querySelectorAll('.table.affected'), function (card) {
+          return getComputedStyle(card).borderTopColor;
+        })
+      `)) as string[];
+      assert.equal(new Set(colours).size, 2, `both are ${colours.join(', ')}`);
+    });
+
+    it('keeps the marks through a re-layout', async () => {
+      // Cards are rebuilt from scratch, and the marks used to vanish with them.
+      await panel.click('#relayout');
+      await panel.page.waitForTimeout(80);
+      assert.equal(await count(panel.page, '.table.affected'), 2);
+    });
+
+    it('offers to frame them, and does', async () => {
+      assert.equal(await visible(panel.page, '#show-affected'), true);
+      await panel.click('#show-affected');
+      await panel.page.waitForTimeout(80);
+
+      const onScreen = (await panel.page.evaluate(`
+        (function () {
+          var stage = document.getElementById('stage').getBoundingClientRect();
+          return Array.prototype.every.call(
+            document.querySelectorAll('.table.affected'),
+            function (card) {
+              var box = card.getBoundingClientRect();
+              return box.right > stage.left && box.left < stage.right &&
+                     box.bottom > stage.top && box.top < stage.bottom;
+            }
+          );
+        })()
+      `)) as boolean;
+
+      assert.equal(onScreen, true, 'framing left one of them off screen');
+    });
+
+    it('clears the marks when the changeset moves', async () => {
+      await panel.send({
+        type: 'changeset',
+        changes: [],
+        diff: EMPTY_DIFF,
+        projected: SNAPSHOT,
+        sql: '',
+      });
+      assert.equal(await count(panel.page, '.table.affected'), 0);
+      assert.equal(await visible(panel.page, '#show-affected'), false);
+    });
+
+    it('refuses to show a preview that finished after the changeset moved on', async () => {
+      // The race behind "these changes have not been previewed": the result
+      // arrives describing a changeset that no longer exists, and it used to
+      // arrive carrying a token and turning Apply back on.
+      await panel.send({
+        type: 'changeset',
+        changes: [{ index: 0, label: 'Add column poopy', sql: 'ALTER TABLE orders ADD COLUMN poopy text' }],
+        diff: EMPTY_DIFF,
+        projected: SNAPSHOT,
+        sql: '',
+      });
+      await panel.send({
+        type: 'preview',
+        summary: 'ok',
+        destructive: false,
+        blocking: false,
+        canApply: true,
+        findings: [],
+        affected: { orders: 'safe' },
+      });
+      assert.equal(await visible(panel.page, '#apply'), true, 'Apply is live after a preview');
+
+      await panel.send({
+        type: 'previewStale',
+        message: 'The changes moved while that was measuring. Preview them again.',
+      });
+
+      assert.equal(await count(panel.page, '.table.affected'), 0);
+      assert.equal(await visible(panel.page, '#apply'), false, 'and goes away again');
+      assert.match(
+        (await panel.page.textContent('#changes-body')) ?? '',
+        /moved while that was measuring/,
+      );
+    });
+  });
+
+  describe('seeing a structural change', () => {
+    it('flips to the after picture the moment a column is added', async () => {
+      // "I added a column and pressed preview and nothing happened. I saw it
+      // in the table only after applying." The column was in the After view
+      // all along, behind a toggle in the corner nobody had reason to press.
+      await panel.send({ type: 'changeset', changes: [], diff: EMPTY_DIFF, projected: SNAPSHOT, sql: '' });
+      await panel.click('#view-before');
+
+      const withColumn = {
+        ...SNAPSHOT,
+        tables: SNAPSHOT.tables.map((table) =>
+          table.name === 'users'
+            ? { ...table, columns: [...table.columns, column('poopy')] }
+            : table,
+        ),
+      };
+
+      await panel.send({
+        type: 'changeset',
+        changes: [{ index: 0, label: 'Add column poopy to users', sql: 'ALTER TABLE users ADD COLUMN poopy text' }],
+        diff: EMPTY_DIFF,
+        projected: withColumn,
+        sql: '',
+      });
+
+      const columns = await texts(panel.page, '.table[data-table="users"] .col-name');
+      assert.ok(columns.includes('poopy'), `columns are ${columns.join(', ')}`);
+      assert.equal(
+        await panel.page.getAttribute('#view-after', 'class'),
+        'seg active',
+        'and the toggle says which picture you are looking at',
+      );
+    });
+
+    it('does not flip for a row edit, which changes no structure', async () => {
+      await panel.send({ type: 'changeset', changes: [], diff: EMPTY_DIFF, projected: SNAPSHOT, sql: '' });
+      await panel.click('#view-before');
+
+      await panel.send({
+        type: 'changeset',
+        changes: [{ index: 0, label: 'Update one row in users (id = 1)', sql: 'UPDATE users SET tier = $1 WHERE id = $2' }],
+        diff: { ...EMPTY_DIFF, dataEdits: 1 },
+        projected: SNAPSHOT,
+        sql: '',
+      });
+
+      assert.match(
+        (await panel.page.getAttribute('#view-before', 'class')) ?? '',
+        /active/,
+        'a row edit leaves the picture alone, so flipping would redraw the same thing',
+      );
     });
   });
 
