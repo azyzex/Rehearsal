@@ -148,3 +148,134 @@ describe('the offending rows, per engine', () => {
     });
   });
 });
+
+/**
+ * The three adapter methods no test had ever called away from Postgres.
+ *
+ * Found by asking which methods of the interface each engine's tests reach:
+ * `countCastFailures`, `sampleRows` and `lockHolders` were called on Postgres
+ * and on neither of the others.
+ *
+ * The first of those was broken, in the way that matters: it reported that a
+ * type change would fail on none of a hundred rows when it fails on every one
+ * of them. That is the same wrong answer, in the same direction, as the NOT
+ * NULL probe that once called a failing MySQL migration safe — a green row for
+ * a statement that errors.
+ */
+describe('the probes nothing had run off Postgres', () => {
+  describe('against a real MySQL', () => {
+    let fixture: MysqlFixture;
+    let adapter: MysqlAdapter;
+
+    before(async () => {
+      fixture = await startMysql();
+      const connection = await fixture.connect();
+      try {
+        await seedMysql(connection);
+      } finally {
+        await connection.end();
+      }
+
+      adapter = new MysqlAdapter();
+      await adapter.connect({
+        connectionString: fixture.connectionString,
+        statementTimeoutMs: 20_000,
+        lockTimeoutMs: 5000,
+        applicationName: 'vscode-dryrun',
+      });
+    });
+
+    after(async () => {
+      await adapter.dispose().catch(() => undefined);
+      await fixture.stop();
+    });
+
+    it('counts every row a type change cannot convert', async () => {
+      // 88 of the 100 hold an email address, and not one of them is an integer.
+      // This answered 0: MySQL's CAST returns 0 rather than raising, and
+      // comparing that against the original made MySQL coerce the original to a
+      // number too, so 0 matched 0 and every row looked convertible.
+      assert.equal(await adapter.countCastFailures('users', 'email', 'int'), 88);
+    });
+
+    it('counts a column of words as entirely unconvertible', async () => {
+      assert.equal(await adapter.countCastFailures('users', 'tier', 'int'), 100);
+    });
+
+    it('counts none on a column that really is integers', async () => {
+      // The half that has to stay true for the answer to be worth anything: a
+      // probe that says "everything fails" is as useless as one that says
+      // nothing does.
+      assert.equal(await adapter.countCastFailures('users', 'id', 'int'), 0);
+    });
+
+    it('says it does not know, rather than zero, for a type it cannot test', async () => {
+      assert.equal(await adapter.countCastFailures('users', 'email', 'jsonb'), null);
+    });
+
+    it('reads back the rows a preview changed, by their keys', async () => {
+      const rows = await adapter.sampleRows('users', [{ id: 1 }, { id: 2 }, { id: 3 }], 3);
+
+      assert.equal(rows.length, 3);
+      assert.deepEqual(
+        rows.map((row) => Number(row['id'])),
+        [1, 2, 3],
+      );
+      assert.ok('tier' in rows[0]!, 'the row came back without its columns');
+    });
+
+    it('answers the lock question without falling over', async () => {
+      // Nothing is holding a lock in an idle fixture, and an empty list is the
+      // right answer — but the query behind it is engine-specific and had
+      // never run in a test.
+      assert.deepEqual(await adapter.lockHolders('users'), []);
+    });
+  });
+
+  describe('against a real MongoDB', () => {
+    let fixture: MongoFixture;
+    let adapter: MongoAdapter;
+
+    before(async () => {
+      fixture = await startMongo();
+      await seedMongo(fixture.db());
+
+      adapter = new MongoAdapter();
+      await adapter.connect({
+        connectionString: fixture.uri,
+        statementTimeoutMs: 20_000,
+        lockTimeoutMs: 5000,
+        applicationName: 'vscode-dryrun',
+      });
+    });
+
+    after(async () => {
+      await adapter.dispose().catch(() => undefined);
+      await fixture.stop();
+    });
+
+    it('counts the documents a type change cannot convert', async () => {
+      // `tier` holds 'free' and 'pro' on all hundred.
+      assert.equal(await adapter.countCastFailures('users', 'tier', 'int'), 100);
+    });
+
+    it('counts none where the field already holds that type', async () => {
+      assert.equal(await adapter.countCastFailures('users', 'org_id', 'int'), 0);
+      assert.equal(await adapter.countCastFailures('users', 'org_id', 'string'), 0);
+    });
+
+    it('reads back documents by their _id', async () => {
+      const rows = await adapter.sampleRows('users', [{ _id: 1 }, { _id: 2 }], 2);
+
+      assert.equal(rows.length, 2);
+      assert.deepEqual(
+        rows.map((row) => Number(row['_id'])),
+        [1, 2],
+      );
+    });
+
+    it('answers the lock question without falling over', async () => {
+      assert.deepEqual(await adapter.lockHolders('users'), []);
+    });
+  });
+});

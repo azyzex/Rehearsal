@@ -289,11 +289,31 @@ export class MysqlAdapter implements DatabaseAdapter {
     }
 
     try {
+      // Compared as *text*, both sides, which is the whole trick.
+      //
+      // MySQL's CAST does not raise on a value it cannot read: it returns 0 and
+      // a warning. So the obvious round-trip — cast it and compare against the
+      // original — was comparing a number with a string, which makes MySQL
+      // coerce the string to a number too. `CAST('user@example.com' AS SIGNED)`
+      // is 0, the original coerces to 0 as well, the two matched, and every row
+      // looked convertible — including a column of nothing but email addresses.
+      // A type change that fails on all hundred rows was reported as changing
+      // none of them.
+      //
+      // Casting both sides back to CHAR stops the coercion and compares what
+      // the values really are. A column of integers still answers zero, which
+      // is the half that has to stay true for the answer to be worth anything.
+      //
+      // It counts a value the cast would *change* as well as one it cannot
+      // read — '1.50' to an integer is 2 — which is a conservative answer
+      // rather than a wrong one, and rounding part of a value away is worth
+      // saying out loud anyway.
       const rows = await this.probe(
         `SELECT COUNT(*) AS n
            FROM ${quote(table)}
           WHERE ${quote(column)} IS NOT NULL
-            AND CAST(${quote(column)} AS ${target}) <=> ${quote(column)} = 0`,
+            AND (CAST(CAST(${quote(column)} AS ${target}) AS CHAR)
+                 <=> CAST(${quote(column)} AS CHAR)) = 0`,
       );
       return toNumber(rows[0]?.['n']);
     } catch {
