@@ -21,6 +21,20 @@ export interface Thresholds {
    * statement a second time, so it roughly doubles the cost of a preview.
    */
   readonly explainAnalyze?: boolean;
+
+  /**
+   * On MySQL, measure a schema change by running it against a copy of the
+   * table rather than only by counting.
+   *
+   * Off by default, and the only setting in here that causes a write: copying
+   * a table costs the disk it takes and the time to fill it. What it buys is
+   * the server's own words — "Incorrect integer value: 'a@b.com' for column
+   * 'email' at row 13" instead of "88 rows cannot convert".
+   */
+  readonly cloneTables?: boolean;
+
+  /** Above this many rows, the copy costs more than the better answer is worth. */
+  readonly cloneRowLimit?: number;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {

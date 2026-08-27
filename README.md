@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 1,141 tests: against a real Postgres, a
+> **Status: working, not yet published.** 1,161 tests: against a real Postgres, a
 > real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
 > click them. The demo recording and the marketplace listing are the remaining
 > work.
@@ -308,6 +308,38 @@ run it through a migration tool that can record how far it got. Half a migration
 is the exact failure this extension exists to prevent, and delivering one
 quietly would be worse than not offering Apply at all.
 
+### Measuring it against a copy instead
+
+Counting is a good answer and it is still an inference. There is one way to get
+a real one on MySQL: copy the table, run the statement against the copy, drop
+the copy. Off by default, `dryrun.mysql.measureOnCopy` turns it on.
+
+What it buys is the difference between a count and the server's own words:
+
+```
+counted   Locks the table briefly — users has about 100 rows.
+copied    Will fail — Duplicate entry 'dupe@example.com' for key 'one_email'.
+```
+
+That second line is a failure the counting path missed entirely. A unique index
+on a column with duplicates reads, to a probe that measures locks and row
+counts, like an ordinary index build.
+
+The rules it works under are strict, because it is the only part of Dry Run that
+writes:
+
+- The original is never touched. Every statement is rewritten to name the copy,
+  and one whose target cannot be identified beyond doubt is not run at all.
+- The copy is dropped in a `finally`, and a sweep on the next connect drops
+  anything a crash left behind. An orphaned copy of a customer table is that
+  customer's data sitting under a name nobody recognises.
+- It stops at a row ceiling — 500,000 by default — above which the copy costs
+  more than the better answer is worth.
+- It only ever makes a finding worse, never better. `CREATE TABLE … LIKE` does
+  not copy foreign keys, which is what makes the copy safe to run against and
+  also means a foreign key violation cannot fail there. Letting a green copy
+  downgrade a blocking count would turn exactly that case green.
+
 ## MongoDB, and the schema that is not written down
 
 MongoDB gets the rule right by itself: try to create an index inside a
@@ -524,6 +556,8 @@ a preview takes.
 | `dryrun.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
 | `dryrun.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
 | `dryrun.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
+| `dryrun.mysql.measureOnCopy` | `false` | MySQL only. Measure a schema change by copying the table, running the statement against the copy and dropping it, instead of counting. Gives you the server's real error message. Off by default because it writes, and because copying a table costs the disk and the time. |
+| `dryrun.mysql.measureOnCopyRowLimit` | `500000` | Tables larger than this are counted rather than copied. |
 
 ## Development
 

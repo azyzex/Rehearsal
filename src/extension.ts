@@ -860,6 +860,8 @@ function readThresholds(): Thresholds {
     largeTable: config.get<number>('largeTableThreshold', 100_000),
     sampleSize: config.get<number>('sampleSize', 20),
     explainAnalyze: config.get<boolean>('explainAnalyze', false),
+    cloneTables: config.get<boolean>('mysql.measureOnCopy', false),
+    cloneRowLimit: config.get<number>('mysql.measureOnCopyRowLimit', 500_000),
   };
 }
 

@@ -30,6 +30,13 @@ MySQL commits it the moment it runs, so schema changes there are measured by
 counting and never executed; MongoDB needs a replica set for transactions at
 all and refuses to preview without one.
 
+On MySQL, a schema change can optionally be measured by running it against a
+copy of the table rather than by counting — off by default, because it is the
+only thing here that writes. What it buys is the server's own sentence
+("Duplicate entry 'dupe@example.com' for key 'one_email'") in place of a total,
+and it catches failures counting misses. The copy is dropped in a `finally`, and
+swept on the next connect if a crash left one behind.
+
 Each is written in its own language throughout — dropping a field is `$unset`
 rather than `DROP COLUMN`, MySQL is quoted with backticks, and the route
 between two collections is a `$lookup` pipeline rather than a JOIN.

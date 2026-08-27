@@ -1,4 +1,5 @@
 import type { Connection } from 'mysql2/promise';
+import { sweepStaleClones } from './mysqlClone';
 import {
   CascadeNode,
   ColumnInfo,
@@ -133,6 +134,23 @@ export class MysqlAdapter implements DatabaseAdapter {
     await this.connection.query(
       `SET SESSION max_execution_time = ${Math.floor(config.statementTimeoutMs)}`,
     );
+
+    // Anything an earlier run left behind. A copy of a customer table sitting
+    // under a name nobody recognises is the real hazard of that technique, and
+    // a crash is the one path that can leave one. Only names under the reserved
+    // prefix, and only ones old enough that no run in progress owns them.
+    void sweepStaleClones(this).catch(() => undefined);
+  }
+
+  /**
+   * Runs one statement for the cloning machinery, DDL included.
+   *
+   * Deliberately not `probe`: this is the one path in the adapter allowed to
+   * create and drop, and it is reachable only from `mysqlClone.ts`, which never
+   * names a table that is not a copy.
+   */
+  async cloneExec(sql: string): Promise<Row[]> {
+    return this.probe(sql);
   }
 
   async dispose(): Promise<void> {

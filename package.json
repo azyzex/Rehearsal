@@ -158,6 +158,16 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason."
+        },
+        "dryrun.mysql.measureOnCopy": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "On MySQL, measure a schema change by **running it against a copy of the table** rather than only by counting. MySQL commits DDL the moment it runs, so there is no transaction to roll one back \u2014 a copy is the only way to see what the server really does.\n\nThis is the one setting that causes a write. The copy carries a reserved `_dryrun_clone_` prefix, is never the table you named, is dropped when the measurement finishes, and is swept up on the next connection if a crash left it behind. Your table is never touched.\n\nWhat it buys: the server's own error \u2014 *Incorrect integer value: 'a@b.com' for column 'email' at row 13* \u2014 instead of *88 rows cannot convert*. It cannot tell you about foreign key violations, because `CREATE TABLE \u2026 LIKE` does not copy foreign keys; the counts remain the authority for those."
+        },
+        "dryrun.mysql.measureOnCopyRowLimit": {
+          "type": "number",
+          "default": 500000,
+          "description": "Above this many rows, Dry Run will not copy a table to measure against \u2014 the copy costs more than the better answer is worth, and the counted result is used instead."
         }
       }
     },

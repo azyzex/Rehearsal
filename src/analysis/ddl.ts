@@ -1,4 +1,5 @@
 import { DatabaseAdapter } from '../adapters/types';
+import { CloneRunner, measureOnClone } from '../adapters/mysqlClone';
 import { Classification } from '../parser/classifier';
 import {
   blastRadiusSeverity,
@@ -9,6 +10,7 @@ import {
   formatDuration,
   indexBuildSeverity,
   plural,
+  worst,
   violationSeverity,
 } from './severity';
 import { Finding, Severity, Thresholds } from './types';
@@ -34,6 +36,23 @@ export interface DdlOutcome {
 }
 
 export async function analyzeDdl(
+  adapter: DatabaseAdapter,
+  classification: Classification,
+  thresholds: Thresholds,
+  sql?: string,
+): Promise<DdlOutcome> {
+  const counted = await countDdl(adapter, classification, thresholds);
+  return confirmOnCopy(adapter, classification, thresholds, sql, counted);
+}
+
+/**
+ * The counted answer: what the probes say without running anything.
+ *
+ * This is the answer on every engine, and the only one on two of them. On
+ * MySQL it can be confirmed by actually running the statement against a copy —
+ * see `confirmOnCopy` below — but it is never replaced by something weaker.
+ */
+async function countDdl(
   adapter: DatabaseAdapter,
   classification: Classification,
   thresholds: Thresholds,
@@ -321,4 +340,80 @@ function onlineIndexAdvice(engine: string): string {
     default:
       return '';
   }
+}
+
+/**
+ * Runs the statement against a copy of the table, and folds in what happened.
+ *
+ * Only on MySQL, only when asked for, and only ever in one direction: a copy
+ * that *fails* is definitive and takes over, and a copy that *succeeds* adds a
+ * sentence without softening anything.
+ *
+ * That asymmetry is not caution for its own sake. `CREATE TABLE … LIKE` does
+ * not copy foreign keys, so the copy has none to violate — a statement whose
+ * real failure would be a foreign key failure succeeds against it. Letting a
+ * success downgrade a blocking finding would turn exactly that case green.
+ */
+async function confirmOnCopy(
+  adapter: DatabaseAdapter,
+  classification: Classification,
+  thresholds: Thresholds,
+  sql: string | undefined,
+  counted: DdlOutcome,
+): Promise<DdlOutcome> {
+  if (!thresholds.cloneTables || adapter.engine !== 'mysql' || !sql || !classification.table) {
+    return counted;
+  }
+
+  const runner = adapter as unknown as CloneRunner;
+  if (typeof runner.cloneExec !== 'function') {
+    return counted;
+  }
+
+  const measured = await measureOnClone(runner, classification.table, sql, {
+    rowCeiling: thresholds.cloneRowLimit,
+  }).catch(() => undefined);
+
+  if (!measured?.ran) {
+    return counted;
+  }
+
+  if (measured.succeeded === false) {
+    // The server's own words, which name the value the count could only total.
+    return {
+      ...counted,
+      severity: worst([counted.severity, 'blocking']),
+      headline: 'Will fail',
+      detail:
+        `${counted.detail} Run against a copy of the table, MySQL refused it: ` +
+        `${measured.error}`,
+      estimated: false,
+    };
+  }
+
+  const warned = (measured.warnings ?? []).filter(
+    (warning) => !/^Note/i.test(warning) && warning.trim().length > 0,
+  );
+
+  if (warned.length > 0) {
+    // Succeeding with warnings is the quiet case: MySQL applied the change and
+    // changed the data to make it fit. Worth more than a green row.
+    return {
+      ...counted,
+      severity: worst([counted.severity, 'caution']),
+      detail:
+        `${counted.detail} Run against a copy it succeeded, with warnings: ` +
+        `${warned.slice(0, 3).join(' ')}`,
+      estimated: false,
+    };
+  }
+
+  return {
+    ...counted,
+    detail:
+      `${counted.detail} Run against a copy of all ` +
+      `${formatCount(measured.rows ?? 0)} ${plural(measured.rows ?? 0, 'row')}, it succeeded` +
+      `${typeof measured.milliseconds === 'number' ? ` in ${measured.milliseconds}ms` : ''}.`,
+    estimated: false,
+  };
 }

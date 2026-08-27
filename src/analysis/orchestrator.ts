@@ -214,7 +214,10 @@ async function analyzeOne(
     };
   }
 
-  const outcome = await analyzeDdl(adapter, classification, thresholds);
+  // The statement text as well as its classification: on MySQL, with copying
+  // turned on, the way to find out what a schema change does is to run it
+  // against a copy, and that needs the statement itself.
+  const outcome = await analyzeDdl(adapter, classification, thresholds, statement.sql);
   return {
     ...base,
     severity: outcome.severity,
