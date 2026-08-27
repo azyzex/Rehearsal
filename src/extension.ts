@@ -157,11 +157,17 @@ async function preview(
     });
 
     if (statements.length === 0) {
-      panel.begin(editor.document, [], connection.identity.display, {
-        onCancel: () => undefined,
-        onShowOffenders: () => undefined,
-        onShowReferences: () => undefined,
-      });
+      panel.begin(
+        editor.document,
+        [],
+        connection.identity.display,
+        {
+          onCancel: () => undefined,
+          onShowOffenders: () => undefined,
+          onShowReferences: () => undefined,
+        },
+        connection.adapter.engine,
+      );
       panel.finish(`No ${language.noun}s found.`);
       return;
     }
@@ -216,7 +222,7 @@ async function preview(
           panel.showReferences(index, null);
         }
       },
-    });
+    }, connection.adapter.engine);
 
     diagnostics.begin(editor.document, statements);
 

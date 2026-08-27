@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Engine } from '../adapters/types';
 import { Diagram } from '../analysis/impact';
 import { Finding, Severity } from '../analysis/types';
 import { Offenders } from '../analysis/offenders';
@@ -99,6 +100,7 @@ export class PreviewPanel {
     statements: readonly SplitStatement[],
     connection: string,
     host: PanelHost,
+    engine: Engine = 'postgres',
   ): void {
     this.documentUri = document.uri;
     this.statements = statements;
@@ -109,6 +111,10 @@ export class PreviewPanel {
       type: 'begin',
       file: vscode.workspace.asRelativePath(document.uri),
       connection,
+      // The panel offers a way to end a session that is blocking you, and every
+      // engine spells that differently. Sent here rather than guessed there,
+      // because the guess was `pg_terminate_backend` for all three.
+      engine,
       statements: statements.map((statement) => ({
         index: statement.index,
         sql: statement.sql,

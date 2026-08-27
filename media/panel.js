@@ -27,6 +27,14 @@
    * @type {Map<number, any>}
    */
   const offenders = new Map();
+
+  /**
+   * Which database this file is being measured against.
+   *
+   * Only used for the one sentence that has to differ: how to end a session
+   * that is holding a lock in front of you.
+   */
+  let engine = 'postgres';
   /**
    * Per-statement state for the workspace search, on the same three-state plan
    * as the offending rows: absent, 'loading', null, or the scan.
@@ -97,6 +105,9 @@
   function handle(message) {
     switch (message.type) {
       case 'begin':
+        // Postgres unless told otherwise, which is what it silently assumed
+        // before this was sent at all.
+        engine = message.engine || 'postgres';
         statements = message.statements;
         findings = new Map();
         expanded.clear();
@@ -805,11 +816,16 @@
     }
 
     // The longest-held lock is the one that decides how long the outage is.
+    //
+    // The way to end a session is not the same in any two of these, and this is
+    // advice someone may well paste into a production console — so it is chosen
+    // from the engine the extension told us about rather than assumed to be
+    // Postgres, which is what it was for all three.
     const advice = document.createElement('div');
     advice.className = 'queue-blocker';
     advice.textContent =
       `The oldest has been there ${formatSeconds(worst.seconds)}. Wait for it, or ` +
-      `end it with: SELECT pg_terminate_backend(${worst.pid});`;
+      `end it with: ${endSession(worst.pid)}`;
     box.appendChild(advice);
 
     return box;
@@ -1343,6 +1359,24 @@
     }
 
     return box;
+  }
+
+  /**
+   * How this engine ends the session holding the lock.
+   *
+   * Three different spellings, and the wrong one is not a no-op: it is a
+   * statement that errors in a console someone opened because their migration
+   * was stuck.
+   */
+  function endSession(pid) {
+    switch (engine) {
+      case 'mysql':
+        return `KILL ${pid};`;
+      case 'mongo':
+        return `db.killOp(${pid})`;
+      default:
+        return `SELECT pg_terminate_backend(${pid});`;
+    }
   }
 
   function formatSeconds(seconds) {
