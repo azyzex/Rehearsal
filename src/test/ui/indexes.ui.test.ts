@@ -223,3 +223,122 @@ describe('the index panel, rendered', () => {
     await panel.shot('index-panel');
   });
 });
+
+/**
+ * The measured comparison, which nothing had drawn.
+ *
+ * Planner cost is an arbitrary unit — "5886 down to 19" persuades nobody who
+ * knows what a cost is. Milliseconds are the number that settles it, and the
+ * panel draws them whenever the experiment really built the index and timed it.
+ * That branch had never been rendered.
+ */
+describe('the measured comparison', () => {
+  let panel: Panel;
+
+  const candidate = {
+    sql: 'CREATE INDEX ON events (tenant_id, kind)',
+    reason: 'A sequential scan over 300,000 rows filters on these two columns.',
+    table: 'events',
+    columns: ['tenant_id', 'kind'],
+  };
+
+  const begin = {
+    type: 'begin',
+    query: 'SELECT id FROM events WHERE tenant_id = 42',
+    connection: 'shop@neon',
+  };
+
+  before(async () => {
+    panel = await openPanel(indexPanelHtml, { width: 900, height: 800 });
+  });
+
+  after(async () => {
+    await panel.close();
+    await closeBrowser();
+  });
+
+  it('draws the timing as well as the cost, when it was really timed', async () => {
+    await panel.send(begin);
+    await panel.send({ type: 'candidates', results: [{ candidate }] });
+    await panel.send({
+      type: 'result',
+      index: 0,
+      result: {
+        candidate,
+        experiment: {
+          method: 'built',
+          used: true,
+          beforeCost: 5886.46,
+          afterCost: 19.64,
+          beforeMs: 812.4,
+          afterMs: 1.9,
+          note: 'Built for real inside a transaction that was rolled back.',
+        },
+      },
+    });
+
+    const text = (await panel.page.textContent('body')) ?? '';
+    assert.match(text, /Planner cost/);
+    assert.match(text, /Measured/, 'the timing comparison was not drawn at all');
+    assert.match(text, /812/);
+    assert.match(text, /1\.9|2/);
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('draws only the cost when nothing was timed', async () => {
+    // A hypothetical index is never built, so there is nothing to time and a
+    // "Measured" row of estimates would be a lie about where the number came
+    // from.
+    await panel.send(begin);
+    await panel.send({ type: 'candidates', results: [{ candidate }] });
+    await panel.send({
+      type: 'result',
+      index: 0,
+      result: {
+        candidate,
+        experiment: {
+          method: 'hypothetical',
+          used: true,
+          beforeCost: 5886.46,
+          afterCost: 19.64,
+          note: 'Estimated, not timed: the index was never built.',
+        },
+      },
+    });
+
+    const text = (await panel.page.textContent('body')) ?? '';
+    assert.match(text, /Planner cost/);
+    assert.doesNotMatch(text, /Measured/);
+    assert.match(text, /never built/, 'and says why there is no timing');
+  });
+
+  it('says it is still working before the answer arrives', async () => {
+    // The gap between asking and answering is a round trip to the database,
+    // and a card with nothing in it reads as a card that failed.
+    await panel.send(begin);
+    await panel.send({ type: 'candidates', results: [{ candidate }] });
+
+    assert.match((await panel.page.textContent('.pending-note')) ?? '', /Testing it against/);
+  });
+
+  it('says why, when the experiment could not run at all', async () => {
+    // MySQL and MongoDB both refuse this by name rather than guessing, and the
+    // reason is the useful part.
+    await panel.send(begin);
+    await panel.send({ type: 'candidates', results: [{ candidate }] });
+    await panel.send({
+      type: 'result',
+      index: 0,
+      result: {
+        candidate,
+        error:
+          'This database has no hypothetical indexes, and building one here would commit.',
+      },
+    });
+
+    const text = (await panel.page.textContent('body')) ?? '';
+    assert.match(text, /no hypothetical indexes/);
+    assert.doesNotMatch(text, /Planner cost/, 'no comparison is drawn from nothing');
+    assert.deepEqual(panel.problems, []);
+  });
+});
