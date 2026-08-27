@@ -483,3 +483,169 @@ describe('the editor, per engine', () => {
     assert.equal(await visible(panel.page, '#export'), true, 'the others stay');
   });
 });
+
+/**
+ * Finding one row among a quarter of a million.
+ *
+ * The drawer shows the first twenty-five rows, and a search box that asks the
+ * extension for the ones matching a value instead. `filter` and `matched` are
+ * what come back, and neither had ever been sent to the panel — so the filtered
+ * heading, the count beside it, and the answer when nothing matches had all
+ * only been read as source.
+ *
+ * Without it the drawer edits the first twenty-five rows of a table rather than
+ * the table, which is a different feature wearing the same buttons.
+ */
+describe('finding a row in the drawer', () => {
+  let panel: Panel;
+
+  const COLUMNS = [
+    { name: 'id', type: 'integer', nullable: false, isPrimaryKey: true },
+    { name: 'email', type: 'text', nullable: true, isPrimaryKey: false },
+  ];
+
+  const SNAPSHOT = {
+    schemas: ['public'],
+    tables: [
+      {
+        schema: 'public',
+        name: 'users',
+        qualified: 'users',
+        rows: 250_000,
+        bytes: 40_000_000,
+        partitioned: false,
+        columns: COLUMNS,
+      },
+    ],
+    foreignKeys: [],
+  };
+
+  const detail = (extra: Record<string, unknown>) => ({
+    type: 'tableDetail',
+    detail: {
+      table: 'users',
+      rows: 250_000,
+      rowsEstimated: false,
+      primaryKey: ['id'],
+      columns: COLUMNS,
+      indexes: [],
+      constraints: [],
+      sample: [],
+      sampleRaw: [],
+      ...extra,
+    },
+  });
+
+  before(async () => {
+    panel = await openPanel(schemaPanelHtml, { width: 1200, height: 820 });
+    await panel.send({ type: 'schema', snapshot: SNAPSHOT, connection: 'shop@neon' });
+  });
+
+  after(async () => {
+    await panel.close();
+    await closeBrowser();
+  });
+
+  it('says these are the first rows when nothing was asked for', async () => {
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(
+      detail({
+        sample: [{ id: '1', email: 'a@example.com' }],
+        sampleRaw: [{ id: 1, email: 'a@example.com' }],
+      }),
+    );
+
+    const text = (await panel.page.textContent('#drawer')) ?? '';
+    assert.match(text, /Rows \(first 1\)/);
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('says what it matched, and how many, once a filter is in play', async () => {
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(
+      detail({
+        filter: 'acme',
+        matched: 3,
+        sample: [
+          { id: '11', email: 'one@acme.test' },
+          { id: '12', email: 'two@acme.test' },
+        ],
+        sampleRaw: [
+          { id: 11, email: 'one@acme.test' },
+          { id: 12, email: 'two@acme.test' },
+        ],
+      }),
+    );
+
+    const text = (await panel.page.textContent('#drawer')) ?? '';
+    assert.match(text, /Rows matching "acme" \(2\)/);
+    assert.doesNotMatch(text, /Rows \(first/, 'it is still calling them the first rows');
+  });
+
+  it('keeps what was typed in the box, so the search can be refined', async () => {
+    // Clearing it would mean retyping the whole thing to change one character.
+    assert.equal(await panel.page.inputValue('#drawer input[type="search"]'), 'acme');
+  });
+
+  it('says nothing matched, rather than showing an empty table', async () => {
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(detail({ filter: 'nobody', matched: 0, sample: [], sampleRaw: [] }));
+
+    const text = (await panel.page.textContent('#drawer')) ?? '';
+    assert.match(text, /Nothing matched that/);
+    assert.doesNotMatch(text, /This table is empty/, 'the table is not empty, the filter missed');
+  });
+
+  it('says the table is empty when it really is', async () => {
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(detail({ sample: [], sampleRaw: [] }));
+
+    assert.match((await panel.page.textContent('#drawer')) ?? '', /This table is empty/);
+  });
+
+  it('asks the extension when Find is pressed', async () => {
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(detail({ sample: [], sampleRaw: [] }));
+
+    await panel.page.fill('#drawer input[type="search"]', 'acme');
+    await panel.page.click('#drawer button:text-is("Find")');
+
+    const asked = ((await panel.posted()) as { type?: string; table?: string; filter?: string }[])
+      .filter((message) => message.type === 'openTable')
+      .pop();
+
+    assert.ok(asked, 'Find posted nothing at all');
+    assert.equal(asked.table, 'users');
+    assert.equal(asked.filter, 'acme');
+  });
+
+  it('asks on enter too, because that is what a search box is for', async () => {
+    await panel.page.fill('#drawer input[type="search"]', 'globex');
+    await panel.page.press('#drawer input[type="search"]', 'Enter');
+
+    const asked = ((await panel.posted()) as { type?: string; filter?: string }[])
+      .filter((message) => message.type === 'openTable')
+      .pop();
+
+    assert.equal(asked?.filter, 'globex');
+    assert.deepEqual(panel.problems, []);
+  });
+
+  it('shows a field the inference missed, rather than hiding half the row', async () => {
+    // The column list for MongoDB is inferred from a sample and the rows shown
+    // are a different query, so a document can hold a field the inference never
+    // saw. Showing a row while quietly dropping part of it is the one thing a
+    // table of real data must not do.
+    await panel.send({ type: 'tableLoading', table: 'users' });
+    await panel.send(
+      detail({
+        sample: [{ id: '1', email: 'a@example.com', 'profile.locale': 'fr-FR' }],
+        sampleRaw: [{ id: 1, email: 'a@example.com', 'profile.locale': 'fr-FR' }],
+      }),
+    );
+
+    const text = (await panel.page.textContent('#drawer')) ?? '';
+    assert.match(text, /profile\.locale/, 'a field only the row carries was dropped');
+    assert.match(text, /fr-FR/);
+  });
+});
