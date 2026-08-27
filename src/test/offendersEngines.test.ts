@@ -279,3 +279,106 @@ describe('the probes nothing had run off Postgres', () => {
     });
   });
 });
+
+/**
+ * The last three MySQL probes nothing had called.
+ *
+ * Reading foreign keys, walking a cascade, and the schema health report — all
+ * three exercised on Postgres and on neither of the others. The fixture has no
+ * foreign key on purpose, because the orphan-row check is measured against
+ * that absence, so this one adds a table that does have one.
+ *
+ * All three turned out to be correct. That is worth having written down: the
+ * point of the sweep is to know which answer you have, and "never asked" is not
+ * the same as "fine".
+ */
+describe('the last MySQL probes nothing had called', () => {
+  let fixture: MysqlFixture;
+  let adapter: MysqlAdapter;
+
+  before(async () => {
+    fixture = await startMysql();
+    const connection = await fixture.connect();
+    try {
+      await seedMysql(connection);
+
+      // A real foreign key, cascading, which the seed deliberately lacks.
+      await connection.query('DROP TABLE IF EXISTS posts');
+      await connection.query(`
+        CREATE TABLE posts (
+          id        int AUTO_INCREMENT PRIMARY KEY,
+          author_id int NOT NULL,
+          title     varchar(80),
+          CONSTRAINT posts_author_fk FOREIGN KEY (author_id)
+            REFERENCES orgs (id) ON DELETE CASCADE
+        ) ENGINE=InnoDB
+      `);
+      await connection.query(
+        'INSERT INTO posts (author_id, title) VALUES (1, "a"), (1, "b"), (1, "c"), (2, "d")',
+      );
+      await connection.query('ANALYZE TABLE posts');
+    } finally {
+      await connection.end();
+    }
+
+    adapter = new MysqlAdapter();
+    await adapter.connect({
+      connectionString: fixture.connectionString,
+      statementTimeoutMs: 20_000,
+      lockTimeoutMs: 5000,
+      applicationName: 'vscode-dryrun',
+    });
+  });
+
+  after(async () => {
+    await adapter.dispose().catch(() => undefined);
+    await fixture.stop();
+  });
+
+  it('reads a foreign key, both ends of it', async () => {
+    const keys = await adapter.foreignKeys(['posts', 'orgs', 'users']);
+    const found = keys.find((key) => key.name === 'posts_author_fk');
+
+    assert.ok(found, `read ${keys.length} keys, none of them this one`);
+    assert.equal(found.fromTable, 'posts');
+    assert.deepEqual([...found.fromColumns], ['author_id']);
+    assert.equal(found.toTable, 'orgs');
+    assert.deepEqual([...found.toColumns], ['id']);
+  });
+
+  it('walks what a delete would take with it, and how it reaches them', async () => {
+    // Three of the four posts belong to org 1. The action matters as much as
+    // the count: `cascade` deletes them, and anything else does not.
+    const tree = await adapter.cascadeImpact('orgs', 'id = 1', []);
+
+    assert.equal(tree.table, 'orgs');
+    assert.equal(tree.rows, 1);
+    assert.equal(tree.children.length, 1);
+    assert.equal(tree.children[0]!.table, 'posts');
+    assert.equal(tree.children[0]!.rows, 3);
+    assert.equal(tree.children[0]!.via?.action, 'cascade');
+  });
+
+  it('finds nothing to cascade to from a row nothing references', async () => {
+    const tree = await adapter.cascadeImpact('users', 'id = 1', []);
+    assert.deepEqual(tree.children, []);
+  });
+
+  it('reports the schema health the report is written from', async () => {
+    const health = await adapter.schemaHealth();
+
+    assert.ok(Array.isArray(health.tables));
+    assert.ok(health.tables.length >= 3, `only ${health.tables.length} tables`);
+    assert.ok(Array.isArray(health.unusedIndexes));
+    assert.ok(Array.isArray(health.redundantIndexes));
+    assert.ok(Array.isArray(health.unindexedForeignKeys));
+  });
+
+  it('finds no unindexed foreign key, because InnoDB will not allow one', async () => {
+    // InnoDB creates an index for a foreign key whether you ask or not, so the
+    // honest answer here is always none — and reporting one would send someone
+    // to add an index that already exists.
+    const health = await adapter.schemaHealth();
+    assert.deepEqual(health.unindexedForeignKeys, []);
+  });
+});
