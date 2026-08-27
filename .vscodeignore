@@ -15,3 +15,8 @@ MANUAL-CHECK.md
 examples/
 *.tmp.mjs
 *.tmp.ts
+
+# Source maps. The production build does not emit them, but `vsce package` run
+# on its own packages whatever is in dist/ — and a dev build there would ship
+# the whole original TypeScript inside the extension.
+dist/**/*.map

@@ -12,6 +12,7 @@
   },
   "categories": [
     "Visualization",
+    "Linters",
     "Other"
   ],
   "main": "./dist/extension.js",
@@ -226,6 +227,8 @@
   "keywords": [
     "postgres",
     "postgresql",
+    "mysql",
+    "mongodb",
     "sql",
     "migration",
     "database",
