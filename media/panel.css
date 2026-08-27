@@ -235,6 +235,18 @@ main {
   font-style: italic;
 }
 
+/* What the same change costs at production size. Styled as an aside, because
+   it is arithmetic on a number the user gave rather than something measured. */
+.detail.at-scale {
+  margin-top: 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.detail.at-scale::before {
+  content: 'At production size — ';
+  font-style: italic;
+}
+
 .pending-note {
   margin-top: 5px;
   color: var(--vscode-descriptionForeground);

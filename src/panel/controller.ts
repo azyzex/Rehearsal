@@ -66,6 +66,16 @@ export class PreviewPanel {
     return PreviewPanel.current;
   }
 
+  /**
+   * Whether a panel is open and showing this file.
+   *
+   * Asked before re-measuring on save. Re-running against a file nobody has
+   * the panel open for would be a database query someone did not ask for.
+   */
+  static isShowing(uri: vscode.Uri): boolean {
+    return PreviewPanel.current?.documentUri?.toString() === uri.toString();
+  }
+
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.panel = vscode.window.createWebviewPanel(
       'dryrun.preview',

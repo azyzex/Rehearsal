@@ -1,6 +1,7 @@
 import { MongoAdapter } from './mongo';
 import { MysqlAdapter } from './mysql';
 import { PostgresAdapter } from './postgres';
+import { SqliteAdapter } from './sqlite';
 import { DatabaseAdapter } from './types';
 
 /**
@@ -23,6 +24,16 @@ export function adapterFor(connectionString: string): DatabaseAdapter {
   }
   if (scheme === 'mongodb' || scheme === 'mongodb+srv') {
     return new MongoAdapter();
+  }
+  // A file rather than a server, so it is recognised by extension as well as by
+  // scheme: people write `sqlite:./app.db`, `file:app.db` and `./app.db`, and
+  // treating the last one as a Postgres connection string would produce a
+  // confusing failure about a host that does not exist.
+  if (scheme === 'sqlite' || scheme === 'sqlite3' || scheme === 'file') {
+    return new SqliteAdapter();
+  }
+  if (scheme === '' && /\.(db|sqlite|sqlite3)$/i.test(connectionString.trim())) {
+    return new SqliteAdapter();
   }
   return new PostgresAdapter();
 }

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Engine } from '../adapters/types';
 import { Finding, Severity } from '../analysis/types';
 import { SplitStatement } from '../parser/splitter';
 
@@ -23,12 +24,30 @@ const SEVERITY: Record<Severity, vscode.DiagnosticSeverity> = {
   destructive: vscode.DiagnosticSeverity.Warning,
 };
 
+/** One measured statement, located in the document it was measured from. */
+export interface MeasuredStatement {
+  readonly finding: Finding;
+  readonly engine: Engine;
+  /** Character offsets into the document, not into the analysed slice. */
+  readonly start: number;
+  readonly end: number;
+}
+
 export class FindingDiagnostics {
   private readonly collection: vscode.DiagnosticCollection;
   private readonly disposables: vscode.Disposable[] = [];
   private uri: vscode.Uri | undefined;
   private statements: readonly SplitStatement[] = [];
   private readonly findings = new Map<number, Finding>();
+  private engine: Engine = 'postgres';
+  /**
+   * Where in the document the analysed text began.
+   *
+   * Zero for a whole file, and the start of the selection when someone
+   * previewed part of one — statement offsets are relative to the text that
+   * was split, and a quick fix that edits the file needs the real position.
+   */
+  private offset = 0;
 
   constructor() {
     this.collection = vscode.languages.createDiagnosticCollection('dryrun');
@@ -45,10 +64,44 @@ export class FindingDiagnostics {
   }
 
   /** Starts a fresh run over `document`, discarding anything from the last one. */
-  begin(document: vscode.TextDocument, statements: readonly SplitStatement[]): void {
+  begin(
+    document: vscode.TextDocument,
+    statements: readonly SplitStatement[],
+    engine: Engine = 'postgres',
+    offset = 0,
+  ): void {
     this.clear();
     this.uri = document.uri;
     this.statements = statements;
+    this.engine = engine;
+    this.offset = offset;
+  }
+
+  /**
+   * The measurement covering a line, for whoever wants to act on it.
+   *
+   * This is what the quick fixes are built from. They live off the same run
+   * the squiggle came from rather than re-deriving anything, so an offer can
+   * never describe a statement that was not the one measured.
+   */
+  measuredAt(uri: vscode.Uri, line: number): MeasuredStatement | undefined {
+    if (!this.uri || uri.toString() !== this.uri.toString()) {
+      return undefined;
+    }
+
+    for (const finding of this.findings.values()) {
+      const statement = this.statements[finding.statementIndex];
+      if (statement && line >= statement.startLine && line <= statement.endLine) {
+        return {
+          finding,
+          engine: this.engine,
+          start: this.offset + statement.startOffset,
+          end: this.offset + statement.endOffset,
+        };
+      }
+    }
+
+    return undefined;
   }
 
   add(finding: Finding): void {

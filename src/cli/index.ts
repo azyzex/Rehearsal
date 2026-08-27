@@ -25,6 +25,8 @@ interface Options {
   readonly connectionString: string;
   readonly failOn: FailLevel;
   readonly format: 'text' | 'markdown';
+  /** Write the report here instead of to stdout. */
+  readonly output?: string;
   readonly thresholds: Thresholds;
 }
 
@@ -38,6 +40,8 @@ Options:
   --fail-on <level>     Exit non-zero at this severity or worse.
                         destructive (default), blocking, caution, never.
   --format <format>     text (default) or markdown.
+  --output <file>       Write the report to a file instead of stdout, so a
+                        workflow can post it: gh pr comment --body-file.
   --caution-rows <n>    Rows above which a change is a caution. Default 100.
   --destructive-rows <n>  Rows above which a change is destructive. Default 1000.
   --timeout <ms>        Statement timeout inside the preview. Default 30000.
@@ -64,6 +68,15 @@ const CONSOLE: Output = {
   err: (text) => process.stderr.write(text),
 };
 
+/**
+ * Marks the comment as this tool's, so a workflow can update it in place.
+ *
+ * Invisible in the rendered comment, and stable across runs — which is the
+ * whole point: a check that adds a new comment on every push is a check people
+ * turn off.
+ */
+export const COMMENT_MARKER = '<!-- dryrun-report -->';
+
 export async function run(argv: readonly string[], io: Output = CONSOLE): Promise<number> {
   let options: Options;
   try {
@@ -83,6 +96,7 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
   // dragging `vscode` in behind it.
   const adapter = adapterFor(options.connectionString);
   let failed = false;
+  const collected: string[] = [];
 
   try {
     await adapter.connect({
@@ -114,11 +128,30 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
       });
 
       const input = { file, connection: version, findings };
-      io.out(options.format === 'markdown' ? markdownReport(input) : textReport(input));
+      const report = options.format === 'markdown' ? markdownReport(input) : textReport(input);
+
+      // Held rather than printed when there is a file to write: several files
+      // become one comment, not one comment each.
+      if (options.output) {
+        collected.push(report);
+      } else {
+        io.out(report);
+      }
 
       if (shouldFail(findings, options.failOn)) {
         failed = true;
       }
+    }
+    if (options.output) {
+      // The marker lets a workflow find and replace its own previous comment
+      // rather than adding one per push. Twelve comments saying the same thing
+      // is how a check gets muted.
+      const marked =
+        options.format === 'markdown'
+          ? `${COMMENT_MARKER}\n${collected.join('\n')}`
+          : collected.join('\n');
+      fs.writeFileSync(options.output, marked, 'utf8');
+      io.out(`Wrote ${options.output}\n`);
     }
   } catch (error) {
     io.err(`dryrun: ${message(error)}\n`);
@@ -135,6 +168,7 @@ function parse(argv: readonly string[]): Options | undefined {
   let connectionString = process.env['DATABASE_URL'] ?? '';
   let failOn: FailLevel = 'destructive';
   let format: 'text' | 'markdown' = 'text';
+  let output: string | undefined;
   let cautionRows = 100;
   let destructiveRows = 1000;
 
@@ -158,6 +192,10 @@ function parse(argv: readonly string[]): Options | undefined {
         failOn = level as FailLevel;
         break;
       }
+
+      case '--output':
+        output = required(argv, ++i, '--output');
+        break;
 
       case '--format': {
         const chosen = required(argv, ++i, '--format');
@@ -201,6 +239,7 @@ function parse(argv: readonly string[]): Options | undefined {
     connectionString,
     failOn,
     format,
+    ...(output === undefined ? {} : { output }),
     thresholds: {
       cautionRows,
       destructiveRows,
@@ -236,6 +275,13 @@ function message(error: unknown): string {
 
 /** What to call the database in the report, without the password. */
 function describeTarget(connectionString: string, engine: string): string {
+  // A file, not a URL. Printing the whole path plus an empty host reads as a
+  // bug in the report rather than as the database it measured.
+  if (engine === 'sqlite') {
+    const path = connectionString.trim().replace(/^(sqlite3?|file):(\/\/)?/i, '');
+    return path.split(/[\\/]/).pop() || path;
+  }
+
   try {
     const url = new URL(connectionString);
     const name = url.pathname.replace(/^\//, '').split('?')[0];

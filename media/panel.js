@@ -246,6 +246,18 @@
     detail.textContent = finding.detail;
     row.appendChild(detail);
 
+    // What the same change costs against the database this one stands in for.
+    // Its own line rather than part of the detail: the detail is exact about
+    // what was measured here, and this is arithmetic on a number the user
+    // supplied. Running them together would make both look like the same kind
+    // of claim.
+    if (finding.atScale) {
+      const scale = document.createElement('div');
+      scale.className = 'detail at-scale';
+      scale.textContent = finding.atScale;
+      row.appendChild(scale);
+    }
+
     const bar = renderBlastRadius(finding);
     if (bar) {
       row.appendChild(bar);

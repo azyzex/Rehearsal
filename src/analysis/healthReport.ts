@@ -338,6 +338,14 @@ function indexFix(engine: Engine, table: string, columns: readonly string[]): st
         .map((column) => `${JSON.stringify(column)}: 1`)
         .join(", ")} })`;
 
+    case "sqlite":
+      // No CONCURRENTLY, and no online build to ask for. The index needs a
+      // name here too: SQLite has no auto-naming for CREATE INDEX.
+      return `CREATE INDEX ${`idx_${table}_${columns.join("_")}`.replace(
+        /[^A-Za-z0-9_]/g,
+        "_",
+      )} ON "${table}" (${columns.map((column) => `"${column}"`).join(", ")});`;
+
     default:
       return `CREATE INDEX CONCURRENTLY ON ${table} (${columns.join(", ")});`;
   }

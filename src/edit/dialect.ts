@@ -8,6 +8,7 @@ import {
 } from './changeset';
 import { DownMigration, downMigration } from './down';
 import { mongoDownMigration } from './mongoDown';
+import { toSqliteStatement } from './sqliteStatements';
 import { toMongoScript, toMongoStatement } from './mongoStatements';
 
 /**
@@ -128,9 +129,32 @@ const MONGO: EditDialect = {
   downMigration: mongoDownMigration,
 };
 
+/**
+ * SQLite is ANSI SQL with almost no ALTER TABLE.
+ *
+ * The quoting is the same, the exports are the same, and the differences are
+ * all refusals — see `sqliteStatements.ts`. `hasNullability` and `hasDefaults`
+ * are false so the editor does not offer buttons that can only throw: a column
+ * cannot be made required or given a default after its table exists, and a
+ * button that says it can is worse than no button.
+ */
+const SQLITE: EditDialect = {
+  ...SQL,
+  engine: 'sqlite',
+  toStatement: toSqliteStatement,
+  hasNullability: false,
+  hasDefaults: false,
+};
+
 export function dialectFor(engine: Engine): EditDialect {
-  if (engine === 'mongo') {
-    return MONGO;
+  switch (engine) {
+    case 'mongo':
+      return MONGO;
+    case 'mysql':
+      return MYSQL;
+    case 'sqlite':
+      return SQLITE;
+    default:
+      return SQL;
   }
-  return engine === 'mysql' ? MYSQL : SQL;
 }

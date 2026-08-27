@@ -36,6 +36,8 @@ export interface Asked {
 
 export interface Recorded {
   readonly commands: Map<string, (...args: unknown[]) => unknown>;
+  /** Every code-action provider the extension registered. */
+  readonly codeActionProviders: unknown[];
   /** Every `showInputBox` the extension opened. */
   readonly asked: Asked[];
   /**
@@ -161,6 +163,7 @@ export function makeContext(): any {
 
 export function makeVscodeStub(): { api: any; recorded: Recorded; context: any } {
   const commands = new Map<string, (...args: unknown[]) => unknown>();
+  const codeActionProviders: unknown[] = [];
   const webviewViewProviders = new Map<string, unknown>();
   const outputChannels: string[] = [];
   const diagnosticCollections: string[] = [];
@@ -249,6 +252,26 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
         readonly uri: unknown,
         readonly range: unknown,
       ) {}
+    },
+    // Quick fixes. `RewriteActions` reads CodeActionKind.QuickFix in a static
+    // initialiser, so a stub missing it throws while the extension module is
+    // being loaded — which reports as every end-to-end test being cancelled
+    // rather than as anything to do with code actions.
+    CodeActionKind: { QuickFix: { value: 'quickfix' } },
+    CodeAction: class {
+      edit?: unknown;
+      diagnostics?: unknown[];
+      isPreferred?: boolean;
+      constructor(
+        readonly title: string,
+        readonly kind?: unknown,
+      ) {}
+    },
+    WorkspaceEdit: class {
+      readonly edits: { uri: unknown; range: unknown; text: string }[] = [];
+      replace(uri: unknown, range: unknown, text: string): void {
+        this.edits.push({ uri, range, text });
+      }
     },
     Diagnostic: class {
       source?: string;
@@ -387,6 +410,7 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
         update: async () => undefined,
       }),
       onDidChangeTextDocument: nothing,
+      onDidSaveTextDocument: nothing,
       onDidChangeConfiguration: nothing,
       openTextDocument: async (options?: { language?: string; content?: string }) => {
         const content = options?.content ?? '';
@@ -420,6 +444,20 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     },
 
     languages: {
+      registerCodeActionsProvider: (
+        _selector: unknown,
+        provider: unknown,
+      ): { dispose(): void } => {
+        codeActionProviders.push(provider);
+        return {
+          dispose: () => {
+            disposed += 1;
+          },
+        };
+      },
+
+      getDiagnostics: (): unknown[] => [],
+
       createDiagnosticCollection: (name: string) => {
         diagnosticCollections.push(name);
         return {
@@ -443,6 +481,7 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
   const context = makeContext();
 
   const recorded: Recorded = {
+    codeActionProviders,
     commands,
     webviewViewProviders,
     outputChannels,

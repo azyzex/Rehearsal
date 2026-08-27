@@ -220,21 +220,25 @@ describe('the visual editor, using its own buttons', () => {
   });
 
   describe('dropping a column', () => {
-    it('sends the drop for the column it sits next to', async () => {
-      // No question to ask, so this one is still added directly.
+    it('asks the host, which knows who still uses the column', async () => {
+      // Not added directly any more. The host can read the workspace and say
+      // "three files still reference users.phone_number", and a webview
+      // cannot — so the button asks, and the host adds the edit once it knows.
       await pressOnColumn('phone_number', 'Drop');
 
       // Scoped to this column: the dialog guard above presses Drop on `email`,
       // and `posted()` accumulates for the life of the panel.
-      const drops = (await edits()).filter(
-        (edit) => edit.kind === 'drop_column' && edit.column === 'phone_number',
+      const asks = (await posted()).filter(
+        (message) => message.type === 'dropColumn' && message.column === 'phone_number',
       );
-      assert.equal(drops.length, 1);
-      assert.deepEqual(drops[0], {
-        kind: 'drop_column',
-        table: 'users',
-        column: 'phone_number',
-      });
+      assert.equal(asks.length, 1);
+      assert.equal(asks[0]!.table, 'users');
+
+      // And nothing was added behind the host's back.
+      assert.deepEqual(
+        (await edits()).filter((edit) => edit.kind === 'drop_column'),
+        [],
+      );
     });
 
     it('is not offered on the primary key', async () => {

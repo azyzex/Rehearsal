@@ -92,7 +92,13 @@ export function markdownReport(input: ReportInput): string {
     ...input.findings.map(
       (finding) =>
         `| ${badge(finding.severity)} | ${finding.statementIndex + 1} | ${finding.headline} | ` +
-        `${escapePipes(finding.detail)} |`,
+        // What the same change costs at production size, when the sizes have
+        // been given. It goes in the same cell as the measurement, marked as
+        // the different kind of claim it is — a pull request is read in one
+        // pass, and a second table nobody scrolls to is not read at all.
+        `${escapePipes(finding.detail)}${
+          finding.atScale ? `<br><em>At production size — ${escapePipes(finding.atScale)}</em>` : ''
+        } |`,
     ),
     '',
     summarise(input.findings),

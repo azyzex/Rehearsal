@@ -34,6 +34,9 @@ const SCHEMES: Record<string, Engine> = {
   mariadb: 'mysql',
   mongodb: 'mongo',
   'mongodb+srv': 'mongo',
+  sqlite: 'sqlite',
+  sqlite3: 'sqlite',
+  file: 'sqlite',
 };
 
 /** Default ports, for the case where the scheme is missing but the port is not. */
@@ -54,6 +57,20 @@ export function detect(raw: string): Detection {
       inferred: false,
       problem: 'Paste a connection string.',
       notes: [],
+    };
+  }
+
+  // A file is not a URL. `sqlite:./app.db` has no authority part, and neither
+  // does a path someone pasted straight out of their config, so both are
+  // recognised before the URL rules are applied to anything.
+  const path = filePath(input);
+  if (path !== undefined) {
+    return {
+      engine: 'sqlite',
+      connectionString: input,
+      label: `${basename(path)} (file)`,
+      inferred: !/^(sqlite3?|file):/i.test(input),
+      notes: notesFor('sqlite', input),
     };
   }
 
@@ -78,7 +95,7 @@ export function detect(raw: string): Detection {
       inferred: false,
       problem:
         `Dry Run does not know the "${scheme}" scheme. It speaks postgresql://, ` +
-        `mysql:// and mongodb://.`,
+        `mysql://, mongodb:// and sqlite:.`,
       notes: [],
     };
   }
@@ -97,6 +114,30 @@ export function detect(raw: string): Detection {
     inferred: true,
     notes: notesFor(guess, connectionString),
   };
+}
+
+/**
+ * The file a string names, or nothing when it does not name one.
+ *
+ * Deliberately narrow. A bare path is only taken as SQLite when it ends in one
+ * of the three extensions people actually use — otherwise `myhost/mydb` would
+ * be read as a file, and the resulting error would be about a missing file
+ * rather than about a database that could not be reached.
+ */
+function filePath(input: string): string | undefined {
+  const scheme = /^(sqlite3?|file):(\/\/)?/i.exec(input);
+  if (scheme) {
+    return input.slice(scheme[0].length).split('?')[0] ?? '';
+  }
+  if (/^[^:]*\.(db|sqlite|sqlite3)$/i.test(input) || /^[a-z]:[\\/][^:]*\.(db|sqlite|sqlite3)$/i.test(input)) {
+    return input;
+  }
+  return undefined;
+}
+
+function basename(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
 }
 
 /**
@@ -149,7 +190,15 @@ function notesFor(engine: Engine, connectionString: string): string[] {
     );
   }
 
-  if (/^\w+:\/\/[^@/]*@/.test(connectionString) === false && engine !== 'mongo') {
+  if (engine === 'sqlite') {
+    notes.push(
+      'A file rather than a server. Dry Run opens it read-only in practice \u2014 every ' +
+        'preview runs inside a transaction that is rolled back \u2014 but it is the same ' +
+        'file your application uses, so point it at a copy if anything else has it open.',
+    );
+  }
+
+  if (/^\w+:\/\/[^@/]*@/.test(connectionString) === false && engine !== 'mongo' && engine !== 'sqlite') {
     notes.push('No username in the string — the driver will fall back to your OS user.');
   }
 
@@ -158,5 +207,14 @@ function notesFor(engine: Engine, connectionString: string): string[] {
 
 /** A one-word name for the engine, for a badge. */
 export function engineName(engine: Engine): string {
-  return engine === 'postgres' ? 'PostgreSQL' : engine === 'mysql' ? 'MySQL' : 'MongoDB';
+  switch (engine) {
+    case 'postgres':
+      return 'PostgreSQL';
+    case 'mysql':
+      return 'MySQL';
+    case 'sqlite':
+      return 'SQLite';
+    default:
+      return 'MongoDB';
+  }
 }

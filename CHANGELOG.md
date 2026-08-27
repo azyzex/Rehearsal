@@ -22,13 +22,15 @@ statement never mentions.
   **compare with another database**, each as a document you can keep.
 - A **CLI** for CI, which fails the build on what you tell it to.
 
-### Three engines
+### Four engines
 
-Postgres, MySQL and MongoDB, and the differences between them are enforced in
-code rather than described in a comment. Postgres rolls a schema change back;
-MySQL commits it the moment it runs, so schema changes there are measured by
-counting and never executed; MongoDB needs a replica set for transactions at
-all and refuses to preview without one.
+Postgres, MySQL, MongoDB and SQLite, and the differences between them are
+enforced in code rather than described in a comment. Postgres rolls a schema
+change back; MySQL commits it the moment it runs, so schema changes there are
+measured by counting and never executed; MongoDB needs a replica set for
+transactions at all and refuses to preview without one; SQLite rolls a schema
+change back like Postgres and barely has an `ALTER TABLE` to roll back, so the
+changes it cannot express are refused by name with what the rebuild would take.
 
 On MySQL, a schema change can optionally be measured by running it against a
 copy of the table rather than by counting — off by default, because it is the
@@ -40,6 +42,23 @@ swept on the next connect if a crash left one behind.
 Each is written in its own language throughout — dropping a field is `$unset`
 rather than `DROP COLUMN`, MySQL is quoted with backticks, and the route
 between two collections is a `$lookup` pipeline rather than a JOIN.
+
+### And the parts that act on the measurement
+
+- **Quick fixes.** The safer statement is offered on the squiggle. `ctrl + .`
+  replaces it in the file, with the reasoning above it as a comment.
+- **A down migration that has been run.** Generated against the live schema,
+  then applied and reversed inside one rolled-back transaction and compared with
+  where it started. "It restores the column but not its default" is the normal
+  case, and it is normally found on the night it matters.
+- **Safe steps.** For a change that cannot ship in one deploy, the
+  expand-and-contract sequence written out: add, dual-write, backfill in batches,
+  move the readers, contract.
+- **Production scale.** Given the row counts of the database you deploy to, every
+  finding says what the same change costs there. An index build is recomputed
+  rather than multiplied, because it is not linear.
+- **Preview on save**, off by default, for the file the panel is already showing.
+- **One pull-request comment**, edited in place rather than added to.
 
 ### Safety
 

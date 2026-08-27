@@ -159,6 +159,19 @@
           "default": false,
           "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason."
         },
+        "dryrun.productionRows": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "number"
+          },
+          "markdownDescription": "How many rows each table holds in the database you actually deploy to, as `{\"users\": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. Nothing is read from that database — these are numbers you supply."
+        },
+        "dryrun.previewOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Re-run the preview when you save a file the Dry Run panel is already showing. Only that file, and only when a connection is already open — saving never opens one."
+        },
         "dryrun.mysql.measureOnCopy": {
           "type": "boolean",
           "default": false,
@@ -239,6 +252,7 @@
     "postgresql",
     "mysql",
     "mongodb",
+    "sqlite",
     "sql",
     "migration",
     "database",

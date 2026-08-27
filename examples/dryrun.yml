@@ -21,6 +21,11 @@ on:
       - 'migrations/**.sql'
       - 'prisma/migrations/**/*.sql'
 
+permissions:
+  # Reading the diff, and writing the one comment this posts.
+  contents: read
+  pull-requests: write
+
 jobs:
   measure:
     runs-on: ubuntu-latest
@@ -39,6 +44,7 @@ jobs:
       - run: npm run package
 
       - name: Measure the migrations this PR adds
+        id: measure
         env:
           DATABASE_URL: ${{ secrets.DRYRUN_DATABASE_URL }}
         run: |
@@ -47,10 +53,46 @@ jobs:
 
           if [ -z "$changed" ]; then
             echo "No new migrations."
+            echo "found=no" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          echo "found=yes" >> "$GITHUB_OUTPUT"
 
           # --fail-on destructive is the default. Use `blocking` to also fail on
           # a statement that would lock or error, or `never` to report without
           # ever failing the build while you are getting a feel for it.
-          node dist/cli.js $changed --format markdown | tee "$GITHUB_STEP_SUMMARY"
+          #
+          # --output writes the report to a file instead of stdout, so the same
+          # run can both fail the build and be posted as a comment. The step
+          # continues on failure so that the comment still gets written; the
+          # exit code is re-raised at the end.
+          set +e
+          node dist/cli.js $changed --format markdown --output dryrun.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+          cat dryrun.md >> "$GITHUB_STEP_SUMMARY"
+
+      # One comment, edited in place on every push. A check that adds a new
+      # comment each time is a check people mute by the third round of review.
+      - name: Put it on the pull request
+        if: steps.measure.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          marker='<!-- dryrun-report -->'
+          existing=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.number }}/comments" \
+            --jq ".[] | select(.body | contains(\"$marker\")) | .id" | tail -1)
+
+          if [ -n "$existing" ]; then
+            gh api --method PATCH \
+              "repos/${{ github.repository }}/issues/comments/$existing" \
+              -F body=@dryrun.md
+          else
+            gh pr comment "${{ github.event.number }}" --body-file dryrun.md
+          fi
+
+      - name: Fail if the migration is destructive
+        if: steps.measure.outputs.status != '0' && steps.measure.outputs.status != ''
+        run: exit 1

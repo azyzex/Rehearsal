@@ -337,6 +337,12 @@ function onlineIndexAdvice(engine: string): string {
     case 'mongo':
       return ' MongoDB builds indexes in the background by default and does not block ' +
         'writes for this.';
+    case 'sqlite':
+      // There is no online build and no way to ask for one. What there is
+      // instead is a database that is a file on one machine, so the lock is
+      // held against whatever else has it open rather than against traffic.
+      return ' SQLite has no online index build; the write lock is held for the ' +
+        'whole build, against anything else with the file open.';
     default:
       return '';
   }

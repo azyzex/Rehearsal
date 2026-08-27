@@ -143,6 +143,8 @@ export function schemaPanelHtml(options: HtmlOptions): string {
     <span class="spacer"></span>
     <button id="export" type="button">Export SQL</button>
     <button id="export-down" type="button" title="The migration that undoes this one">Down SQL</button>
+    <button id="export-plan" type="button" hidden
+      title="The same change spread across deploys, so no step is ever incompatible with the code beside it">Safe steps</button>
     <button id="discard" type="button">Discard</button>
     <button id="show-affected" type="button" hidden
       title="Frame the tables this preview lands on">Show me where</button>

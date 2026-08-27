@@ -43,6 +43,8 @@
   let affectedCount = 0;
   let previewDestructive = false;
   let showingAfter = false;
+  /** True when something pending needs more than one deploy to be safe. */
+  let canPlan = false;
   /** True when the pending list came from a file rather than from clicking. */
   let readOnly = false;
   let source = '';
@@ -57,6 +59,7 @@
     discard: /** @type {HTMLButtonElement} */ (document.getElementById('discard')),
     exportSql: /** @type {HTMLButtonElement} */ (document.getElementById('export')),
     exportDown: /** @type {HTMLButtonElement} */ (document.getElementById('export-down')),
+    exportPlan: /** @type {HTMLButtonElement} */ (document.getElementById('export-plan')),
     showAffected: /** @type {HTMLButtonElement} */ (document.getElementById('show-affected')),
     toggle: /** @type {HTMLElement} */ (document.getElementById('view-toggle')),
     before: /** @type {HTMLButtonElement} */ (document.getElementById('view-before')),
@@ -125,6 +128,7 @@
         }
         const hadStructure = changesStructure(changes);
         changes = message.changes;
+        canPlan = Boolean(message.canPlan);
         diff = message.diff;
         projected = message.projected;
 
@@ -501,7 +505,10 @@
         actions.appendChild(
           miniButton(
             'Drop',
-            () => addEdit({ kind: 'drop_column', table: detail.table, column: column.name }),
+            // Through the host rather than straight into the changeset: the
+            // host can read the workspace and say who still uses this column,
+            // and a webview cannot. It adds the edit itself once it knows.
+            () => vscode.postMessage({ type: 'dropColumn', table: detail.table, column: column.name }),
             true,
           ),
         );
@@ -940,6 +947,10 @@
     // not, and because a button that is offered and refuses is worse than one
     // that is not offered.
     ui.exportDown.hidden = readOnly || !dialect.hasDownMigration;
+    // Offered only when something pending really does need more than one
+    // deploy. A button that is always there, and answers "nothing to plan"
+    // most of the time, is a button people stop reading.
+    ui.exportPlan.hidden = readOnly || !canPlan;
     ui.preview.textContent = findings.length > 0 ? 'Preview again' : 'Preview';
 
     const body = document.createDocumentFragment();
@@ -1004,6 +1015,7 @@
   ui.discard.addEventListener('click', () => vscode.postMessage({ type: 'clearEdits' }));
   ui.exportSql.addEventListener('click', () => vscode.postMessage({ type: 'exportSql' }));
   ui.exportDown.addEventListener('click', () => vscode.postMessage({ type: 'exportDown' }));
+  ui.exportPlan.addEventListener('click', () => vscode.postMessage({ type: 'exportPlan' }));
 
   ui.showAffected.addEventListener('click', () => {
     // Frames all of them at once. Centring on one is the wrong answer when a

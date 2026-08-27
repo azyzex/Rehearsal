@@ -35,6 +35,16 @@ export interface Thresholds {
 
   /** Above this many rows, the copy costs more than the better answer is worth. */
   readonly cloneRowLimit?: number;
+
+  /**
+   * How many rows each table holds in the database you actually deploy to.
+   *
+   * Every count in a preview is exact about the database it was measured
+   * against, and that database is usually staging. Given this, each finding
+   * gets a second sentence about what the same change costs at the size that
+   * matters.
+   */
+  readonly productionRows?: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -138,6 +148,14 @@ export interface Finding {
    * visual weight of a measured fact.
    */
   readonly estimated?: boolean;
+  /**
+   * What this measurement means at production size.
+   *
+   * Kept out of `detail` deliberately: the detail is exact about the database
+   * it was measured against, and this is arithmetic on top of a number the
+   * user supplied. Mixing them would make the whole row read as an estimate.
+   */
+  readonly atScale?: string;
   /** Set when the probe failed; the row shows as "couldn't analyze". */
   readonly error?: string;
 }

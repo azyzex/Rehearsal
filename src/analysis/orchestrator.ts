@@ -11,6 +11,7 @@ import { analyzeMysqlDml } from './mysqlDml';
 import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
 import { rewritesFor } from './rewrite';
 import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
+import { scaleNote } from './scale';
 import { Finding, Sample, Thresholds } from './types';
 
 /**
@@ -114,10 +115,16 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
           : {}),
       };
 
+      // And what the same change costs against the database this one stands
+      // in for. Only when the sizes have been given; without them the panel
+      // says nothing about production rather than guessing at it.
+      const scaled = scaleNote(withContext, tableRows, thresholds.productionRows);
+      const finished = scaled ? { ...withContext, atScale: scaled } : withContext;
+
       // Rewrites are computed from the finished finding, because what to
       // suggest depends on what was measured rather than on the statement.
-      const rewrites = rewritesFor(withContext, adapter.engine);
-      onFinding(rewrites.length > 0 ? { ...withContext, rewrites } : withContext);
+      const rewrites = rewritesFor(finished, adapter.engine);
+      onFinding(rewrites.length > 0 ? { ...finished, rewrites } : finished);
     } catch (error) {
       onFinding({
         statementIndex: statement.index,

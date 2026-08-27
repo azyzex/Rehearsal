@@ -128,6 +128,24 @@ const ALLOWED = new Map<string, string>([
     'The fix it suggests is chosen per engine by `indexFix`, which is why all ' +
       'three spellings appear in it.',
   ],
+  [
+    'src/edit/expandContract.ts',
+    'Every plan in it is Postgres — the triggers are plpgsql and the batching ' +
+      'uses ctid. The panel only offers the button when the engine is Postgres, ' +
+      'and the module says so in its first paragraph rather than leaving it to ' +
+      'be inferred.',
+  ],
+  [
+    'src/edit/verifyDown.ts',
+    'Reads pg_catalog to snapshot the schema from inside the transaction, ' +
+      'which is the only way to see uncommitted DDL. It refuses any engine ' +
+      'but Postgres in its first three lines.',
+  ],
+  [
+    'src/edit/sqliteStatements.ts',
+    'The SQLite writer, alongside the MongoDB one. Most of it is refusals: ' +
+      'SQLite has four ALTER TABLE operations and no way to express the rest.',
+  ],
 ]);
 
 /** Every .ts file under src, excluding tests and the adapters themselves. */

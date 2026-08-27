@@ -9,8 +9,12 @@ import { schemaPanelHtml } from './html';
 import { htmlOptionsFor } from './htmlOptions';
 import { ChangesetHistory } from '../edit/history';
 import { diffSchemas, projectSchema } from '../edit/project';
+import { expandContractPlans, needsPlan, renderPlans } from '../edit/expandContract';
+import { describeVerification, verifyDownMigration } from '../edit/verifyDown';
 import { EditSession } from '../edit/session';
 import { findJoinPath } from '../analysis/joinPath';
+import { ReferenceScan, scanReferences } from '../analysis/references';
+import { relative, workspaceSourceFiles } from '../analysis/workspaceFiles';
 import { toMermaid } from './mermaid';
 
 /**
@@ -223,6 +227,10 @@ export class SchemaPanel {
           await this.exportDown();
           break;
 
+        case 'exportPlan':
+          await this.exportPlan();
+          break;
+
         case 'exportDiagram':
           await this.exportDiagram();
           break;
@@ -255,6 +263,10 @@ export class SchemaPanel {
 
         case 'dropTable':
           await this.dropTable(String(message.table), Number(message.rows ?? 0));
+          break;
+
+        case 'dropColumn':
+          await this.dropColumn(String(message.table), String(message.column));
           break;
 
         case 'notDrawn':
@@ -513,14 +525,69 @@ export class SchemaPanel {
     }
 
     try {
+      const adapter = this.requireAdapter();
       const down = await this.session.language.downMigration(
-        this.requireAdapter(),
+        adapter,
         state.changes.map((change) => change.edit),
       );
 
+      // And then the part almost nothing does: run it. The change is applied
+      // and reversed inside one rolled-back transaction, and the schema before
+      // is compared with the schema after. A down migration that looks right
+      // and restores the column without its default is the normal case, not a
+      // rare one, and it is only ever discovered on the night it is needed.
+      const verification = await verifyDownMigration(
+        adapter,
+        this.session.statements(),
+        down,
+      ).catch((error) => ({
+        ran: false,
+        restored: false,
+        differences: [],
+        gaps: down.gaps,
+        skipped: errorMessage(error),
+      }));
+
+      const mark = this.session.language.comment;
+      const header = describeVerification(verification)
+        .map((line) => (line ? `${mark} ${line}` : mark))
+        .join('\n');
+
       const document = await vscode.workspace.openTextDocument({
         language: this.session.language.documentLanguage,
-        content: down.sql,
+        content: `${header}\n\n${down.sql}`,
+      });
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+    } catch (error) {
+      this.post({ type: 'error', message: errorMessage(error) });
+    }
+  }
+
+  /**
+   * The same changes, spread across deploys.
+   *
+   * A migration and the code that uses it are never deployed at the same
+   * instant, and the gap is where a rename takes a site down. This is the
+   * sequence that has no gap — written against the live schema, so the type on
+   * the new column is the type the old one really has.
+   */
+  private async exportPlan(): Promise<void> {
+    const state = this.session.state();
+    const edits = state.changes.map((change) => change.edit);
+
+    if (!needsPlan(edits)) {
+      this.post({
+        type: 'error',
+        message: 'Nothing pending needs more than one deploy.',
+      });
+      return;
+    }
+
+    try {
+      const plans = await expandContractPlans(this.requireAdapter(), edits);
+      const document = await vscode.workspace.openTextDocument({
+        language: 'sql',
+        content: renderPlans(plans),
       });
       await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
     } catch (error) {
@@ -748,6 +815,75 @@ export class SchemaPanel {
   }
 
   /**
+   * Dropping a column, after asking the code whether it is still used.
+   *
+   * The database will let you drop a column the moment nothing in the database
+   * depends on it. The application is not consulted, and the application is
+   * where the outage happens — the migration succeeds, the deploy succeeds, and
+   * forty minutes later something serialises a row and finds a field missing.
+   *
+   * The preview panel has been able to answer this for a migration file since
+   * the beginning. The button that drops a column from the diagram could not,
+   * which is the button people actually click.
+   *
+   * A clean scan adds the edit without a dialog: a confirmation nobody can fail
+   * teaches people to click through confirmations. And it is never phrased as
+   * "safe" — a text search that finds nothing has found nothing in the files it
+   * could read, which is a different claim, and `describeScan` is careful about
+   * exactly that.
+   */
+  private async dropColumn(table: string, column: string): Promise<void> {
+    const label = `${table}.${column}`;
+
+    const scan = await Promise.resolve(
+      vscode.window.withProgress<ReferenceScan>(
+        { location: vscode.ProgressLocation.Window, title: `Dry Run: looking for ${label}` },
+        async () => scanReferences(column, await workspaceSourceFiles()),
+      ),
+    ).catch(() => undefined);
+
+    if (!scan || scan.references.length === 0) {
+      this.addEdit({ kind: 'drop_column', table, column });
+      return;
+    }
+
+    const files = [...new Set(scan.references.map((reference) => reference.file))];
+    const shown = scan.references.slice(0, 6);
+    const detail =
+      shown
+        .map((reference) => `${relative(reference.file)}:${reference.line}  ${reference.text}`)
+        .join('\n') +
+      (scan.references.length > shown.length
+        ? `\n… and ${scan.references.length - shown.length} more.`
+        : '');
+
+    const choice = await vscode.window.showWarningMessage(
+      `${scan.references.length} ${scan.references.length === 1 ? 'mention' : 'mentions'} of ` +
+        `${column} in ${files.length} ${files.length === 1 ? 'file' : 'files'}. ` +
+        `Dropping ${label} may break them.`,
+      { modal: true, detail },
+      'Drop it anyway',
+      'Show me',
+    );
+
+    if (choice === 'Show me') {
+      const first = scan.references[0];
+      if (first) {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(first.file));
+        await vscode.window.showTextDocument(document, {
+          viewColumn: vscode.ViewColumn.One,
+          selection: new vscode.Range(first.line - 1, 0, first.line - 1, 0),
+        });
+      }
+      return;
+    }
+
+    if (choice === 'Drop it anyway') {
+      this.addEdit({ kind: 'drop_column', table, column });
+    }
+  }
+
+  /**
    * Says that what you asked to be shown is not on screen.
    *
    * Silently doing nothing reads as a broken button, and the diagram is the one
@@ -791,6 +927,13 @@ export class SchemaPanel {
         hasNullability: this.session.language.hasNullability,
         hasDownMigration: this.session.language.hasDownMigration,
       },
+      // Whether anything pending is the kind of change that should not ship in
+      // one deploy. Decided here rather than in the webview: it is a fact about
+      // the edits, and the webview is sent labels, not edits.
+      canPlan:
+        this.session.language.documentLanguage === 'sql' &&
+        this.host?.adapter()?.engine === 'postgres' &&
+        needsPlan(state.changes.map((change) => change.edit)),
     });
   }
 

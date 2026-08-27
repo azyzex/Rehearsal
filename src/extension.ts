@@ -12,6 +12,7 @@ import { ConnectionManager, ProductionRefusedError } from './connection/manager'
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
 import { FindingDiagnostics } from './panel/diagnostics';
+import { RewriteActions } from './panel/quickFixes';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
 import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
@@ -53,6 +54,14 @@ export function activate(context: vscode.ExtensionContext): void {
     connections,
     output,
     diagnostics,
+    // The safer statement, offered where the unsafe one is written. Built from
+    // the same measurement the squiggle came from, so an offer can never
+    // describe a statement other than the one that was measured.
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file' },
+      new RewriteActions(diagnostics),
+      RewriteActions.metadata,
+    ),
     vscode.window.registerWebviewViewProvider(Sidebar.viewId, sidebar, {
       // Kept alive while hidden, so a half-typed connection string survives
       // the panel being collapsed.
@@ -64,10 +73,39 @@ export function activate(context: vscode.ExtensionContext): void {
   // — through a command, or through the .env fallback. Both have to reach it.
   connections.onChanged(() => void sidebar.refresh());
 
+  // One preview at a time. Two runs against one connection would interleave
+  // their transactions, and the second would redraw rows the first is still
+  // filling in.
+  let previewing = false;
+  const runPreview = async (saved?: vscode.TextDocument): Promise<void> => {
+    if (previewing) {
+      return;
+    }
+    previewing = true;
+    try {
+      await preview(context, connections, output, diagnostics, saved);
+    } finally {
+      previewing = false;
+    }
+  };
+
   context.subscriptions.push(
-    vscode.commands.registerCommand('dryrun.preview', () =>
-      preview(context, connections, output, diagnostics),
-    ),
+    vscode.commands.registerCommand('dryrun.preview', () => runPreview()),
+
+    // Saving is when a migration is finished being typed, which is exactly when
+    // its measurements are worth having again. Deliberately narrow: only a file
+    // the panel is already showing, only when a connection is already open, and
+    // off unless asked for. A save must never be the thing that opens a
+    // connection or queries a database nobody pointed at this file.
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      const on = vscode.workspace
+        .getConfiguration('dryrun')
+        .get<boolean>('previewOnSave', false);
+      if (!on || !connections.current || !PreviewPanel.isShowing(document.uri)) {
+        return;
+      }
+      void runPreview(document);
+    }),
 
     vscode.commands.registerCommand('dryrun.testConnection', async () => {
       try {
@@ -124,18 +162,29 @@ async function preview(
   connections: ConnectionManager,
   output: vscode.OutputChannel,
   diagnostics: FindingDiagnostics,
+  /** Set when a save triggered this rather than the command. */
+  saved?: vscode.TextDocument,
 ): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
+  const editor = saved
+    ? vscode.window.visibleTextEditors.find(
+        (candidate) => candidate.document.uri.toString() === saved.uri.toString(),
+      )
+    : vscode.window.activeTextEditor;
+
+  const document = saved ?? editor?.document;
+  if (!document) {
     void vscode.window.showWarningMessage('Dry Run: open a SQL file first.');
     return;
   }
 
   // A selection means "just this bit". Otherwise the whole file, which is what
-  // you want for a migration.
-  const selection = editor.selection.isEmpty ? undefined : editor.document.getText(editor.selection);
-  const offset = selection ? editor.document.offsetAt(editor.selection.start) : 0;
-  const text = selection ?? editor.document.getText();
+  // you want for a migration. A save always re-measures the whole file: the
+  // selection that produced the last run is not necessarily still there, and
+  // silently measuring a stale range is worse than measuring everything.
+  const region = saved || !editor || editor.selection.isEmpty ? undefined : editor.selection;
+  const selection = region ? document.getText(region) : undefined;
+  const offset = region ? document.offsetAt(region.start) : 0;
+  const text = selection ?? document.getText();
 
   const panel = PreviewPanel.show(context);
   let cancelled = false;
@@ -151,14 +200,14 @@ async function preview(
         return statement;
       }
       // Shift line numbers so clicking a row still lands on the right line.
-      const startLine = editor.document.positionAt(offset + statement.startOffset).line;
-      const endLine = editor.document.positionAt(offset + statement.endOffset).line;
+      const startLine = document.positionAt(offset + statement.startOffset).line;
+      const endLine = document.positionAt(offset + statement.endOffset).line;
       return { ...statement, startLine, endLine };
     });
 
     if (statements.length === 0) {
       panel.begin(
-        editor.document,
+        document,
         [],
         connection.identity.display,
         {
@@ -174,7 +223,7 @@ async function preview(
 
     const classifications = statements.map((statement) => language.classify(statement.sql));
 
-    panel.begin(editor.document, statements, connection.identity.display, {
+    panel.begin(document, statements, connection.identity.display, {
       onCancel: () => {
         cancelled = true;
       },
@@ -224,7 +273,7 @@ async function preview(
       },
     }, connection.adapter.engine);
 
-    diagnostics.begin(editor.document, statements);
+    diagnostics.begin(document, statements, connection.adapter.engine, offset);
 
     const findings: Finding[] = [];
     await analyzeStatements({
@@ -258,7 +307,7 @@ async function preview(
     if (!cancelled && schema?.hasSchema) {
       const { edits, indexes } = editsFromClassifications(findings.map((f) => f.classification));
       schema.showMigrationImpact({
-        file: vscode.workspace.asRelativePath(editor.document.uri),
+        file: vscode.workspace.asRelativePath(document.uri),
         edits,
         labels: indexes.map((i) => findings[i]?.headline ?? ''),
         findings: indexes.map((i, position) => ({
@@ -862,6 +911,7 @@ function readThresholds(): Thresholds {
     explainAnalyze: config.get<boolean>('explainAnalyze', false),
     cloneTables: config.get<boolean>('mysql.measureOnCopy', false),
     cloneRowLimit: config.get<number>('mysql.measureOnCopyRowLimit', 500_000),
+    productionRows: config.get<Record<string, number>>('productionRows', {}),
   };
 }
 

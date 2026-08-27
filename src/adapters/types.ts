@@ -2,7 +2,7 @@
  * Engine-agnostic contract. Nothing above `adapters/` may contain Postgres-specific SQL.
  */
 
-export type Engine = "postgres" | "mysql" | "mongo";
+export type Engine = "postgres" | "mysql" | "mongo" | "sqlite";
 
 export interface ConnectionConfig {
   /** Full connection string. Never persisted anywhere by this extension. */

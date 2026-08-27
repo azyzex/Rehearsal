@@ -2,7 +2,7 @@
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 1,161 tests: against a real Postgres, a
+> **Status: working, not yet published.** 1,204 tests: against a real Postgres, a
 > real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
 > click them. The demo recording and the marketplace listing are the remaining
 > work.
@@ -79,6 +79,34 @@ scan is offered the Postgres pattern that avoids it — `CONCURRENTLY` for an in
 `NOT VALID` then `VALIDATE` for a constraint, the three-step route for
 `SET NOT NULL`. Suggested only when the measurement says it is needed, with one
 click to replace it in the file.
+
+**And take it, with one keystroke.** The same rewrite is a quick fix on the
+squiggle: `ctrl + .` on the line replaces the statement in the file, with the
+reasoning left above it as a comment and a warning when the replacement cannot
+share a transaction. The reasoning goes into the file on purpose — a migration
+is read in a diff long after the panel that explained it was closed, and an
+unexplained `NOT VALID` is a puzzle.
+
+**Measure against the size you deploy to.** Every count in a preview is exact
+about the database it measured, and that database is usually staging. Give Dry
+Run the row counts of the real one in `dryrun.productionRows` and each finding
+gains a second line:
+
+```
+Locks the table briefly — orders has about 40,000 rows.
+At production size — orders holds 40,000,000 rows in production, 1000× this
+database. The build there is roughly 12 minutes rather than 900ms — and writes
+are blocked for all of it.
+```
+
+An index build is not linear, so that is recomputed rather than multiplied. And
+an empty table is the loudest case, not the quietest: pointed at a dev database
+where the table has no rows, every probe answers zero and every row is green,
+and it says so.
+
+**Re-measure on save.** Turn on `dryrun.previewOnSave` and the panel re-runs when
+you save the file it is already showing. Only that file, and only when a
+connection is already open — a save must never be the thing that opens one.
 
 **See the plan.** Turn on `dryrun.explainAnalyze` and each `UPDATE`, `DELETE` and
 `INSERT` also carries its query plan, with node widths drawn from time actually
@@ -216,6 +244,33 @@ rename one. Each becomes a *pending change* — not a write. Then:
   down migrations are usually wrong. Anything it cannot undo is listed at the top
   of the file in plain words rather than quietly omitted.
 
+  And then it is *run*. On Postgres the change is applied and reversed inside one
+  rolled-back transaction, and the schema before is compared with the schema
+  after. The file arrives with the answer at the top:
+
+  ```
+  -- Checked: applied against this database and then reversed, the schema
+  -- came back exactly as it was.
+  ```
+
+  or, more usefully:
+
+  ```
+  -- CHECKED, AND IT DOES NOT FULLY REVERSE THE CHANGE. Applied against this
+  -- database and then reversed, the schema differed:
+  --
+  --   - users.status came back without its default of 'active'.
+  --   - The index users_email_idx is still there. The reversal does not drop it.
+  ```
+
+- **Safe steps** appears when something pending cannot ship in one deploy — a
+  rename, a retype, a `NOT NULL`. A migration and the code that uses it are never
+  deployed at the same instant, and every column rename that has taken a site
+  down took it down in that gap. This writes out the sequence that has no gap:
+  add the new column, keep both in step with a trigger, backfill in batches, move
+  the readers, then contract. Each step says which deploy it belongs to, and the
+  ones that are application changes rather than SQL say so.
+
 Each engine is written in its own language throughout, not only in the export:
 dropping a field is `$unset` rather than `DROP COLUMN`, MySQL is quoted with
 backticks because double quotes are a string literal there, and the route
@@ -246,15 +301,21 @@ DESTRUCTIVE line 1  Will destroy data
 
 Exit code 1. `--fail-on blocking` also fails on anything that would lock or
 error, `--fail-on never` reports without failing, and `--format markdown` writes
-a table a pull request can render. `examples/dryrun.yml` is a GitHub Action that
-measures only the migrations a PR adds and puts the result in the job summary.
+a table a pull request can render. `--output <file>` writes the report to a file
+instead of stdout, so the same run can both fail the build and be posted.
+
+`examples/dryrun.yml` is a GitHub Action that measures only the migrations a PR
+adds, puts the result in the job summary, and posts it as **one** pull-request
+comment that it edits in place on every push — a check that adds a new comment
+each time is a check people mute by the third round of review. The report
+carries an invisible marker for exactly that purpose.
 
 Point it at a restored copy of production, or a per-PR database branch. The
 credential it needs is read-only: there is no flag that applies anything, on
 purpose — a CI job holding a connection string that can write is a worse thing
 to leave lying around than any migration it might have caught.
 
-## Three databases, three answers
+## Four databases, four answers
 
 The extension rests on one property: everything runs inside a transaction that
 is rolled back. Each engine answers that differently, and the differences are
@@ -265,6 +326,13 @@ enforced in code rather than described in a comment.
 | **Postgres** | roll back | roll back | nothing special | `RETURNING`, exact |
 | **MySQL** | roll back | **commit silently** — refused by the adapter | nothing special | read before and after |
 | **MongoDB** | roll back | **refused by the server** | a replica set | read before and after |
+| **SQLite** | roll back | roll back | Node 22 or newer | `RETURNING`, exact |
+
+SQLite is the pair MySQL needed. MySQL has every feature of a large database
+and cannot take a schema change back; SQLite has almost none and can. An
+`ALTER TABLE` there runs inside a transaction and a `ROLLBACK` really undoes it,
+so a preview against SQLite is a real execution rather than a count — the same
+promise Postgres makes, from the smallest engine here.
 
 One number differs between them on purpose. An `UPDATE` that matches five rows
 where one already holds the new value is five on Postgres and MySQL, which
@@ -420,6 +488,56 @@ Postgres's. That distinction exists because running this file for the first time
 produced two "not analysed" rows and a recommendation that is a syntax error on
 the database it was given about.
 
+## SQLite, and the ALTER TABLE that is not there
+
+SQLite's entire `ALTER TABLE` is four things: `ADD COLUMN`, `DROP COLUMN`,
+`RENAME TO` and `RENAME COLUMN`. Changing a column's type, making one `NOT
+NULL`, adding a constraint or a foreign key — none of those exist. Not missing
+keywords: missing operations.
+
+The documented way to do any of them is to build a replacement table with the
+shape you want, copy every row into it, drop the original and rename — twelve
+steps in a specific order, with foreign keys disabled in the middle and every
+index and trigger recreated by hand afterwards.
+
+So Dry Run refuses them by name, and says what it would take:
+
+```
+SQLite has no ALTER COLUMN, so users.email cannot be retyped in place.
+The documented way is to create a replacement table with the shape you want,
+copy every row into it, drop the original and rename — with foreign keys
+disabled while you do it, and every index and trigger recreated afterwards.
+Dry Run will not generate that for you: it moves every row, and being wrong
+about it loses the table.
+```
+
+That last sentence is a deliberate limit. Generating a twelve-step rebuild from
+a schema read a moment ago is a much larger promise than anything else here
+makes, and it is the only one where being wrong loses the data rather than
+reporting the wrong number.
+
+Two more things are different enough to be worth stating.
+
+**Foreign keys are off by default.** `PRAGMA foreign_keys` is per connection,
+and in SQLite itself it is off unless something turns it on — so the same
+`ON DELETE CASCADE` is enforced or ignored depending on which connection runs
+the delete, and Dry Run's connection is not your application's. The rows are
+counted as though the keys are enforced, because that is the larger blast
+radius; whether they actually go is the part that cannot be assumed, and the
+report says so rather than implying it. With the pragma off, nothing cascades
+and those rows stay behind as orphans instead — a quieter problem, and a worse
+one to find later.
+
+**There are no statistics and no other sessions.** No lock holders to name, no
+index usage counters, no planner row estimates. Row counts here are real
+`count(*)`s, which is exact and affordable on a file; "this index is never
+scanned" is a question with no answer, and is reported as unanswerable rather
+than as none.
+
+It needs Node 22 or newer, which is where the built-in `node:sqlite` module
+arrived. On an older runtime the adapter refuses to connect and says why, rather
+than the extension failing to load for everyone else.
+
 ## How it works
 
 Postgres has transactional DDL, so a statement can be executed and then thrown
@@ -485,7 +603,10 @@ Stated plainly, because a README that hides them makes the rest less believable.
   back. See the table above for which is which.
 - **Results reflect the database you connect to.** Pointed at an empty local dev
   database, every answer is zero and none of them are useful. Point it at staging
-  or a replica.
+  or a replica — and set `dryrun.productionRows`, which makes every finding say
+  what the same change costs at the size you deploy to. An empty table is the
+  case it is loudest about, because that is where the panel is confidently
+  useless.
 - **Index build times are estimates**, and are labelled as estimates wherever they
   appear. Every other number is an exact count measured against your data.
 - **The projected "after" schema is a projection, not a promise.** It says what
@@ -556,6 +677,8 @@ a preview takes.
 | `dryrun.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
 | `dryrun.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
 | `dryrun.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
+| `dryrun.previewOnSave` | `false` | Re-run the preview when you save a file the panel is already showing. Only that file, and only when a connection is already open — saving never opens one. |
+| `dryrun.productionRows` | `{}` | How many rows each table holds in the database you actually deploy to, as `{"users": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. |
 | `dryrun.mysql.measureOnCopy` | `false` | MySQL only. Measure a schema change by copying the table, running the statement against the copy and dropping it, instead of counting. Gives you the server's real error message. Off by default because it writes, and because copying a table costs the disk and the time. |
 | `dryrun.mysql.measureOnCopyRowLimit` | `500000` | Tables larger than this are counted rather than copied. |
 

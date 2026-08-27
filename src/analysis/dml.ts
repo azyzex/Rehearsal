@@ -95,19 +95,35 @@ export async function analyzeDml(
       .join(', ');
     // `count(*) OVER ()` is evaluated across the whole CTE before LIMIT, so the
     // exact total comes back even though only a handful of rows are shipped.
+    const limit = Math.max(1, Math.floor(thresholds.sampleSize));
+
+    // Two ways to capture what a statement touched, because a data-modifying
+    // CTE is a Postgres feature. SQLite has `RETURNING` and not the CTE, so it
+    // gets the plain form and counts the rows that come back — which is exact,
+    // and affordable in a way it would not be against a server, because the
+    // database is a file on this machine and the whole thing is rolled back.
+    const plain = adapter.engine === 'sqlite';
     const captured = await tx.query(
-      `WITH dryrun_affected AS (
+      plain
+        ? `${stripTrailingSemicolon(sql)} RETURNING ${keyList}`
+        : `WITH dryrun_affected AS (
          ${stripTrailingSemicolon(sql)}
          RETURNING ${keyList}
        )
        SELECT count(*) OVER () AS dryrun_total, *
          FROM dryrun_affected
-        LIMIT ${Math.max(1, Math.floor(thresholds.sampleSize))}`,
+        LIMIT ${limit}`,
       params,
     );
 
-    const rowCount = captured.rows.length > 0 ? Number(captured.rows[0]!['dryrun_total']) : 0;
-    const keys = captured.rows.map((row) => pick(row, pkColumns));
+    const rowCount = plain
+      ? captured.rows.length
+      : captured.rows.length > 0
+        ? Number(captured.rows[0]!['dryrun_total'])
+        : 0;
+    const keys = (plain ? captured.rows.slice(0, limit) : captured.rows).map((row) =>
+      pick(row, pkColumns),
+    );
 
     if (keys.length === 0) {
       await tx.rollbackTo(SAVEPOINT);
