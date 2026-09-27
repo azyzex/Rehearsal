@@ -209,6 +209,84 @@ main {
   min-width: 0;
 }
 
+/* The file, the verdict and the filters stay in view while the rows scroll
+   under them. On a long migration the verdict was the first thing to scroll
+   away, and it is the thing the rest is read against. */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--vscode-editor-background);
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 14px 8px;
+  border-bottom: 1px solid var(--rehearsal-border);
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 1px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--rehearsal-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+/* The severity as a dot rather than a thick left border: on a rounded pill a
+   border that heavy draws as a bracket. */
+.chip::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--chip-colour, var(--rehearsal-border));
+}
+
+.chip.destructive { --chip-colour: var(--rehearsal-destructive); }
+.chip.blocking { --chip-colour: var(--rehearsal-blocking); }
+.chip.caution { --chip-colour: var(--rehearsal-caution); }
+.chip.safe { --chip-colour: var(--rehearsal-safe, var(--vscode-testing-iconPassed, #3fb950)); }
+
+.chip:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.safe-toggle {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rehearsal-border);
+  cursor: pointer;
+}
+
+.safe-toggle:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+#copy {
+  margin-left: 6px;
+}
+
 .summary.progress {
   color: var(--vscode-descriptionForeground);
   font-style: italic;

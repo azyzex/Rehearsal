@@ -32,12 +32,12 @@ thing that looks broken in VS Code.
 - [x] 18. Schema explorer: `/` focuses search, Esc closes the drawer
 - [x] 19. Schema explorer: column buttons you can actually hit
 - [x] 20. Schema explorer: counts out of the crowded toolbar
-- [ ] 21. Preview: Copy as Markdown
-- [ ] 22. Preview: the verdict stays visible while scrolling
-- [ ] 23. Preview: safe statements collapsed into one line
-- [ ] 24. Preview: filter by severity from the counts
-- [ ] 25. Preview: ↑/↓ between findings, Enter jumps to the line
-- [ ] 26. Preview: "Couldn't analyze" says where the error came from
+- [x] 21. Preview: Copy as Markdown
+- [x] 22. Preview: the verdict stays visible while scrolling
+- [x] 23. Preview: safe statements collapsed into one line
+- [x] 24. Preview: filter by severity from the counts
+- [x] 25. Preview: ↑/↓ between findings, Enter jumps to the line
+- [x] 26. Preview: "Couldn't analyze" says where the error came from
 - [ ] 27. Empty states that say what to press
 - [ ] 28. Schema explorer: zoom buttons
 - [ ] 29. Sidebar: a dropped connection says so

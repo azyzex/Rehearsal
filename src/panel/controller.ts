@@ -4,6 +4,7 @@ import { Diagram } from '../analysis/impact';
 import { Finding, Severity } from '../analysis/types';
 import { Offenders } from '../analysis/offenders';
 import { previewPanelHtml } from './html';
+import { markdownReport } from '../cli/report';
 import { htmlOptionsFor } from './htmlOptions';
 import { SplitStatement } from '../parser/splitter';
 
@@ -56,6 +57,8 @@ export class PreviewPanel {
   private findings = new Map<number, Finding>();
   private documentUri: vscode.Uri | undefined;
   private host: PanelHost | undefined;
+  /** The connection the current run measured against, for the copied report. */
+  private connectionLabel = '';
 
   static show(context: vscode.ExtensionContext): PreviewPanel {
     if (PreviewPanel.current) {
@@ -116,6 +119,7 @@ export class PreviewPanel {
     this.statements = statements;
     this.findings = new Map();
     this.host = host;
+    this.connectionLabel = connection;
 
     void this.panel.webview.postMessage({
       type: 'begin',
@@ -188,6 +192,22 @@ export class PreviewPanel {
     }
     // Measures the same file again, whole: whatever the editor's selection is
     // now, the panel is showing the file.
+    // The same Markdown the CLI writes, so a table pasted into a pull request
+    // from here and one posted by CI cannot disagree about their format.
+    if (message.type === 'copyMarkdown') {
+      const report = markdownReport({
+        file: this.documentUri ? vscode.workspace.asRelativePath(this.documentUri) : 'migration',
+        connection: this.connectionLabel,
+        findings: [...this.findings.values()].sort(
+          (a, b) => a.statementIndex - b.statementIndex,
+        ),
+      });
+      void vscode.env.clipboard.writeText(report).then(() => {
+        void this.panel.webview.postMessage({ type: 'copied' });
+      });
+      return;
+    }
+
     if (message.type === 'rerun') {
       if (this.documentUri) {
         void vscode.commands.executeCommand('rehearsal.previewFile', this.documentUri);

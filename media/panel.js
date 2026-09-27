@@ -55,6 +55,8 @@
     cancel: /** @type {HTMLButtonElement} */ (document.getElementById('cancel')),
     summary: /** @type {HTMLElement} */ (document.getElementById('summary')),
     rerun: /** @type {HTMLButtonElement} */ (document.getElementById('rerun')),
+    copy: /** @type {HTMLButtonElement} */ (document.getElementById('copy')),
+    counts: /** @type {HTMLElement} */ (document.getElementById('counts')),
     rows: /** @type {HTMLElement} */ (document.getElementById('rows')),
     diagram: /** @type {HTMLElement} */ (document.getElementById('diagram')),
     tabList: /** @type {HTMLButtonElement} */ (document.getElementById('tab-list')),
@@ -105,6 +107,36 @@
 
   /** When the current run began, for "Measured in 1.4s". */
   let startedAt = 0;
+  /** A severity to show on its own, chosen from the counts. Null shows all. */
+  let filter = null;
+  /** Whether the safe statements are listed or folded into one line. */
+  let showSafe = false;
+
+  el.rows.addEventListener('keydown', (event) => {
+    const row = /** @type {HTMLElement} */ (event.target).closest('.row');
+    if (!row || event.target !== row) {
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      vscode.postMessage({ type: 'reveal', index: Number(row.dataset.index) });
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const rows = Array.prototype.slice.call(el.rows.querySelectorAll('.row'));
+      const at = rows.indexOf(row);
+      const next = rows[at + (event.key === 'ArrowDown' ? 1 : -1)];
+      if (next) {
+        next.focus();
+        next.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  });
+
+  el.copy.addEventListener('click', () => {
+    vscode.postMessage({ type: 'copyMarkdown' });
+  });
 
   el.rerun.addEventListener('click', () => {
     el.rerun.hidden = true;
@@ -131,6 +163,9 @@
         el.cancel.disabled = false;
         el.cancel.textContent = 'Stop';
         el.rerun.hidden = true;
+        el.copy.hidden = true;
+        filter = null;
+        showSafe = false;
         startedAt = Date.now();
         showProgress();
         render();
@@ -163,6 +198,7 @@
         running = false;
         el.cancel.hidden = true;
         el.rerun.hidden = false;
+        el.copy.hidden = findings.size === 0;
         showSummary(message.summary);
         render();
         if (view === 'diagram') {
@@ -176,6 +212,13 @@
         el.rerun.hidden = false;
         el.rows.innerHTML = '';
         el.rows.appendChild(banner(message.message));
+        break;
+
+      case 'copied':
+        el.copy.textContent = 'Copied';
+        setTimeout(() => {
+          el.copy.textContent = 'Copy as Markdown';
+        }, 1500);
         break;
 
       case 'highlight':
@@ -252,11 +295,98 @@
       return;
     }
 
+    // Safe statements fold into one line once there are two or more of them.
+    // In a forty-statement migration the three that matter were buried under
+    // thirty-seven green rows, which is the opposite of what a preview is for.
+    // Never the one the cursor is on: that row is being looked at.
+    const safeCount = statements.filter((statement) => isQuietlySafe(statement)).length;
+    const fold = !filter && !showSafe && safeCount >= 2;
+
     const fragment = document.createDocumentFragment();
     for (const statement of statements) {
-      fragment.appendChild(renderRow(statement, findings.get(statement.index)));
+      const finding = findings.get(statement.index);
+      const severity = finding ? finding.severity : 'pending';
+      if (filter && severity !== filter) {
+        continue;
+      }
+      if (fold && isQuietlySafe(statement) && statement.index !== current) {
+        continue;
+      }
+      fragment.appendChild(renderRow(statement, finding));
     }
+
+    if (safeCount >= 2 && !filter) {
+      fragment.appendChild(renderSafeToggle(safeCount, fold));
+    }
+
     el.rows.replaceChildren(fragment);
+    renderCounts();
+  }
+
+  /** Safe, and with nothing to say beyond that. An error is never quiet. */
+  function isQuietlySafe(statement) {
+    const finding = findings.get(statement.index);
+    return Boolean(finding && finding.severity === 'safe' && !finding.error);
+  }
+
+  function renderSafeToggle(count, folded) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'safe-toggle';
+    toggle.textContent = folded
+      ? `${count} safe statements, folded. Show them`
+      : `Fold the ${count} safe statements`;
+    toggle.addEventListener('click', () => {
+      showSafe = folded;
+      render();
+    });
+    return toggle;
+  }
+
+  /**
+   * The counts, as filters.
+   *
+   * The summary said "2 would destroy data. Out of 40 statements." and left
+   * finding the two to the reader. Each count is now a button that shows only
+   * that severity, and pressing it again shows everything.
+   */
+  function renderCounts() {
+    const order = [
+      ['destructive', 'destructive'],
+      ['blocking', 'blocking'],
+      ['caution', 'to review'],
+      ['safe', 'safe'],
+    ];
+
+    const tally = new Map();
+    for (const finding of findings.values()) {
+      tally.set(finding.severity, (tally.get(finding.severity) || 0) + 1);
+    }
+
+    const present = order.filter(([severity]) => tally.get(severity));
+    // One severity alone has nothing to filter against.
+    if (present.length < 2 && !filter) {
+      el.counts.hidden = true;
+      el.counts.replaceChildren();
+      return;
+    }
+
+    const buttons = present.map(([severity, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `chip ${severity}`;
+      button.textContent = `${tally.get(severity)} ${label}`;
+      button.setAttribute('aria-pressed', String(filter === severity));
+      button.title = filter === severity ? 'Show every statement' : `Show only these`;
+      button.addEventListener('click', () => {
+        filter = filter === severity ? null : severity;
+        render();
+      });
+      return button;
+    });
+
+    el.counts.replaceChildren(...buttons);
+    el.counts.hidden = false;
   }
 
   function renderRow(statement, finding) {
@@ -264,6 +394,10 @@
 
     const row = document.createElement('div');
     row.className = `row ${severity}${current === statement.index ? ' current' : ''}`;
+    // Reachable from the keyboard: ↑ and ↓ move between rows, Enter goes to
+    // the statement in the file.
+    row.tabIndex = 0;
+    row.dataset.index = String(statement.index);
     row.addEventListener('click', () => {
       vscode.postMessage({ type: 'reveal', index: statement.index });
     });

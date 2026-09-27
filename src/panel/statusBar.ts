@@ -76,7 +76,7 @@ export class StatusBar implements vscode.Disposable {
       this.verdict.text = `$(error) ${destructive} destructive`;
       this.verdict.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
     } else if (blocking > 0) {
-      this.verdict.text = `$(warning) ${blocking} would fail`;
+      this.verdict.text = `$(warning) ${blocking} blocking`;
       this.verdict.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else if (caution > 0) {
       this.verdict.text = `$(info) ${caution} to review`;

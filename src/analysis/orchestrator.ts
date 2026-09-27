@@ -12,6 +12,7 @@ import { Blocker, LockProfile, lockProfileFor, wouldQueue } from './locks';
 import { rewritesFor } from './rewrite';
 import { blastRadiusSeverity, formatCount, plural, worst } from './severity';
 import { scaleNote } from './scale';
+import { explainStatementError } from './statementErrors';
 import { Finding, Sample, Thresholds } from './types';
 
 /**
@@ -132,7 +133,10 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
         classification,
         severity: 'caution',
         headline: "Couldn't analyze",
-        detail: describeError(error),
+        detail: explainStatementError(describeError(error), {
+          sql: statement.sql,
+          table: classification.table,
+        }),
         error: error instanceof Error ? error.message : String(error),
       });
     }

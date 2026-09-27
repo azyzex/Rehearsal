@@ -57,6 +57,7 @@ export function previewPanelHtml(options: HtmlOptions): string {
 <title>Rehearsal</title>
 </head>
 <body>
+<div id="top" class="top">
 <header id="header">
   <div class="title">
     <span class="badge-dot" aria-hidden="true"></span>
@@ -69,10 +70,13 @@ export function previewPanelHtml(options: HtmlOptions): string {
     </div>
     <span id="connection"></span>
     <button id="cancel" type="button" hidden>Stop</button>
+    <button id="copy" type="button" hidden title="Copy the findings as a Markdown table, for a pull request or a chat">Copy as Markdown</button>
     <button id="rerun" type="button" hidden title="Measure this file again">Run again</button>
   </div>
 </header>
 <div id="summary" class="summary" hidden aria-live="polite"></div>
+<div id="counts" class="counts" role="toolbar" aria-label="Filter by severity" hidden></div>
+</div>
 <main id="rows"></main>
 <div id="diagram" hidden></div>
 <footer id="footer">Nothing is committed. Rehearsal only ever reads and rolls back.</footer>
