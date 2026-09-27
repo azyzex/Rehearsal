@@ -108,6 +108,11 @@
         "command": "rehearsal.trySample",
         "title": "Try It on a Sample Database",
         "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.ormDrift",
+        "title": "Compare With the Prisma Schema",
+        "category": "Rehearsal"
       }
     ],
     "configuration": [

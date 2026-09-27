@@ -290,6 +290,10 @@ export function sidebarHtml(options: HtmlOptions): string {
     <span class="action-name">Schema health</span>
     <span class="action-why">Unindexed keys, unread indexes, stale statistics</span>
   </button>
+  <button class="action" type="button" data-command="rehearsal.ormDrift">
+    <span class="action-name">Compare with the Prisma schema</span>
+    <span class="action-why">Where the code and the database disagree</span>
+  </button>
   <button class="action" type="button" data-command="rehearsal.compareSchemas">
     <span class="action-name">Compare with another database</span>
     <span class="action-why">Drift between two environments</span>

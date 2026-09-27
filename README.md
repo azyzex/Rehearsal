@@ -677,6 +677,7 @@ source if you are changing the code.
 | `Rehearsal: Explore Schema` (`ctrl + alt + s`) | Draw the database, and edit it |
 | `Rehearsal: Try It on a Sample Database` | No database needed: builds a small SQLite file and previews a sample migration against it |
 | `Rehearsal: Preview This Statement` | The link above each statement: preview just that one |
+| `Rehearsal: Compare With the Prisma Schema` | Where `schema.prisma` and the database disagree: missing tables and columns, and null allowed in one and not the other |
 | `Rehearsal: Switch Connection` | Pick another saved database without opening the sidebar |
 | `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Rehearsal: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |

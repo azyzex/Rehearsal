@@ -18,6 +18,7 @@ import { StatusBar } from './panel/statusBar';
 import { RecentPreviews } from './panel/recent';
 import { StatementLenses, TableHover } from './panel/editorLens';
 import { buildSample } from './sample/sampleDatabase';
+import { compareWithPrisma, driftReport, parsePrisma } from './analysis/prismaDrift';
 import { SchemaSnapshot } from './adapters/types';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
@@ -161,6 +162,49 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
+
+    // What the Prisma schema believes against what the database is. Read from
+    // the file, compared with a snapshot, written as a document: nothing runs.
+    vscode.commands.registerCommand('rehearsal.ormDrift', async () => {
+      try {
+        const files = await vscode.workspace.findFiles('**/schema.prisma', '**/node_modules/**', 10);
+        if (files.length === 0) {
+          void vscode.window.showInformationMessage(
+            'There is no schema.prisma in this workspace. Rehearsal compares Prisma schemas; ' +
+              'Drizzle schemas are TypeScript, and reading them properly means running them.',
+          );
+          return;
+        }
+
+        let file = files[0]!;
+        if (files.length > 1) {
+          const picked = await vscode.window.showQuickPick(
+            files.map((uri) => ({ label: vscode.workspace.asRelativePath(uri), uri })),
+            { title: 'Which Prisma schema?' },
+          );
+          if (!picked) {
+            return;
+          }
+          file = picked.uri;
+        }
+
+        const connection = await connections.acquire();
+        const text = new TextDecoder().decode(await vscode.workspace.fs.readFile(file));
+        const snapshot = await connection.adapter.schemaSnapshot();
+        const drift = compareWithPrisma(parsePrisma(text), snapshot);
+
+        const document = await vscode.workspace.openTextDocument({
+          language: 'markdown',
+          content: driftReport(drift, {
+            schemaFile: vscode.workspace.asRelativePath(file),
+            connection: connection.identity.display,
+          }),
+        });
+        await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });
+      } catch (error) {
+        reportError(error, output, connections);
+      }
+    }),
 
     // No database, no credentials, no setup: a small SQLite file in the
     // extension's own storage, a sample migration beside it, and a preview

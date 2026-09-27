@@ -56,7 +56,7 @@ thing that looks broken in VS Code.
 - [x] 42. Constraints your data already satisfies
 - [x] 43. Partitioned and Timescale tables
 - [x] 44. WAL volume, and what it does to your replicas
-- [ ] 45. ORM schema drift
+- [x] 45. ORM schema drift
 - [ ] 46. Rehearse on a real copy
 - [ ] 47. SQL Server
 - [ ] 48. Query cost after the migration
