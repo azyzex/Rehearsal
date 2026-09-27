@@ -62,6 +62,47 @@ between two collections is a `$lookup` pipeline rather than a JOIN.
 - **Preview on save**, off by default, for the file the panel is already showing.
 - **One pull-request comment**, edited in place rather than added to.
 
+### Rehearse on a copy
+
+- **Rehearse on a Copy** (Postgres) copies the tables a migration touches into a
+  scratch schema, runs every statement for real, times each one, and rolls it
+  all back. The lock duration the preview could only estimate is measured.
+- It plans the busiest queries on those tables before and after, from
+  pg_stat_statements, and says how each one's cost and plan changed.
+- And it estimates who would have waited: each lock's real duration against
+  how often queries on the table arrive.
+
+### More measurements
+
+- The WAL a write produces, and that replicas will fall behind replaying it.
+- The free disk a table rewrite needs while it runs.
+- What the server says about its own backups, in the confirmation before a
+  destructive Apply.
+- Partitioned tables and TimescaleDB hypertables: a change reaches every
+  partition, and an index on a partitioned table is built partition by
+  partition — `CONCURRENTLY` on the parent is an error.
+- The Schema Health Report reads what the data says about its columns: never
+  filled, never null, unique in practice, or holding only a few values —
+  every candidate checked with an exact count before it is stated.
+- Compare With the Prisma Schema: missing tables and columns, and null
+  allowed in one place and not the other.
+
+### Getting around
+
+- A status bar showing the database in use and the last verdict; a quick
+  switcher between saved databases; a connection that stops answering says so.
+- Right-click menus, a title-bar button on MongoDB files, `ctrl + alt + s` for
+  the schema, CodeLens verdicts above each statement, table details on hover.
+- The preview panel: Run again, Copy as Markdown, progress and timing, safe
+  rows folded, severity filters, keyboard navigation, and errors that say what
+  they mean.
+- The schema explorer: readable column buttons, zoom controls, `/` to search,
+  `ctrl + z` to undo, layouts remembered per database.
+- Try it on a sample database — no setup, no credentials — and a Get Started
+  walkthrough. Recent previews in the sidebar. A lock-timeout quick fix.
+- Keyboard focus, reduced motion, accessible names and high-contrast themes
+  handled throughout.
+
 ### Fixed before it shipped
 
 A `CREATE UNIQUE INDEX` over duplicate values was analysed as an ordinary

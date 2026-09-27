@@ -227,6 +227,13 @@ describe('a migration file the size of a real one', () => {
       }
       const elapsed = Date.now() - started;
 
+      // Two hundred and seventy of them are safe, and fold into one line: the
+      // thirty that matter are what is drawn, as it should be.
+      assert.equal(await count(panel.page, '.row'), 30);
+      assert.match((await panel.page.textContent('.safe-toggle')) ?? '', /270 safe statements/);
+
+      // Unfolded, all three hundred still render, which is what this is for.
+      await panel.click('.safe-toggle');
       assert.equal(await count(panel.page, '.row'), 300);
       assert.deepEqual(panel.problems, []);
       // Every finding re-renders the list, which is fine at twenty rows and is

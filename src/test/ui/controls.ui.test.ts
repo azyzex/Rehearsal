@@ -278,7 +278,9 @@ describe('every control, pressed', () => {
       // menu entry that does nothing.
       const commands = (await panel.page.evaluate(`
         Array.prototype.map.call(
-          document.querySelectorAll('.action'),
+          // The connected panel's own actions. The sample database lives on
+          // the connect screen, which is hidden once something is connected.
+          document.querySelectorAll('#ready .action'),
           function (button) { return button.dataset.command; }
         )
       `)) as string[];

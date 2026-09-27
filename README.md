@@ -6,7 +6,7 @@ A dry run for your migrations: every statement is really executed against your
 real data, inside a transaction that is rolled back, and reported as a number
 rather than a guess. Postgres, MySQL, MongoDB and SQLite.
 
-> **Status: working, not yet published.** 1,206 tests: against a real Postgres,
+> **Status: working, not yet published.** 1,235 tests: against a real Postgres,
 > a real MySQL, a real MongoDB and a real SQLite, plus 168 that render the panels
 > in a browser and click them. All that is left is pressing publish — see
 > [PUBLISHING.md](PUBLISHING.md), which is free from end to end.

@@ -1,6 +1,7 @@
 import type { Rehearsal, RehearsalInput } from '../adapters/postgresRehearsal';
 import { SchemaSnapshot } from '../adapters/types';
 import { maskLiterals } from '../parser/mask';
+import { findTransactionControl } from '../parser/transactionControl';
 import { StatementLanguage } from '../parser/language';
 import { SplitStatement } from '../parser/splitter';
 import { formatCount } from './severity';
@@ -38,7 +39,9 @@ export function planRehearsal(
     }
 
     let skip: string | undefined;
-    if (/^\s*(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END)\b/i.test(masked)) {
+    // The project's own detector, rather than a pattern of its own: the one
+    // place allowed to know every spelling of ending a transaction.
+    if (findTransactionControl(statement.sql)) {
       skip = 'Transaction control. The rehearsal is one transaction already.';
     } else if (/\bCONCURRENTLY\b/i.test(masked)) {
       skip =
