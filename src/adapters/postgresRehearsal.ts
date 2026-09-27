@@ -37,6 +37,17 @@ export interface RehearsedStatement {
   readonly reason?: string;
 }
 
+/** Queries on one table, and how often they arrive. */
+export interface TableTraffic {
+  readonly table: string;
+  /** Reads a second, on average. */
+  readonly readsPerSecond: number;
+  /** Writes a second, on average. */
+  readonly writesPerSecond: number;
+  /** How long the averages were taken over, in seconds. */
+  readonly windowSeconds: number;
+}
+
 /** One of the database's busiest queries, planned before and after. */
 export interface QueryCost {
   readonly query: string;
@@ -62,6 +73,12 @@ export interface Rehearsal {
   readonly queries?: readonly QueryCost[];
   /** Why the queries were not measured, when they were not. */
   readonly queriesSkipped?: string;
+  /**
+   * How often queries on each copied table run, from pg_stat_statements: the
+   * traffic that would have waited behind a lock. Rates are averages over the
+   * window since the statistics were last reset.
+   */
+  readonly traffic?: readonly TableTraffic[];
   /** Why it did not run at all. */
   readonly skipped?: string;
   /** The tables copied, with their row counts. */
@@ -121,6 +138,7 @@ export async function rehearseOnCopy(
     // The queries worth measuring, read before the search path moves: the
     // statistics view lives in the public schema or wherever it was installed.
     const busiest = await busiestQueries(tx, input.tables);
+    const traffic = busiest.skipped ? [] : await trafficOn(tx, input.tables);
 
     // From here, unqualified names resolve to the copies. The caller has
     // already refused statements that name a schema explicitly, which is the
@@ -194,6 +212,7 @@ export async function rehearseOnCopy(
       statements,
       ...(busiest.queries.length > 0 ? { queries } : {}),
       ...(busiest.skipped ? { queriesSkipped: busiest.skipped } : {}),
+      ...(traffic.length > 0 ? { traffic } : {}),
     };
   });
 }
@@ -244,6 +263,50 @@ async function busiestQueries(
         'cannot read it. With it, the report shows what the migration does to the busiest ' +
         'queries on these tables.',
     };
+  }
+}
+
+/**
+ * Reads and writes a second on each table, from pg_stat_statements and the
+ * time since it was last reset. A query is counted against every table its
+ * text mentions, which overcounts a join across two copied tables; that errs
+ * toward warning, which is the side to err on.
+ */
+async function trafficOn(
+  tx: Transaction,
+  tables: readonly string[],
+): Promise<TableTraffic[]> {
+  await tx.savepoint('rehearsal_traffic');
+  try {
+    const window = await tx.query(
+      `SELECT GREATEST(extract(epoch FROM now() - stats_reset), 1)::float AS seconds
+         FROM pg_stat_statements_info`,
+    );
+    const seconds = Number(window.rows[0]?.['seconds'] ?? 0);
+    if (!seconds) {
+      return [];
+    }
+
+    const out: TableTraffic[] = [];
+    for (const table of tables) {
+      const result = await tx.query(
+        `SELECT COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(select|with)\\b'), 0)::float AS reads,
+                COALESCE(sum(calls) FILTER (WHERE query ~* '^\\s*(insert|update|delete|merge)\\b'), 0)::float AS writes
+           FROM pg_stat_statements
+          WHERE lower(query) LIKE $1`,
+        [`%${bare(table).toLowerCase()}%`],
+      );
+      out.push({
+        table,
+        readsPerSecond: Number(result.rows[0]?.['reads'] ?? 0) / seconds,
+        writesPerSecond: Number(result.rows[0]?.['writes'] ?? 0) / seconds,
+        windowSeconds: seconds,
+      });
+    }
+    return out;
+  } catch {
+    await tx.rollbackTo('rehearsal_traffic');
+    return [];
   }
 }
 

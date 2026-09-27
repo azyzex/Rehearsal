@@ -93,3 +93,32 @@ describe('rehearsing on a copy', () => {
     assert.equal(tiers.rows[0]?.n, 0);
   });
 });
+
+describe('who would have waited behind each lock', () => {
+  it('multiplies the real lock time by how often the table is queried', () => {
+    const statements = languageFor('postgres').split(
+      'ALTER TABLE orders ALTER COLUMN total TYPE bigint;\nCREATE INDEX idx_o ON orders (status);',
+    );
+
+    const report = rehearsalReport(
+      {
+        ran: true,
+        copied: [{ table: 'orders', rows: 300_000 }],
+        copyMilliseconds: 900,
+        statements: [
+          { index: 0, status: 'ran', milliseconds: 2000 },
+          { index: 1, status: 'ran', milliseconds: 1000 },
+        ],
+        traffic: [{ table: 'orders', readsPerSecond: 40, writesPerSecond: 10, windowSeconds: 7200 }],
+      },
+      statements,
+      { file: 'm.sql', connection: 'test' },
+    );
+
+    // ACCESS EXCLUSIVE blocks reads and writes: (40 + 10) a second for 2s.
+    assert.match(report, /\| 1 \| ACCESS EXCLUSIVE on orders \| 2\.0s \| reads and writes \| about 100 \|/);
+    // A plain index build takes SHARE, which lets reads through: 10 a second for 1s.
+    assert.match(report, /\| 2 \| SHARE on orders \| 1\.0s \| writes \| about 10 \|/);
+    assert.match(report, /averaged over the last 2 hours/);
+  });
+});

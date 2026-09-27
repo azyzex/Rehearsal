@@ -4,6 +4,8 @@ import { maskLiterals } from '../parser/mask';
 import { StatementLanguage } from '../parser/language';
 import { SplitStatement } from '../parser/splitter';
 import { formatCount } from './severity';
+import { lockProfileFor } from './locks';
+import { classify } from '../parser/classifier';
 
 /**
  * Which tables to copy, and which statements can be run against the copies.
@@ -183,6 +185,8 @@ export function rehearsalReport(
     lines.push(`_${rehearsal.queriesSkipped}_`, '');
   }
 
+  lines.push(...queueSection(rehearsal, statements));
+
   lines.push(
     '---',
     '',
@@ -195,6 +199,89 @@ export function rehearsalReport(
   );
 
   return lines.join('\n');
+}
+
+/**
+ * Who would have waited: each statement's real lock time, against how often
+ * queries on its table arrive.
+ *
+ * An estimate, and labelled as one — the rates are averages since the
+ * statistics were reset, and traffic comes in bursts. But the two inputs are
+ * both measured, which is more than "writes are blocked for roughly a second"
+ * ever was: a two-second lock on a table read forty times a second is eighty
+ * requests stuck behind it.
+ */
+function queueSection(rehearsal: Rehearsal, statements: readonly SplitStatement[]): string[] {
+  if (!rehearsal.traffic || rehearsal.traffic.length === 0) {
+    return [];
+  }
+
+  const rows: string[] = [];
+  for (const result of rehearsal.statements) {
+    const statement = statements.find((candidate) => candidate.index === result.index);
+    if (!statement || result.status !== 'ran' || !result.milliseconds) {
+      continue;
+    }
+
+    const classification = classify(statement.sql);
+    const profile = lockProfileFor(classification.kind, {
+      concurrently: classification.concurrently === true,
+    });
+    const blocksReads = profile.level === 'ACCESS EXCLUSIVE';
+    const blocksWrites = blocksReads || /^SHARE/.test(profile.level) && profile.level !== 'SHARE UPDATE EXCLUSIVE';
+    if (!blocksWrites) {
+      continue;
+    }
+
+    const table = classification.table?.toLowerCase();
+    const traffic = rehearsal.traffic.find(
+      (entry) => bareName(entry.table).toLowerCase() === (table ? bareName(table) : ''),
+    );
+    if (!traffic) {
+      continue;
+    }
+
+    const seconds = result.milliseconds / 1000;
+    const rate = (blocksReads ? traffic.readsPerSecond : 0) + traffic.writesPerSecond;
+    const waiting = Math.round(rate * seconds);
+    if (waiting < 1) {
+      continue;
+    }
+
+    rows.push(
+      `| ${statement.startLine + 1} | ${profile.level} on ${traffic.table} | ` +
+        `${formatMs(result.milliseconds)} | ${blocksReads ? 'reads and writes' : 'writes'} | ` +
+        `about ${formatCount(waiting)} |`,
+    );
+  }
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const window = rehearsal.traffic[0]!.windowSeconds;
+  return [
+    '## Who would have waited',
+    '',
+    'Each lock\'s real duration from the run above, against how often queries on the table',
+    `arrive (pg_stat_statements, averaged over the last ${describeWindow(window)}). An`,
+    'estimate: traffic comes in bursts, and a queue grows faster than an average says.',
+    '',
+    '| Line | Lock | Held for | Blocks | Requests that would queue |',
+    '| ---: | --- | ---: | --- | ---: |',
+    ...rows,
+    '',
+  ];
+}
+
+function describeWindow(seconds: number): string {
+  if (seconds < 3600) {
+    return `${Math.round(seconds / 60)} minutes`;
+  }
+  if (seconds < 172_800) {
+    return `${Math.round(seconds / 3600)} hours`;
+  }
+  return `${Math.round(seconds / 86_400)} days`;
 }
 
 function bareName(name: string): string {
