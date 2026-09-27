@@ -105,6 +105,7 @@
     if (message.type === 'schema') {
       snapshot = message.snapshot;
       baselineSnapshot = message.snapshot;
+      hostLayouts = message.layouts || {};
       el.connection.textContent = message.connection || '';
       populateSchemaFilter();
       build();
@@ -552,37 +553,51 @@
    * hidden and restored, which is the case that matters, and it costs nothing
    * if it is lost.
    */
+  /** Saved arrangements from the host, by database and schema. */
+  let hostLayouts = {};
+
   function savePositions() {
     const positions = {};
     for (const [name, node] of nodes) {
       positions[name] = { x: Math.round(node.x), y: Math.round(node.y) };
     }
     vscode.setState({ key: layoutKey(), positions });
+    // And on the host, per database: webview state is gone the moment the
+    // panel is closed, and it held one layout, so switching database lost the
+    // arrangement you had made for the last one.
+    hostLayouts[layoutKey()] = positions;
+    vscode.postMessage({ type: 'saveLayout', key: layoutKey(), positions });
   }
 
   function restorePositions() {
     const state = vscode.getState();
-    if (!state || state.key !== layoutKey() || !state.positions) {
+    const positions =
+      hostLayouts[layoutKey()] ||
+      (state && state.key === layoutKey() ? state.positions : undefined);
+    if (!positions) {
       return false;
     }
 
     // Only reuse a saved layout that still covers every table. A schema that
     // has gained a table since would otherwise stack the new one at the origin.
     for (const name of nodes.keys()) {
-      if (!state.positions[name]) {
+      if (!positions[name]) {
         return false;
       }
     }
 
     for (const [name, node] of nodes) {
-      node.x = state.positions[name].x;
-      node.y = state.positions[name].y;
+      node.x = positions[name].x;
+      node.y = positions[name].y;
     }
     return true;
   }
 
+  /** Which database and which schema. Not the table count: that is checked
+   *  table by table above, where a new table can be noticed rather than
+   *  silently changing the key and losing everything. */
   function layoutKey() {
-    return `${el.connection.textContent || ''}::${schemaFilter}::${nodes.size}`;
+    return `${el.connection.textContent || ''}::${schemaFilter}`;
   }
 
   function foreignKeyColumns(table) {
@@ -754,6 +769,8 @@
     // Explicitly throws away a hand-made arrangement, which is the only reason
     // anyone presses this.
     vscode.setState(undefined);
+    delete hostLayouts[layoutKey()];
+    vscode.postMessage({ type: 'saveLayout', key: layoutKey(), positions: null });
     layout();
     renderCards();
     renderEdges();

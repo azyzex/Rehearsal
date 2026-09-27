@@ -240,6 +240,23 @@
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.isContentEditable);
+    // ctrl + z takes back the last pending change. Changes are an ordered list
+    // and every click appends one, so undo is removing the newest — which is
+    // what someone who just clicked the wrong button means by it. Inside an
+    // input it stays the input's own undo.
+    if (
+      (event.key === 'z' || event.key === 'Z') &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !typing &&
+      !readOnly &&
+      changes.length > 0
+    ) {
+      event.preventDefault();
+      vscode.postMessage({ type: 'removeEdit', index: changes.length - 1 });
+      return;
+    }
+
     if (event.key === '/' && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const search = /** @type {HTMLInputElement | null} */ (document.getElementById('search'));
       if (search) {

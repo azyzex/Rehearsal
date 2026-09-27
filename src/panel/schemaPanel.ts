@@ -40,6 +40,8 @@ export interface SchemaHost {
   history?: ChangesetHistory;
 }
 
+const LAYOUTS = 'rehearsal.diagramLayouts';
+
 export class SchemaPanel {
   private static current: SchemaPanel | undefined;
 
@@ -114,7 +116,12 @@ export class SchemaPanel {
     this.session.setBaseline(snapshot, this.host?.adapter()?.engine ?? 'postgres');
     this.baseline = snapshot;
     this.connectionName = connection;
-    this.post({ type: 'schema', snapshot, connection });
+    this.post({
+      type: 'schema',
+      snapshot,
+      connection,
+      layouts: this.context.workspaceState.get<Record<string, unknown>>(LAYOUTS, {}),
+    });
     this.postChangeset();
   }
 
@@ -221,6 +228,10 @@ export class SchemaPanel {
 
         case 'exportSql':
           await this.exportSql();
+          break;
+
+        case 'saveLayout':
+          await this.saveLayout(String(message.key ?? ''), message.positions);
           break;
 
         case 'exportDown':
@@ -517,6 +528,24 @@ export class SchemaPanel {
    * type or its default. This is the whole reason down migrations are usually
    * wrong: they are written against the wrong version of the schema.
    */
+  /**
+   * One arrangement per database and schema, kept in workspace state so it
+   * survives the panel being closed. Capped, so a workspace that has pointed
+   * at many databases does not carry every layout it ever made.
+   */
+  private async saveLayout(key: string, positions: unknown): Promise<void> {
+    if (!key) {
+      return;
+    }
+    const all = { ...this.context.workspaceState.get<Record<string, unknown>>(LAYOUTS, {}) };
+    delete all[key];
+    if (positions) {
+      all[key] = positions;
+    }
+    const kept = Object.fromEntries(Object.entries(all).slice(-30));
+    await this.context.workspaceState.update(LAYOUTS, kept);
+  }
+
   private async exportDown(): Promise<void> {
     const state = this.session.state();
     if (state.changes.length === 0) {
