@@ -227,6 +227,26 @@
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !ui.drawer.hidden) {
       closeDrawer();
+      return;
+    }
+
+    // `/` jumps to the search box, as it does on GitHub and most docs sites.
+    // Not while typing somewhere else: a slash in a column name or a filter
+    // is a slash.
+    const target = /** @type {HTMLElement} */ (event.target);
+    const typing =
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+    if (event.key === '/' && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const search = /** @type {HTMLInputElement | null} */ (document.getElementById('search'));
+      if (search) {
+        event.preventDefault();
+        search.focus();
+        search.select();
+      }
     }
   });
 

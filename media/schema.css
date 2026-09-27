@@ -795,16 +795,54 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
  * until you have already guessed it can do something. They are always present
  * now and merely quieter until the row is under the cursor.
  */
+/*
+ * Row actions are always visible and always fully opaque. They were at 55%
+ * opacity until hovered, which put the light theme's Drop button — already
+ * pale red on white — below any readable contrast. Quietness now comes from
+ * the text colour, which the theme chooses, rather than from transparency,
+ * which fights it.
+ */
 .row-actions {
   display: flex;
   gap: 3px;
-  opacity: 0.55;
-  transition: opacity 100ms ease;
+  opacity: 1;
 }
 
-.drawer-col:hover .row-actions,
-.data-row:hover .row-actions {
-  opacity: 1;
+/* A fixed size rather than em-of-em. 0.75em inside a 0.85em row was about
+   nine pixels: too small to read and too small to hit. */
+.row-actions .mini,
+.drawer-actions .mini {
+  font-size: 11px;
+  font-family: var(--vscode-font-family);
+  padding: 2px 8px;
+  min-height: 20px;
+  line-height: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.row-actions .mini:hover,
+.row-actions .mini:focus-visible,
+.drawer-actions .mini:hover {
+  color: var(--vscode-foreground);
+}
+
+.row-actions .mini.danger {
+  color: var(--s-danger);
+}
+
+/* Same specificity as the hover rule above, so it has to come after it: a
+   filled red button keeps the background colour for its text. */
+.row-actions .mini.danger:hover,
+.row-actions .mini.danger:focus-visible {
+  color: var(--vscode-editor-background);
+}
+
+kbd {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  padding: 0 4px;
+  border: 1px solid var(--s-border);
+  border-radius: 3px;
 }
 
 .drawer-actions {
@@ -928,4 +966,28 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
   border-top: 1px solid var(--s-border);
   border-left: 2px solid var(--vscode-charts-blue, #3794ff);
   background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.1));
+}
+
+/* ---- keyboard focus and motion, the same in every panel -----------------
+
+   Focus is drawn with the theme's own focus colour on everything that can be
+   reached from the keyboard, and only when the keyboard reached it: a ring on
+   every mouse click is noise, and no ring at all is a panel that cannot be used
+   without a mouse. */
+:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Someone who has asked their system for less motion gets none. The locate
+   pulse and the fades still finish; they just do not animate getting there. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

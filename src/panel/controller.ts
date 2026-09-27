@@ -186,6 +186,15 @@ export class PreviewPanel {
       void this.revealStatement(message.index);
       return;
     }
+    // Measures the same file again, whole: whatever the editor's selection is
+    // now, the panel is showing the file.
+    if (message.type === 'rerun') {
+      if (this.documentUri) {
+        void vscode.commands.executeCommand('rehearsal.previewFile', this.documentUri);
+      }
+      return;
+    }
+
     if (message.type === 'cancel') {
       this.host?.onCancel();
       return;

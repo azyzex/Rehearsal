@@ -54,6 +54,7 @@
     connection: /** @type {HTMLElement} */ (document.getElementById('connection')),
     cancel: /** @type {HTMLButtonElement} */ (document.getElementById('cancel')),
     summary: /** @type {HTMLElement} */ (document.getElementById('summary')),
+    rerun: /** @type {HTMLButtonElement} */ (document.getElementById('rerun')),
     rows: /** @type {HTMLElement} */ (document.getElementById('rows')),
     diagram: /** @type {HTMLElement} */ (document.getElementById('diagram')),
     tabList: /** @type {HTMLButtonElement} */ (document.getElementById('tab-list')),
@@ -102,6 +103,14 @@
     }
   });
 
+  /** When the current run began, for "Measured in 1.4s". */
+  let startedAt = 0;
+
+  el.rerun.addEventListener('click', () => {
+    el.rerun.hidden = true;
+    vscode.postMessage({ type: 'rerun' });
+  });
+
   function handle(message) {
     switch (message.type) {
       case 'begin':
@@ -121,12 +130,15 @@
         el.cancel.hidden = false;
         el.cancel.disabled = false;
         el.cancel.textContent = 'Stop';
-        el.summary.hidden = true;
+        el.rerun.hidden = true;
+        startedAt = Date.now();
+        showProgress();
         render();
         break;
 
       case 'finding':
         findings.set(message.finding.statementIndex, message.finding);
+        showProgress();
         render();
         break;
 
@@ -150,6 +162,7 @@
       case 'done':
         running = false;
         el.cancel.hidden = true;
+        el.rerun.hidden = false;
         showSummary(message.summary);
         render();
         if (view === 'diagram') {
@@ -160,6 +173,7 @@
       case 'failed':
         running = false;
         el.cancel.hidden = true;
+        el.rerun.hidden = false;
         el.rows.innerHTML = '';
         el.rows.appendChild(banner(message.message));
         break;
@@ -171,13 +185,54 @@
     }
   }
 
+  /**
+   * "Measuring 4 of 12…" while it runs.
+   *
+   * A long migration against a large table can take a minute, and a panel of
+   * grey rows with no count reads as hung. The count is the only honest
+   * progress there is: each statement takes as long as it takes.
+   */
+  function showProgress() {
+    if (!running) {
+      return;
+    }
+    const total = statements.length;
+    const done = findings.size;
+    el.summary.textContent =
+      total === 0 ? 'Measuring…' : `Measuring ${Math.min(done + 1, total)} of ${total}…`;
+    el.summary.classList.add('progress');
+    el.summary.hidden = false;
+  }
+
   function showSummary(text) {
+    el.summary.classList.remove('progress');
     if (!text) {
       el.summary.hidden = true;
       return;
     }
     el.summary.textContent = text;
+
+    // How long it took, beside what it found. Reassurance that it really ran,
+    // and the number people want before running it against something bigger.
+    if (startedAt) {
+      const elapsed = document.createElement('span');
+      elapsed.className = 'elapsed';
+      elapsed.textContent = ` Measured in ${formatElapsed(Date.now() - startedAt)}.`;
+      el.summary.appendChild(elapsed);
+    }
     el.summary.hidden = false;
+  }
+
+  function formatElapsed(ms) {
+    if (ms < 1000) {
+      return `${ms}ms`;
+    }
+    if (ms < 60000) {
+      return `${(ms / 1000).toFixed(1)}s`;
+    }
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.round((ms % 60000) / 1000);
+    return `${minutes}m ${seconds}s`;
   }
 
   function banner(text) {
@@ -226,9 +281,19 @@
     sql.textContent = oneLine(statement.sql);
     head.appendChild(sql);
 
-    const line = document.createElement('span');
+    // A link, and it looks like one. ":3" in small grey read as decoration;
+    // it was the way back to the statement and nobody could tell.
+    const line = document.createElement('button');
+    line.type = 'button';
     line.className = 'line-number';
-    line.textContent = `:${statement.startLine + 1}`;
+    line.textContent = `line ${statement.startLine + 1}`;
+    line.title = 'Show this statement in the file';
+    line.setAttribute('aria-label', `Go to line ${statement.startLine + 1}`);
+    line.addEventListener('click', (event) => {
+      // The row reveals on click too; one message is enough.
+      event.stopPropagation();
+      vscode.postMessage({ type: 'reveal', index: statement.index });
+    });
     head.appendChild(line);
 
     row.appendChild(head);

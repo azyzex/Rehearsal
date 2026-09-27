@@ -69,9 +69,10 @@ export function previewPanelHtml(options: HtmlOptions): string {
     </div>
     <span id="connection"></span>
     <button id="cancel" type="button" hidden>Stop</button>
+    <button id="rerun" type="button" hidden title="Measure this file again">Run again</button>
   </div>
 </header>
-<div id="summary" class="summary" hidden></div>
+<div id="summary" class="summary" hidden aria-live="polite"></div>
 <main id="rows"></main>
 <div id="diagram" hidden></div>
 <footer id="footer">Nothing is committed. Rehearsal only ever reads and rolls back.</footer>
@@ -95,7 +96,6 @@ export function schemaPanelHtml(options: HtmlOptions): string {
 <header id="toolbar">
   <div class="left">
     <span class="dot" aria-hidden="true"></span>
-    <span id="stats">Reading the schema…</span>
     <span id="view-toggle" class="toggle" hidden>
       <button id="view-before" class="seg active" type="button">Now</button>
       <button id="view-after" class="seg" type="button">After changes</button>
@@ -159,7 +159,8 @@ export function schemaPanelHtml(options: HtmlOptions): string {
 <footer id="legend">
   <span><i class="swatch pk"></i> primary key</span>
   <span><i class="swatch fk"></i> foreign key</span>
-  <span>Drag to move · scroll to zoom · click a table to open it</span>
+  <span>Drag to move · scroll to zoom · click a table to open it · <kbd>/</kbd> to search</span>
+  <span id="stats">Reading the schema…</span>
   <span id="connection"></span>
 </footer>
 

@@ -209,11 +209,34 @@ main {
   min-width: 0;
 }
 
-.line-number {
+.summary.progress {
   color: var(--vscode-descriptionForeground);
-  font-size: 0.82em;
-  font-family: var(--vscode-editor-font-family);
+  font-style: italic;
+}
+
+.summary .elapsed {
+  color: var(--vscode-descriptionForeground);
+}
+
+#rerun {
+  margin-left: 6px;
+}
+
+.line-number {
   flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.line-number:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
 }
 
 .detail {
@@ -995,4 +1018,28 @@ footer {
   white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---- keyboard focus and motion, the same in every panel -----------------
+
+   Focus is drawn with the theme's own focus colour on everything that can be
+   reached from the keyboard, and only when the keyboard reached it: a ring on
+   every mouse click is noise, and no ring at all is a panel that cannot be used
+   without a mouse. */
+:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Someone who has asked their system for less motion gets none. The locate
+   pulse and the fades still finish; they just do not animate getting there. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -118,8 +118,12 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!target) {
         return;
       }
-      await vscode.window.showTextDocument(target, { preview: false });
-      await runPreview();
+      // Passed as the document rather than left to the active editor: from
+      // the Explorer, or from the panel's Run again, the file is what was
+      // asked for — not whatever happens to be selected in it.
+      const document = await vscode.workspace.openTextDocument(target);
+      await vscode.window.showTextDocument(document, { preview: false, preserveFocus: true });
+      await runPreview(document);
     }),
 
     // Changing database without opening the sidebar. The sidebar's own

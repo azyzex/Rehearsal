@@ -21,17 +21,17 @@ thing that looks broken in VS Code.
 - [x] 7. Editor title button on MongoDB operation files too
 - [x] 8. A shortcut for Explore Schema
 - [x] 9. Settings grouped: Connection / Safety / Engines / Experimental
-- [ ] 10. Visible keyboard focus in every panel
-- [ ] 11. Reduced motion respected in the diagram
-- [ ] 12. Preview: line references that look like the links they are
+- [x] 10. Visible keyboard focus in every panel
+- [x] 11. Reduced motion respected in the diagram
+- [x] 12. Preview: line references that look like the links they are
 - [x] 13. Status bar: current connection and engine
 - [x] 14. Switch connection from a quick pick
 - [x] 15. Status bar: the last preview's verdict
-- [ ] 16. Preview: Run again
-- [ ] 17. Preview: progress while running, time taken when done
-- [ ] 18. Schema explorer: `/` focuses search, Esc closes the drawer
-- [ ] 19. Schema explorer: column buttons you can actually hit
-- [ ] 20. Schema explorer: counts out of the crowded toolbar
+- [x] 16. Preview: Run again
+- [x] 17. Preview: progress while running, time taken when done
+- [x] 18. Schema explorer: `/` focuses search, Esc closes the drawer
+- [x] 19. Schema explorer: column buttons you can actually hit
+- [x] 20. Schema explorer: counts out of the crowded toolbar
 - [ ] 21. Preview: Copy as Markdown
 - [ ] 22. Preview: the verdict stays visible while scrolling
 - [ ] 23. Preview: safe statements collapsed into one line
