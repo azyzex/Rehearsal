@@ -146,6 +146,43 @@ export function rehearsalReport(
     );
   }
 
+  if (rehearsal.queries && rehearsal.queries.length > 0) {
+    lines.push(
+      '## What it does to the busiest queries on these tables',
+      '',
+      'From pg_stat_statements, planned on the copies before and after the migration. Costs',
+      'are the planner\'s units, not milliseconds: what matters is the ratio, and whether the',
+      'plan changed.',
+      '',
+      '| Query | Before | After | Plan |',
+      '| --- | ---: | ---: | --- |',
+    );
+    for (const query of rehearsal.queries) {
+      const text = query.query.replace(/\s+/g, ' ').slice(0, 60).replace(/\|/g, '\\|');
+      if (!query.before || !query.after) {
+        lines.push(`| \`${text}\` | | | could not be planned: ${String(query.unplanned).slice(0, 80)} |`);
+        continue;
+      }
+      const ratio = query.after.cost / Math.max(query.before.cost, 0.01);
+      const change =
+        ratio < 0.8
+          ? `**${Math.round(1 / ratio)}× cheaper**`
+          : ratio > 1.25
+            ? `**${ratio.toFixed(1)}× dearer**`
+            : 'about the same';
+      const before = query.before.scans.join(', ');
+      const after = query.after.scans.join(', ');
+      const plan = before === after ? change : `${change}: ${before || '—'} → ${after || '—'}`;
+      lines.push(
+        `| \`${text}\` | ${Math.round(query.before.cost).toLocaleString()} | ` +
+          `${Math.round(query.after.cost).toLocaleString()} | ${plan} |`,
+      );
+    }
+    lines.push('');
+  } else if (rehearsal.queriesSkipped) {
+    lines.push(`_${rehearsal.queriesSkipped}_`, '');
+  }
+
   lines.push(
     '---',
     '',

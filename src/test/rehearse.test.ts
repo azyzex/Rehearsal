@@ -64,6 +64,13 @@ describe('rehearsing on a copy', () => {
 
     const report = rehearsalReport(rehearsal, statements, { file: 'm.sql', connection: 'test' });
     assert.match(report, /It stops at line 4/);
+
+    // The fixture has no pg_stat_statements, so the queries section says why
+    // it is absent rather than being silently empty.
+    if (!rehearsal.queries) {
+      assert.match(String(rehearsal.queriesSkipped), /pg_stat_statements|Postgres 16/);
+      assert.match(report, /Queries were not planned/);
+    }
   });
 
   it('leaves the originals exactly as they were, and no copy behind', async () => {

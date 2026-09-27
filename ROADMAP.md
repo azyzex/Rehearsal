@@ -58,8 +58,8 @@ thing that looks broken in VS Code.
 - [x] 44. WAL volume, and what it does to your replicas
 - [x] 45. ORM schema drift
 - [x] 46. Rehearse on a real copy
-- [ ] 47. SQL Server
-- [ ] 48. Query cost after the migration
+- [ ] 47. SQL Server — **blocked**: needs a SQL Server to test against. There is no embedded one, and installing SQL Server Developer Edition or Docker needs administrator rights. Both are free; once either is here, this is one adapter, one dialect and one testbed.
+- [x] 48. Query cost after the migration
 - [ ] 49. Lock-queue replay
 
 ---
