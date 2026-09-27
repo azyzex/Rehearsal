@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import {
+  ColumnStatistic,
   BackupStatus,
   ColumnInfo,
   ConstraintInfo,
@@ -1209,6 +1210,52 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
+  /**
+   * pg_stats, for every column in every user table, with whether a single-
+   * column unique index already covers it. One query, no table scanned: the
+   * numbers are the ones ANALYZE sampled.
+   */
+  async columnStatistics(): Promise<ColumnStatistic[]> {
+    const result = await this.probe(
+      `SELECT s.schemaname AS schema,
+              s.tablename AS "table",
+              s.attname AS "column",
+              s.null_frac AS null_frac,
+              s.n_distinct AS n_distinct,
+              s.most_common_vals::text AS common,
+              NOT a.attnotnull AS nullable,
+              format_type(a.atttypid, a.atttypmod) AS type,
+              EXISTS (
+                SELECT 1 FROM pg_index i
+                 WHERE i.indrelid = c.oid
+                   AND i.indisunique
+                   AND i.indnatts = 1
+                   AND i.indkey[0] = a.attnum
+              ) AS unique_indexed
+         FROM pg_stats s
+         JOIN pg_namespace n ON n.nspname = s.schemaname
+         JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = s.tablename
+         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = s.attname
+        WHERE s.schemaname NOT IN ('pg_catalog', 'information_schema')
+          AND c.relkind IN ('r', 'p')`,
+    );
+
+    return result.rows.map((row) => {
+      const schema = String(row['schema']);
+      const table = String(row['table']);
+      return {
+        table: schema === 'public' ? table : `${schema}.${table}`,
+        column: String(row['column']),
+        nullFraction: Number(row['null_frac'] ?? 0),
+        distinct: Number(row['n_distinct'] ?? 0),
+        commonValues: parseArrayLiteral(row['common']),
+        uniqueIndexed: Boolean(row['unique_indexed']),
+        nullable: Boolean(row['nullable']),
+        type: String(row['type']),
+      };
+    });
+  }
+
   async supportsHypotheticalIndexes(): Promise<boolean> {
     const { rows } = await this.probe(`SELECT 1 FROM pg_extension WHERE extname = 'hypopg'`);
     return rows.length > 0;
@@ -1588,3 +1635,44 @@ export class UncertainApplyError extends Error {
     this.name = 'UncertainApplyError';
   }
 }
+
+/**
+ * A Postgres array literal as text, `{a,b,"c d"}`, into its elements. Only as
+ * much of the format as most_common_vals produces: quoted and unquoted
+ * elements, backslash escapes inside quotes, NULL left out.
+ */
+function parseArrayLiteral(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.startsWith('{') || !value.endsWith('}')) {
+    return [];
+  }
+
+  const body = value.slice(1, -1);
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < body.length) {
+    if (body[i] === '"') {
+      let item = '';
+      i += 1;
+      while (i < body.length && body[i] !== '"') {
+        if (body[i] === '\\' && i + 1 < body.length) {
+          i += 1;
+        }
+        item += body[i];
+        i += 1;
+      }
+      out.push(item);
+      i += 2; // closing quote and the comma after it
+    } else {
+      const end = body.indexOf(',', i);
+      const item = body.slice(i, end === -1 ? body.length : end);
+      if (item !== 'NULL') {
+        out.push(item);
+      }
+      i = end === -1 ? body.length : end + 1;
+    }
+  }
+
+  return out;
+}
+

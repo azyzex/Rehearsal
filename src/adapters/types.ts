@@ -326,6 +326,26 @@ export interface TriggerInfo {
 
 export type PrimaryKeyValue = Record<string, unknown>;
 
+/** One column, as the planner's statistics describe it. */
+export interface ColumnStatistic {
+  /** `schema.name`, or just `name` in the default schema. */
+  readonly table: string;
+  readonly column: string;
+  /** Fraction of rows with no value, 0 to 1. */
+  readonly nullFraction: number;
+  /**
+   * Distinct values: positive is a count, negative is a fraction of the rows
+   * (-1 means every row differs).
+   */
+  readonly distinct: number;
+  /** The most common values, when the column has few enough to list. */
+  readonly commonValues: readonly string[];
+  /** Already covered by a single-column unique index or constraint. */
+  readonly uniqueIndexed: boolean;
+  readonly nullable: boolean;
+  readonly type: string;
+}
+
 /** What a server can say about its own WAL archiving. */
 export interface BackupStatus {
   /** Whether continuous archiving is switched on at all. */
@@ -501,6 +521,13 @@ export interface DatabaseAdapter {
    * the same thing as "no backups".
    */
   backupStatus?(): Promise<BackupStatus | undefined>;
+
+  /**
+   * The planner's statistics for every column, where the engine keeps them.
+   * Approximate by nature — they come from sampling — so anything built on
+   * them is verified with an exact count before it is stated.
+   */
+  columnStatistics?(): Promise<ColumnStatistic[]>;
 
   /**
    * What `indexSql` would do to `query`.

@@ -27,6 +27,8 @@ export interface ReportOptions {
    * older caller that does not say should not silently change behaviour.
    */
   readonly engine?: Engine;
+  /** More sections, already measured, placed before the footer. */
+  readonly extra?: readonly string[];
 }
 
 export function healthReport(
@@ -51,6 +53,9 @@ export function healthReport(
   lines.push(...redundantSection(health));
   lines.push(...unusedSection(health, now));
   lines.push(...staleSection(health, small));
+  // Sections the caller measured separately, such as what the columns' own
+  // data says about them. Already verified; this only places them.
+  lines.push(...(options.extra ?? []));
 
   if (
     health.unindexedForeignKeys.length === 0 &&

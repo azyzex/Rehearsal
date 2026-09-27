@@ -52,8 +52,8 @@ thing that looks broken in VS Code.
 - [x] 38. Try it on a sample database — no setup, no credentials
 - [x] 39. Backup check before Apply
 - [x] 40. Will it run out of disk?
-- [ ] 41. Dead column report
-- [ ] 42. Constraints your data already satisfies
+- [x] 41. Dead column report
+- [x] 42. Constraints your data already satisfies
 - [ ] 43. Partitioned and Timescale tables
 - [ ] 44. WAL volume, and what it does to your replicas
 - [ ] 45. ORM schema drift

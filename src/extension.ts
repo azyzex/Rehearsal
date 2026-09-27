@@ -29,6 +29,7 @@ import { StatementLanguage, languageFor } from './parser/language';
 import { MigrationFile, findMigrations } from './migrations/discover';
 import { readLedger } from './migrations/ledger';
 import { healthReport } from './analysis/healthReport';
+import { columnSections, findColumnOpportunities } from './analysis/columnFindings';
 import { compareSchemas, comparisonReport } from './analysis/compare';
 import { adapterFor } from './adapters/select';
 import { APPLICATION_NAME } from './constants';
@@ -745,9 +746,41 @@ async function schemaHealth(
 ): Promise<void> {
   try {
     const connection = await connections.acquire();
-    const health = await vscode.window.withProgress(
+    const { health, extra } = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Rehearsal: reading the catalogue…' },
-      () => connection.adapter.schemaHealth(),
+      async (progress) => {
+        const health = await connection.adapter.schemaHealth();
+
+        // What the columns' own data says about them, where the engine keeps
+        // statistics to start from. Each candidate is checked with an exact
+        // count before it is reported.
+        let extra: string[] = [];
+        if (connection.adapter.columnStatistics) {
+          progress.report({ message: 'checking what the data says about its columns…' });
+          const statistics = await connection.adapter.columnStatistics().catch(() => []);
+          const snapshot = await connection.adapter.schemaSnapshot();
+          const rows = new Map(snapshot.tables.map((table) => [table.qualified, table.rows]));
+          const findings = await findColumnOpportunities(connection.adapter, statistics, rows);
+
+          // Columns nothing fills in are only interesting if nothing reads them
+          // either, so those few get a search of the workspace.
+          const references = new Map<string, number>();
+          if (findings.neverFilled.length > 0) {
+            const workspace = await workspaceSourceFiles().catch(() => undefined);
+            if (workspace) {
+              for (const entry of findings.neverFilled.slice(0, 10)) {
+                const scan = await scanReferences(entry.column, workspace).catch(() => undefined);
+                if (scan) {
+                  references.set(`${entry.table}.${entry.column}`, scan.references.length);
+                }
+              }
+            }
+          }
+          extra = columnSections(findings, references);
+        }
+
+        return { health, extra };
+      },
     );
 
     const document = await vscode.workspace.openTextDocument({
@@ -755,6 +788,7 @@ async function schemaHealth(
       content: healthReport(health, {
         connection: connection.identity.display,
         engine: connection.adapter.engine,
+        extra,
       }),
     });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One });

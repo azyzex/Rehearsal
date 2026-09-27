@@ -142,6 +142,17 @@ const ALLOWED = new Map<string, string>([
       'but Postgres in its first three lines.',
   ],
   [
+    'src/analysis/columnFindings.ts',
+    'One predicate, IS NULL and IN, which every SQL engine reads the same way, with ' +
+      'the identifier quoted by the adapter rather than here. It is only reached on ' +
+      'an engine with column statistics, which today is Postgres.',
+  ],
+  [
+    'src/sample/sampleDatabase.ts',
+    'Builds the SQLite sample database, which is SQLite by definition: it opens the ' +
+      'file with node:sqlite directly and never goes near a user connection.',
+  ],
+  [
     'src/edit/sqliteStatements.ts',
     'The SQLite writer, alongside the MongoDB one. Most of it is refusals: ' +
       'SQLite has four ALTER TABLE operations and no way to express the rest.',
