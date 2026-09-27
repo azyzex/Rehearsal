@@ -36,7 +36,7 @@ The extension is installed, so there is no `f5` any more:
 
 ```
 npm run vsix
-code --install-extension rehearsal-0.0.1.vsix
+code --install-extension rehearsal-0.1.0.vsix
 ```
 
 1. Open `testbed/postgres-shop` as a folder in VS Code (`ctrl + k` then
@@ -228,6 +228,94 @@ Do this one on a table you do not mind changing.
 - [ ] `ctrl + shift + p` → `Rehearsal: Compare With Another Database`.
 - [ ] Paste the same connection string as the current one.
 - [ ] **Expect:** "The two schemas match."
+
+---
+
+## The newest surface, and therefore the least exercised
+
+Five of these did not exist when the rest of this list was written, and a sixth
+engine arrived with them. Nothing here has ever been pressed in a real editor.
+
+### 7. Quick fixes in the file
+
+The panel has always been able to say "this should have been CONCURRENTLY".
+Now the file can apply it.
+
+- [ ] Preview `migrations/0007_update.sql` against the Postgres testbed.
+- [ ] Put the cursor on the `CREATE INDEX` line. A squiggle should be under it
+      and a lightbulb in the gutter.
+- [ ] Press `ctrl + .`.
+- [ ] **Look for:** *Build it without locking* in the list.
+- [ ] Choose it. The statement should be replaced in the file, with the
+      reasoning above it as `--` comments and a line saying the replacement
+      cannot share a transaction.
+- [ ] **The thing most likely to be wrong:** the replacement landing in the
+      wrong place, eating the semicolon, or duplicating one. Check the file
+      still parses — preview it again.
+- [ ] On the `SET NOT NULL` line, `ctrl + .` should offer the backfill *first*,
+      because twelve rows have no email and no rewrite makes that apply.
+
+### 8. The down migration, checked by running it
+
+- [ ] Open the schema explorer, drop a column with a default (`users.tier` has
+      one), and press **Down SQL**.
+- [ ] **Look for:** a comment block at the very top of the generated file
+      saying either *came back exactly as it was* or *DOES NOT FULLY REVERSE*
+      with a list under it.
+- [ ] It should take a second or two. That pause is the change being applied
+      and reversed for real, inside a transaction that is rolled back.
+- [ ] **Then check nothing happened:** the column is still there in the
+      diagram, and the table still has its rows.
+
+### 9. Safe steps
+
+- [ ] With a rename or a drop pending, a **Safe steps** button should appear
+      beside **Down SQL**. With only an `ADD COLUMN` pending it should not:
+      that change is already safe in one deploy.
+- [ ] Press it. **Look for:** a file of numbered deploys, the ones that are
+      application changes marked `NO SQL.`, and a banner saying steps with
+      different numbers must not ship together.
+- [ ] **Worth reading once:** the trigger in a rename plan should check
+      `TG_OP = 'INSERT'`. Without that it throws on every insert, which is
+      worse than having no plan at all.
+
+### 10. Preview on save
+
+- [ ] Turn on `rehearsal.previewOnSave` in settings.
+- [ ] With a preview panel open on a file, edit it and save.
+- [ ] **Look for:** the panel re-measuring on its own.
+- [ ] **Then the guard:** close the panel, save again, and confirm *nothing*
+      happens. A save must never be the thing that opens a connection.
+
+### 11. Production scale
+
+- [ ] Set `rehearsal.productionRows` to `{"users": 40000000}`.
+- [ ] Preview anything touching `users`.
+- [ ] **Look for:** a second, greyer line under the detail beginning
+      *At production size*.
+- [ ] **The case worth seeing:** point it at a database where `users` is empty.
+      It should say so loudly — that is where every answer is zero and the
+      panel is confidently useless.
+
+### 12. SQLite
+
+```
+npm run testbed:sqlite
+```
+
+Writes a file and exits. Paste the printed `sqlite:` string into the sidebar.
+
+- [ ] The engine badge should say **SQLite** before you press Connect.
+- [ ] Open `testbed/sqlite-notes/migrations/0001_tidy_notes.sql` and preview.
+- [ ] **Look for:** the unique index reported as *Will fail* with 62 duplicate
+      slugs — not as "locks the table briefly".
+- [ ] **And the cascade caveat:** the DELETE should count the tags it reaches
+      *and* say it cannot promise they go, because `PRAGMA foreign_keys` is off
+      by default.
+- [ ] In the schema explorer, try to change a column's type. It should refuse
+      by name and describe the table rebuild — not offer SQL that fails.
+- [ ] **On Node 20 or older** this engine should refuse to connect with a
+      sentence about `node:sqlite`, and the other three should be unaffected.
 
 ---
 

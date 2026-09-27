@@ -198,6 +198,39 @@ describe('SQLite', () => {
   });
 
   /**
+   * A unique index over duplicate values fails; it does not "lock briefly".
+   *
+   * The classifier used to throw the UNIQUE away, so every `CREATE UNIQUE
+   * INDEX` was analysed as an ordinary index build on every engine — a
+   * statement that cannot succeed, reported as one that merely costs
+   * something. A SQLite testbed with sixty-two duplicate slugs is what found
+   * it, which is the argument for having a testbed per engine.
+   */
+  it('refuses a unique index the data will not allow, rather than timing it', async () => {
+    const language = languageFor('sqlite');
+    const findings: Finding[] = [];
+
+    await analyzeStatements({
+      adapter,
+      // org_id is half 1 and half 2, so there is nothing unique about it.
+      statements: language.split('CREATE UNIQUE INDEX one_org ON users (org_id);'),
+      thresholds: {
+        cautionRows: 100,
+        destructiveRows: 1000,
+        largeTable: 100_000,
+        sampleSize: 5,
+        explainAnalyze: false,
+      },
+      onFinding: (finding) => findings.push(finding),
+    });
+
+    assert.equal(findings[0]!.severity, 'blocking');
+    assert.match(findings[0]!.headline, /Will fail/);
+    assert.match(findings[0]!.detail, /share a duplicate org_id/);
+    assert.doesNotMatch(findings[0]!.detail, /Writes are blocked/);
+  });
+
+  /**
    * The cascade that may not happen.
    *
    * `PRAGMA foreign_keys` is per connection and off by default in SQLite, so
@@ -215,8 +248,11 @@ describe('SQLite', () => {
     assert.equal(tree.children[0]!.rows, 50);
     assert.equal(tree.children[0]!.via?.action, 'cascade');
 
-    assert.match(String(tree.truncated), /per connection/);
-    assert.match(String(tree.truncated), /orphans/);
+    // `note`, not `truncated`: truncated means the walk stopped early and the
+    // real total is higher. This says the opposite — the total may be zero.
+    assert.match(String(tree.note), /per connection/);
+    assert.match(String(tree.note), /orphans/);
+    assert.equal(tree.truncated, undefined);
   });
 
   describe('the changes it has no syntax for', () => {

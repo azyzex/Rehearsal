@@ -331,19 +331,40 @@ describe('what the panel is told, with and without a copy', () => {
     assert.match(finding!.detail, /Data truncated|Incorrect integer value/i);
   });
 
-  it('catches a failure the counting missed entirely', async () => {
-    // This is the case that justifies the whole technique. Counted, a unique
-    // index reads as "locks the table briefly". Run against a copy, MySQL
-    // refuses it outright — eight rows share an email.
-    const sql = 'CREATE UNIQUE INDEX one_email ON users (email);';
+  it('catches a failure the counting calls safe', async () => {
+    // The case that justifies the whole technique, and it has moved once.
+    //
+    // It used to be a unique index over duplicate emails — until the counting
+    // path learned to check that, which is the better fix and made this test
+    // fail. What counting still cannot do is model MySQL's own rules, and a
+    // generated column is the clearest example: adding one touches no existing
+    // rows, so every probe says safe, and the server refuses it because the
+    // expression cannot be evaluated over the data that is there.
+    const sql = "ALTER TABLE users ADD COLUMN gen INT AS (email + 1) STORED;";
 
     const [counted] = await findingsFor(sql, false);
-    assert.notEqual(counted!.severity, 'blocking', 'counting already caught this');
+    assert.equal(counted!.severity, 'safe', 'counting has learned to catch this');
 
     const [copied] = await findingsFor(sql, true);
     assert.equal(copied!.severity, 'blocking');
-    assert.match(copied!.detail, /Duplicate entry/i);
+    assert.match(copied!.detail, /MySQL refused it/);
     assert.match(copied!.detail, /dupe@example\.com/);
+
+    // And the count's sentence is gone rather than contradicted: "adding a
+    // nullable column touches no existing rows" directly above the server
+    // refusing to add it reads as a tool arguing with itself.
+    assert.doesNotMatch(copied!.detail, /touches no existing rows/);
+  });
+
+  it('keeps the count when the two agree, because they answer different halves', async () => {
+    // Here counting is right and the copy confirms it. The count says how many
+    // rows are in the way; the server says which value it choked on. Both are
+    // worth having, so both are kept.
+    const [finding] = await findingsFor('ALTER TABLE users MODIFY email INT NOT NULL;', true);
+
+    assert.equal(finding!.severity, 'blocking');
+    assert.match(finding!.detail, /12 rows have no email/);
+    assert.match(finding!.detail, /MySQL refused it/);
   });
 
   it('confirms a change that works, and says how long it took', async () => {

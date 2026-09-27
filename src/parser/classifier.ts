@@ -62,6 +62,15 @@ export interface Classification {
   readonly columns?: string[];
   /** True when a `CREATE INDEX` says CONCURRENTLY. */
   readonly concurrently?: boolean;
+  /**
+   * True for `CREATE UNIQUE INDEX`.
+   *
+   * It was dropped on the floor until a SQLite testbed built an index over
+   * sixty-two duplicate slugs and the panel called it "locks the table
+   * briefly" — a statement that cannot succeed, reported as a statement that
+   * merely costs something.
+   */
+  readonly unique?: boolean;
   /** False for an UPDATE or DELETE with no WHERE clause at all. */
   readonly hasWhere?: boolean;
   /** True when the statement already ends in RETURNING, which changes sampling. */
@@ -169,14 +178,15 @@ export function classify(sql: string): Classification {
   }
 
   const createIndex = re(
-    String.raw`^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(CONCURRENTLY\s+)?(?:(?:IF\s+NOT\s+EXISTS\s+)?${IDENT}\s+)?ON\s+(?:ONLY\s+)?(${QUALIFIED})\s*(?:USING\s+${IDENT}\s*)?\(([\s\S]*)\)`,
+    String.raw`^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+(CONCURRENTLY\s+)?(?:(?:IF\s+NOT\s+EXISTS\s+)?${IDENT}\s+)?ON\s+(?:ONLY\s+)?(${QUALIFIED})\s*(?:USING\s+${IDENT}\s*)?\(([\s\S]*)\)`,
   ).exec(masked);
   if (createIndex) {
     return {
       kind: 'create_index',
-      table: ident(cap(createIndex, 2)!),
-      concurrently: Boolean(createIndex[1]),
-      columns: splitColumns(cap(createIndex, 3) ?? ''),
+      table: ident(cap(createIndex, 3)!),
+      unique: Boolean(createIndex[1]),
+      concurrently: Boolean(createIndex[2]),
+      columns: splitColumns(cap(createIndex, 4) ?? ''),
     };
   }
 

@@ -6,7 +6,7 @@ A dry run for your migrations: every statement is really executed against your
 real data, inside a transaction that is rolled back, and reported as a number
 rather than a guess. Postgres, MySQL, MongoDB and SQLite.
 
-> **Status: working, not yet published.** 1,204 tests: against a real Postgres,
+> **Status: working, not yet published.** 1,206 tests: against a real Postgres,
 > a real MySQL, a real MongoDB and a real SQLite, plus 168 that render the panels
 > in a browser and click them. All that is left is pressing publish — see
 > [PUBLISHING.md](PUBLISHING.md), which is free from end to end.
@@ -23,7 +23,7 @@ rather than a guess. Postgres, MySQL, MongoDB and SQLite.
 ```
 npm install
 npm run vsix
-code --install-extension rehearsal-0.0.1.vsix
+code --install-extension rehearsal-0.1.0.vsix
 ```
 
 Then click the database icon in the activity bar. Paste a connection string and
@@ -335,6 +335,10 @@ enforced in code rather than described in a comment.
 | **MongoDB** | roll back | **refused by the server** | a replica set | read before and after |
 | **SQLite** | roll back | roll back | Node 22 or newer | `RETURNING`, exact |
 
+Each has a testbed you can build in one command and throw away afterwards —
+`npm run testbed:db`, `:mysql`, `:mongo`, `:sqlite`. None of them needs an
+account, a container runtime, or administrator rights.
+
 SQLite is the pair MySQL needed. MySQL has every feature of a large database
 and cannot take a schema change back; SQLite has almost none and can. An
 `ALTER TABLE` there runs inside a transaction and a `ROLLBACK` really undoes it,
@@ -389,16 +393,32 @@ Counting is a good answer and it is still an inference. There is one way to get
 a real one on MySQL: copy the table, run the statement against the copy, drop
 the copy. Off by default, `rehearsal.mysql.measureOnCopy` turns it on.
 
-What it buys is the difference between a count and the server's own words:
+What it buys is the failures no probe can model, because they are MySQL's own
+rules rather than facts about your data:
 
 ```
-counted   Locks the table briefly — users has about 100 rows.
-copied    Will fail — Duplicate entry 'dupe@example.com' for key 'one_email'.
+counted   Safe — Adding a nullable column touches no existing rows.
+copied    Will fail — MySQL refused it: Truncated incorrect DOUBLE value:
+          'dupe@example.com'
 ```
 
-That second line is a failure the counting path missed entirely. A unique index
-on a column with duplicates reads, to a probe that measures locks and row
-counts, like an ordinary index build.
+That is a generated column whose expression cannot be evaluated over the data
+that is already there. Every probe says safe, correctly: adding a column really
+does touch no existing rows. The server still refuses it.
+
+The same happens with a `VARCHAR(21000)` that exceeds the row limit, an index
+prefix longer than the key part allows, and a second primary key. None of those
+are questions about your rows, so no amount of counting reaches them.
+
+Where counting *does* catch something, the two are kept together — the count
+says how many rows are in the way, and the server says which value it choked
+on:
+
+```
+Will fail — 12 rows have no email. The migration stops here, partway applied.
+Run against a copy of the table, MySQL refused it: Data truncated for column
+'email' at row 1
+```
 
 The rules it works under are strict, because it is the only part of Rehearsal that
 writes:
@@ -600,14 +620,16 @@ queries instead.
 
 Stated plainly, because a README that hides them makes the rest less believable.
 
-- **The three engines answer differently, and two of them answer less.** All
-  three are implemented; what changes is how much the preview can promise. On
-  Postgres a schema change is really executed and really rolled back. MySQL
-  commits DDL implicitly, so schema changes there are measured by counting and
-  never run, and a changeset containing one cannot be applied as a single unit.
-  MongoDB needs a replica set for transactions at all — against a standalone
-  server it refuses to preview rather than running something it could not take
-  back. See the table above for which is which.
+- **The four engines answer differently, and two of them answer less.** All
+  four are implemented; what changes is how much the preview can promise.
+  Postgres and SQLite really execute a schema change and really roll it back.
+  MySQL commits DDL implicitly, so schema changes there are measured by counting
+  and never run, and a changeset containing one cannot be applied as a single
+  unit. MongoDB needs a replica set for transactions at all — against a
+  standalone server it refuses to preview rather than running something it could
+  not take back. SQLite pays for its rollback elsewhere: it has four `ALTER
+  TABLE` operations and refuses the rest by name. See the table above for which
+  is which.
 - **Results reflect the database you connect to.** Pointed at an empty local dev
   database, every answer is zero and none of them are useful. Point it at staging
   or a replica — and set `rehearsal.productionRows`, which makes every finding say

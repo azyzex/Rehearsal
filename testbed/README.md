@@ -8,6 +8,7 @@ packaged into the extension — `testbed/` is excluded from the `.vsix`.
 | [`postgres-shop`](postgres-shop/) | Postgres | **live** — this is what v1 supports |
 | [`mysql-blog`](mysql-blog/) | MySQL | live |
 | [`mongo-analytics`](mongo-analytics/) | MongoDB | live — needs a replica set |
+| [`sqlite-notes`](sqlite-notes/) | SQLite | live — a file, needs Node 22 |
 
 Each one is seeded with data that is *deliberately messy* — nulls where a
 `NOT NULL` is about to be added, orphans where a foreign key is about to be
@@ -36,12 +37,13 @@ cloud database is for driving the extension by hand and recording the demo.
 
 ---
 
-## The short way: all three, locally, with nothing to sign up for
+## The short way: all four, locally, with nothing to sign up for
 
 ```
 npm run testbed:db      # Postgres  — embedded-postgres
 npm run testbed:mysql   # MySQL     — mysql-memory-server
 npm run testbed:mongo   # MongoDB   — mongodb-memory-server, as a replica set
+npm run testbed:sqlite  # SQLite    — writes a file and exits; nothing to run
 ```
 
 Each starts a real server, seeds it with the messy data below, writes the

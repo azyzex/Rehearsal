@@ -2,7 +2,7 @@
   "name": "rehearsal",
   "displayName": "Rehearsal",
   "description": "See what a database change will actually do to your data, before you do it.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "azizguenni",
   "private": true,
   "license": "MIT",
@@ -226,6 +226,7 @@
     "testbed:db": "node testbed/postgres-shop/scripts/local-db.mjs",
     "testbed:mysql": "node testbed/mysql-blog/scripts/local-db.mjs",
     "testbed:mongo": "node testbed/mongo-analytics/scripts/local-db.mjs",
+    "testbed:sqlite": "node testbed/sqlite-notes/scripts/local-db.mjs",
     "testbed:seed": "node testbed/postgres-shop/scripts/setup.mjs"
   },
   "dependencies": {

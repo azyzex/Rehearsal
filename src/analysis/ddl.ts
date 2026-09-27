@@ -248,6 +248,29 @@ async function countDdl(
     case 'create_index': {
       const stats = await adapter.tableStats(table!);
       const rows = stats.estimatedRows;
+
+      // A unique index over duplicate values does not lock the table for a
+      // while — it fails. Asked first, because "how long does this take" is
+      // the wrong question about a statement that never finishes.
+      if (classification.unique && classification.columns?.length) {
+        const columns = classification.columns;
+        const duplicates = await adapter
+          .countDuplicates(table!, columns)
+          .catch(() => undefined);
+
+        if (duplicates && duplicates.rows > 0) {
+          return {
+            severity: 'blocking',
+            headline: 'Will fail',
+            detail:
+              `${formatCount(duplicates.rows)} ${plural(duplicates.rows, 'row')} share a ` +
+              `duplicate ${columns.join(', ')}, across ${formatCount(duplicates.groups)} ` +
+              `${plural(duplicates.groups, 'value')}. The index cannot be built until ` +
+              `they are resolved.`,
+            rowCount: duplicates.rows,
+          };
+        }
+      }
       const severity = indexBuildSeverity(rows, classification.concurrently === true, thresholds);
 
       if (classification.concurrently) {
@@ -385,14 +408,24 @@ async function confirmOnCopy(
   }
 
   if (measured.succeeded === false) {
-    // The server's own words, which name the value the count could only total.
+    // Where the count already said this would fail, the two agree and the
+    // server's words are the detail the count could not produce: which value,
+    // which key, which row.
+    //
+    // Where the count said it was fine, they do not agree, and keeping the
+    // count's sentence would leave "Adding a nullable column touches no
+    // existing rows" immediately above the server refusing to add it. The
+    // count answered a question — are there rows in the way — that turned out
+    // not to be the one that mattered, so it is dropped rather than contradicted.
+    const agreed = counted.severity === 'blocking';
+
     return {
       ...counted,
       severity: worst([counted.severity, 'blocking']),
       headline: 'Will fail',
-      detail:
-        `${counted.detail} Run against a copy of the table, MySQL refused it: ` +
-        `${measured.error}`,
+      detail: agreed
+        ? `${counted.detail} Run against a copy of the table, MySQL refused it: ${measured.error}`
+        : `Run against a copy of the table, MySQL refused it: ${measured.error}`,
       estimated: false,
     };
   }

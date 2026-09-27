@@ -172,5 +172,9 @@ export function describeCascade(node: CascadeNode | undefined): string {
     parts.push(` The walk ${node.truncated}, so the real total may be higher.`);
   }
 
+  if (node.note) {
+    parts.push(` ${node.note}`);
+  }
+
   return parts.join('');
 }

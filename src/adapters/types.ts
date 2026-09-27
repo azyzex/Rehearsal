@@ -175,6 +175,16 @@ export interface CascadeNode {
   readonly children: readonly CascadeNode[];
   /** Set when the walk stopped early rather than finishing. */
   readonly truncated?: string;
+  /**
+   * A caveat about the whole walk, in its own sentence.
+   *
+   * Separate from `truncated`, which is specifically "it stopped early, so the
+   * real total is higher". SQLite needs to say something with the opposite
+   * sign — foreign keys may not be enforced at all, so the real total may be
+   * zero — and putting that in `truncated` produced a sentence that contained
+   * both claims and meant neither.
+   */
+  readonly note?: string;
 }
 
 export type CascadeAction =

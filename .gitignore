@@ -20,3 +20,6 @@ e2e.out.txt
 
 # The packaged extension. Built from source with npm run vsix.
 *.vsix
+
+# The SQLite testbed builds its own database file.
+testbed/sqlite-notes/notes.db

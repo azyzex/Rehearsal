@@ -501,7 +501,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return {
       ...root,
       children,
-      truncated:
+      note:
         'Counted as though foreign keys are enforced. PRAGMA foreign_keys is per ' +
         'connection and off by default in SQLite, so whether these rows are really ' +
         'deleted depends on the connection your application uses \u2014 with it off, ' +

@@ -46,7 +46,7 @@ name can be anything.
 ```bash
 npm install
 npm test          # 1,204 tests. Don't publish red.
-npm run vsix      # builds rehearsal-0.0.1.vsix
+npm run vsix      # builds rehearsal-0.1.0.vsix
 
 npx vsce login azizguenni     # paste the token from 1c
 npx vsce publish
@@ -77,7 +77,7 @@ here roughly doubles the reachable audience and costs one more account.
 1. Sign in at <https://open-vsx.org> with GitHub.
 2. Settings → **Access Tokens** → generate one.
 3. Sign the publisher agreement it prompts you for (free, one click).
-4. `npx ovsx publish rehearsal-0.0.1.vsix -p <token>`
+4. `npx ovsx publish rehearsal-0.1.0.vsix -p <token>`
 
 ---
 

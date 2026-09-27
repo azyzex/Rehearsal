@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.1 — unreleased
+## 0.1.0 — unreleased
 
 The first version. Not published yet.
 
@@ -34,9 +34,11 @@ changes it cannot express are refused by name with what the rebuild would take.
 
 On MySQL, a schema change can optionally be measured by running it against a
 copy of the table rather than by counting — off by default, because it is the
-only thing here that writes. What it buys is the server's own sentence
-("Duplicate entry 'dupe@example.com' for key 'one_email'") in place of a total,
-and it catches failures counting misses. The copy is dropped in a `finally`, and
+only thing here that writes. What it buys is the failures no probe can model,
+because they are MySQL's own rules rather than facts about the data: a
+generated column whose expression will not evaluate, a row that exceeds the
+size limit, an index prefix longer than the key allows. Counting calls all
+three safe, correctly and uselessly. The copy is dropped in a `finally`, and
 swept on the next connect if a crash left one behind.
 
 Each is written in its own language throughout — dropping a field is `$unset`
@@ -59,6 +61,14 @@ between two collections is a `$lookup` pipeline rather than a JOIN.
   rather than multiplied, because it is not linear.
 - **Preview on save**, off by default, for the file the panel is already showing.
 - **One pull-request comment**, edited in place rather than added to.
+
+### Fixed before it shipped
+
+A `CREATE UNIQUE INDEX` over duplicate values was analysed as an ordinary
+index build on every engine — "locks the table briefly" for a statement that
+cannot succeed. The classifier was dropping the UNIQUE. Found by building a
+SQLite testbed with sixty-two duplicate slugs in it, which is the argument for
+having one per engine.
 
 ### The demo
 
