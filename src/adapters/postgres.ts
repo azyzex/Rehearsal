@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import {
+  Partitioning,
   ColumnStatistic,
   BackupStatus,
   ColumnInfo,
@@ -1254,6 +1255,48 @@ export class PostgresAdapter implements DatabaseAdapter {
         type: String(row['type']),
       };
     });
+  }
+
+  /**
+   * Declarative partitions from pg_inherits, or TimescaleDB chunks when the
+   * extension is installed. `$1::regclass` resolves the name the way the
+   * statement would, quoted or schema-qualified.
+   */
+  async partitioning(table: string): Promise<Partitioning | undefined> {
+    try {
+      const declared = await this.probe(
+        `SELECT c.relkind = 'p' AS partitioned,
+                COALESCE((SELECT array_agg(i.inhrelid::regclass::text ORDER BY i.inhrelid::regclass::text)
+                            FROM pg_inherits i WHERE i.inhparent = c.oid), '{}') AS parts
+           FROM pg_class c
+          WHERE c.oid = $1::regclass`,
+        [table],
+      );
+      const row = declared.rows[0];
+      if (row && row['partitioned']) {
+        const parts = Array.isArray(row['parts']) ? (row['parts'] as unknown[]).map(String) : [];
+        return { kind: 'partitioned', parts, count: parts.length };
+      }
+    } catch {
+      return undefined;
+    }
+
+    try {
+      const hyper = await this.probe(
+        `SELECT num_chunks
+           FROM timescaledb_information.hypertables
+          WHERE format('%I.%I', hypertable_schema, hypertable_name)::regclass = $1::regclass`,
+        [table],
+      );
+      const row = hyper.rows[0];
+      if (row) {
+        return { kind: 'hypertable', parts: [], count: Number(row['num_chunks'] ?? 0) };
+      }
+    } catch {
+      // No TimescaleDB here, which is the usual case.
+    }
+
+    return undefined;
   }
 
   async supportsHypotheticalIndexes(): Promise<boolean> {

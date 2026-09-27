@@ -1,6 +1,6 @@
 import { Classification, StatementKind } from '../parser/classifier';
 import { Row, TriggerInfo } from '../adapters/types';
-import { CascadeNode } from '../adapters/types';
+import { CascadeNode, Partitioning } from '../adapters/types';
 import { Blocker, LockProfile } from './locks';
 import { AnalysedPlan } from './plan';
 import type { Rewrite } from './rewrite';
@@ -156,6 +156,8 @@ export interface Finding {
    * user supplied. Mixing them would make the whole row read as an estimate.
    */
   readonly atScale?: string;
+  /** Set when the target table is stored as partitions or chunks. */
+  readonly partitioning?: Partitioning;
   /** Set when the probe failed; the row shows as "couldn't analyze". */
   readonly error?: string;
 }

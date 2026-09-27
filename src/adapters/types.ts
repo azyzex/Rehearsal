@@ -346,6 +346,15 @@ export interface ColumnStatistic {
   readonly type: string;
 }
 
+/** A table stored as several: declarative partitions, or TimescaleDB chunks. */
+export interface Partitioning {
+  readonly kind: 'partitioned' | 'hypertable';
+  /** The partitions by name. Empty for a hypertable, whose chunks are managed. */
+  readonly parts: readonly string[];
+  /** How many partitions or chunks there are. */
+  readonly count: number;
+}
+
 /** What a server can say about its own WAL archiving. */
 export interface BackupStatus {
   /** Whether continuous archiving is switched on at all. */
@@ -528,6 +537,12 @@ export interface DatabaseAdapter {
    * them is verified with an exact count before it is stated.
    */
   columnStatistics?(): Promise<ColumnStatistic[]>;
+
+  /**
+   * Whether a table is split into partitions or chunks, and into what.
+   * Undefined for an ordinary table, or where the engine cannot say.
+   */
+  partitioning?(table: string): Promise<Partitioning | undefined>;
 
   /**
    * What `indexSql` would do to `query`.

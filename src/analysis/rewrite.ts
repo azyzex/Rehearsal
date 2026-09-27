@@ -52,7 +52,15 @@ export function rewritesFor(finding: Finding, engine = 'postgres'): Rewrite[] {
   switch (classification.kind) {
     case 'create_index':
       if (!classification.concurrently) {
-        rewrites.push(concurrentIndex(finding));
+        // CONCURRENTLY on a partitioned parent is an error, so the usual advice
+        // would hand someone a statement that does not run. The way that does
+        // is the index on the parent alone, built concurrently per partition,
+        // then attached.
+        rewrites.push(
+          finding.partitioning?.kind === 'partitioned' && finding.partitioning.parts.length > 0
+            ? partitionedIndex(finding, finding.partitioning.parts)
+            : concurrentIndex(finding),
+        );
       }
       break;
 
@@ -114,6 +122,40 @@ function concurrentIndex(finding: Finding): Rewrite {
     statements: [
       `CREATE INDEX CONCURRENTLY ${name} ON ${classification.table} (${columns})`,
     ],
+    needsSeparateTransactions: true,
+  };
+}
+
+/**
+ * An index on a partitioned table, without locking any partition's writes.
+ *
+ * `CREATE INDEX CONCURRENTLY` refuses a partitioned parent. The documented
+ * route: create the index on the parent only — invalid, and instant — build a
+ * matching index concurrently on each partition, and attach each one. The
+ * parent's index becomes valid when the last partition is attached.
+ */
+function partitionedIndex(finding: Finding, parts: readonly string[]): Rewrite {
+  const { classification } = finding;
+  const columns = (classification.columns ?? []).join(', ');
+  const suffix = (classification.columns ?? []).join('_');
+  const parent = `idx_${bare(classification.table ?? 'table')}_${suffix}`;
+
+  const statements = [`CREATE INDEX ${parent} ON ONLY ${classification.table} (${columns})`];
+  for (const part of parts) {
+    const child = `idx_${bare(part)}_${suffix}`;
+    statements.push(`CREATE INDEX CONCURRENTLY ${child} ON ${part} (${columns})`);
+    statements.push(`ALTER INDEX ${parent} ATTACH PARTITION ${child}`);
+  }
+
+  return {
+    title: `Build it partition by partition, without locking`,
+    rationale:
+      `${classification.table} is partitioned, and CREATE INDEX CONCURRENTLY refuses a ` +
+      `partitioned table outright. This creates the index on the parent alone, which is ` +
+      `instant, builds it concurrently on each of the ${parts.length} partitions so writes ` +
+      `keep working, and attaches each one. The parent's index becomes valid once the ` +
+      `last is attached.`,
+    statements,
     needsSeparateTransactions: true,
   };
 }

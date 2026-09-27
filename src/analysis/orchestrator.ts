@@ -1,4 +1,4 @@
-import { CascadeNode, DatabaseAdapter, TriggerInfo } from '../adapters/types';
+import { CascadeNode, DatabaseAdapter, Partitioning, TriggerInfo } from '../adapters/types';
 import { Classification, StatementKind } from '../parser/classifier';
 import { languageFor } from '../parser/language';
 import { maskLiterals } from '../parser/mask';
@@ -106,8 +106,22 @@ export async function analyzeStatements(options: AnalyzeOptions): Promise<void> 
         (trigger) => trigger.enabled && firesOn(trigger, classification.kind),
       );
 
+      // Partitions and chunks, for schema changes: the statement names one
+      // table and changes every partition of it, and an index on a partitioned
+      // table cannot be built concurrently at all.
+      const partitioning =
+        !DML_KINDS.has(classification.kind) && classification.table && adapter.partitioning
+          ? await adapter.partitioning(classification.table).catch(() => undefined)
+          : undefined;
+
       const withContext: Finding = {
         ...finding,
+        ...(partitioning
+          ? {
+              partitioning,
+              detail: `${finding.detail} ${describePartitioning(classification.table!, partitioning)}`,
+            }
+          : {}),
         ...(tableRows === undefined ? {} : { tableRows }),
         ...outlook,
         ...(firing.length > 0 ? { triggers: firing } : {}),
@@ -452,4 +466,14 @@ const WRITES: ReadonlySet<string> = new Set(['update', 'delete', 'insert', 'trun
  */
 function firesOn(trigger: TriggerInfo, kind: string): boolean {
   return trigger.events.includes(kind);
+}
+
+/** One sentence on what a change to a partitioned table really touches. */
+function describePartitioning(table: string, partitioning: Partitioning): string {
+  const count = partitioning.count;
+  return partitioning.kind === 'hypertable'
+    ? `${table} is a TimescaleDB hypertable: this is applied to each of its ${count} ` +
+        `${count === 1 ? 'chunk' : 'chunks'}.`
+    : `${table} is partitioned: this is applied to each of its ${count} ` +
+        `${count === 1 ? 'partition' : 'partitions'} as well.`;
 }

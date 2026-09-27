@@ -54,7 +54,7 @@ thing that looks broken in VS Code.
 - [x] 40. Will it run out of disk?
 - [x] 41. Dead column report
 - [x] 42. Constraints your data already satisfies
-- [ ] 43. Partitioned and Timescale tables
+- [x] 43. Partitioned and Timescale tables
 - [ ] 44. WAL volume, and what it does to your replicas
 - [ ] 45. ORM schema drift
 - [ ] 46. Rehearse on a real copy
