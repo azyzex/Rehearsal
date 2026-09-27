@@ -60,6 +60,13 @@ between two collections is a `$lookup` pipeline rather than a JOIN.
 - **Preview on save**, off by default, for the file the panel is already showing.
 - **One pull-request comment**, edited in place rather than added to.
 
+### The demo
+
+`npm run demo` starts a real Postgres, seeds it, measures a real migration and
+renders the findings through the panel's own markup. Every number in the
+recording is counted off a table rather than typed into a mockup, and the
+script is in the repository so anyone can check that.
+
 ### Safety
 
 - Previewing never commits. The rollback is in a `finally`.

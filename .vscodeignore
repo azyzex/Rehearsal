@@ -8,9 +8,17 @@ esbuild.js
 tsconfig*.json
 eslint.config.mjs
 REHEARSAL_SPEC.md
+PUBLISHING.md
+scripts/
 testbed/
 ui-shots/
 media/__ui-*.html
+
+# The demo. The Marketplace rewrites relative README links to the repository's
+# raw URL, so the recording loads from GitHub rather than adding two megabytes
+# to everyone's download.
+media/demo.gif
+media/demo-still.png
 MANUAL-CHECK.md
 examples/
 *.tmp.mjs

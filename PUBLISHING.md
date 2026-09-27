@@ -81,38 +81,37 @@ here roughly doubles the reachable audience and costs one more account.
 
 ---
 
-## 4. The demo recording
+## 4. The demo (already done, and how to better it)
 
-The README has a placeholder comment where the GIF goes. This is the single
-highest-value thing left, and it is the one thing nobody can do for you —
-it needs a real editor, a real database and your screen.
+`media/demo.gif` exists and is in the README. It is generated, not filmed:
 
-What to record, in under ten seconds:
-
-1. `testbed/postgres-shop` open, `npm run testbed:db` already running.
-2. Open `migrations/0007_update.sql`.
-3. Press `ctrl + alt + d`.
-4. Let the four rows land — red, red, amber, green — with the real 40,072 on
-   the first one.
-
-Stop there. Do not scroll, do not click anything else. The whole point is that
-the numbers arrive on their own.
-
-**Free tools:** ScreenToGif (Windows, open source) is the easiest — record,
-trim, export GIF. Keep it under 5 MB or GitHub will be slow to load it; 800px
-wide is plenty.
-
-Save it as `media/demo.gif`, then replace the placeholder comment at the top of
-`README.md` with:
-
-```markdown
-![Rehearsal previewing a migration](media/demo.gif)
+```bash
+npm run demo
 ```
 
-`media/demo.gif` is already outside `.vscodeignore`, so it ships in the vsix
-and shows on the Marketplace page too.
+That starts a real Postgres, seeds it with 50,000 users and 300,000 orders,
+runs the real analysis over a real migration, and renders the findings through
+the panel's own markup — the same `previewPanelHtml`, the same stylesheet, the
+same scripts the editor loads. So every number in it is counted off a table.
+The 40,000 and the 12 are measurements, not props. It also writes
+`media/demo-still.png` for anywhere that will not animate.
 
----
+**It is not a screen recording**, and that is worth being clear about: there is
+no editor around it, no cursor, and no keypress. It is the panel, at the size
+the panel opens at.
+
+A recording made in a real window would be better, and is the one thing here
+nobody can do for you. If you want to make one:
+
+1. `testbed/postgres-shop` open, `npm run testbed:db` running.
+2. Open `migrations/0007_update.sql`.
+3. Press `ctrl + alt + d`.
+4. Let the rows land. Stop there — no scrolling, no clicking. The point is
+   that the numbers arrive on their own.
+
+**Free tools:** ScreenToGif on Windows (open source) — record, trim, export.
+Keep it under 5 MB and around 800px wide. Save over `media/demo.gif` and the
+README needs no change.
 
 ## 5. The manual pass
 
