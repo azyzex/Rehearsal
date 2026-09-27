@@ -98,6 +98,11 @@
         "command": "rehearsal.switchConnection",
         "title": "Switch Connection",
         "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.previewStatement",
+        "title": "Preview This Statement",
+        "category": "Rehearsal"
       }
     ],
     "configuration": [
@@ -212,6 +217,12 @@
             "default": false,
             "description": "Re-run the preview when you save a file the Rehearsal panel is already showing. Only that file, and only when a connection is already open — saving never opens one.",
             "order": 2
+          },
+          "rehearsal.codeLens": {
+            "type": "boolean",
+            "default": true,
+            "order": 3,
+            "description": "Show a line above each statement in a migration file: its verdict once it has been previewed, or a link to preview just that statement."
           }
         }
       },
@@ -264,6 +275,10 @@
       "commandPalette": [
         {
           "command": "rehearsal.previewFile",
+          "when": "false"
+        },
+        {
+          "command": "rehearsal.previewStatement",
           "when": "false"
         }
       ]

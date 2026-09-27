@@ -112,9 +112,27 @@ export class FindingDiagnostics {
     this.publish();
   }
 
+  /** Told whenever what is measured changes, for the lenses above statements. */
+  onChanged(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  private readonly listeners: (() => void)[] = [];
+
+  private notify(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // A listener failing is not a reason to lose the diagnostics.
+      }
+    }
+  }
+
   clear(): void {
     this.findings.clear();
     this.collection.clear();
+    this.notify();
   }
 
   dispose(): void {
@@ -162,6 +180,7 @@ export class FindingDiagnostics {
     }
 
     this.collection.set(this.uri, diagnostics);
+    this.notify();
   }
 }
 

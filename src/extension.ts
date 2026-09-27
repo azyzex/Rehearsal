@@ -16,6 +16,8 @@ import { FindingDiagnostics } from './panel/diagnostics';
 import { RewriteActions } from './panel/quickFixes';
 import { StatusBar } from './panel/statusBar';
 import { RecentPreviews } from './panel/recent';
+import { StatementLenses, TableHover } from './panel/editorLens';
+import { SchemaSnapshot } from './adapters/types';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
 import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
@@ -98,6 +100,41 @@ export function activate(context: vscode.ExtensionContext): void {
   connections.onChanged(showConnection);
   showConnection();
 
+  // The schema for hovers, read once per connection and kept for a few
+  // minutes. Only ever from a connection that is already open: a hover must
+  // never be the thing that connects to a database.
+  let schemaCache: { key: string; at: number; snapshot: Promise<SchemaSnapshot | undefined> } | undefined;
+  const cachedSchema = (): Promise<SchemaSnapshot | undefined> => {
+    const current = connections.current;
+    if (!current) {
+      return Promise.resolve(undefined);
+    }
+    const key = current.identity.display;
+    if (!schemaCache || schemaCache.key !== key || Date.now() - schemaCache.at > 5 * 60_000) {
+      schemaCache = {
+        key,
+        at: Date.now(),
+        snapshot: current.adapter.schemaSnapshot().catch(() => undefined),
+      };
+    }
+    return schemaCache.snapshot;
+  };
+
+  const migrationFiles: vscode.DocumentSelector = [
+    { language: 'sql' },
+    { pattern: '**/*.mongodb.js' },
+    { pattern: '**/{migrations,operations}/*.js' },
+  ];
+  const lenses = new StatementLenses(diagnostics, () => connections.current?.adapter.engine);
+  connections.onChanged(() => {
+    schemaCache = undefined;
+    lenses.refresh();
+  });
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(migrationFiles, lenses),
+    vscode.languages.registerHoverProvider(migrationFiles, new TableHover(cachedSchema)),
+  );
+
   // One preview at a time. Two runs against one connection would interleave
   // their transactions, and the second would redraw rows the first is still
   // filling in.
@@ -122,6 +159,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
+
+    // From a lens: select the one statement and preview the selection, which
+    // is the path a hand selection already takes.
+    vscode.commands.registerCommand(
+      'rehearsal.previewStatement',
+      async (uri?: vscode.Uri, start?: number, end?: number) => {
+        // From the palette, or any caller without a statement: the whole file.
+        if (!uri || typeof start !== 'number' || typeof end !== 'number') {
+          await runPreview();
+          return;
+        }
+        const document = await vscode.workspace.openTextDocument(uri);
+        const editor = await vscode.window.showTextDocument(document, { preview: false });
+        editor.selection = new vscode.Selection(document.positionAt(start), document.positionAt(end));
+        await runPreview();
+      },
+    ),
 
     // From the Explorer's right-click menu: measure a file without opening it
     // first. It is opened anyway, beside nothing, because a row in the panel

@@ -46,8 +46,8 @@ thing that looks broken in VS Code.
 - [x] 32. Schema explorer: `ctrl + z` undoes the last pending change
 - [x] 33. Schema explorer: remember dragged positions per database
 - [x] 34. Contrast pass on small text, light and high-contrast themes
-- [ ] 35. Hover on a table name: rows, size, indexes
-- [ ] 36. CodeLens above each statement
+- [x] 35. Hover on a table name: rows, size, indexes
+- [x] 36. CodeLens above each statement
 - [ ] 37. Get Started walkthrough
 - [ ] 38. Try it on a sample database — no setup, no credentials
 - [ ] 39. Backup check before Apply

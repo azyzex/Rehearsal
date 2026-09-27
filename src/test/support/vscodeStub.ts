@@ -261,6 +261,18 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
     // being loaded — which reports as every end-to-end test being cancelled
     // rather than as anything to do with code actions.
     CodeActionKind: { QuickFix: { value: 'quickfix' } },
+    CodeLens: class {
+      constructor(
+        readonly range: unknown,
+        readonly command?: unknown,
+      ) {}
+    },
+    Hover: class {
+      constructor(
+        readonly contents: unknown,
+        readonly range?: unknown,
+      ) {}
+    },
     CodeAction: class {
       edit?: unknown;
       diagnostics?: unknown[];
@@ -484,6 +496,19 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
       },
 
       getDiagnostics: (): unknown[] => [],
+
+      // Lenses and hovers are registered at activation; nothing here draws
+      // them, but a missing function would stop the extension loading.
+      registerCodeLensProvider: (): { dispose(): void } => ({
+        dispose: () => {
+          disposed += 1;
+        },
+      }),
+      registerHoverProvider: (): { dispose(): void } => ({
+        dispose: () => {
+          disposed += 1;
+        },
+      }),
 
       createDiagnosticCollection: (name: string) => {
         diagnosticCollections.push(name);

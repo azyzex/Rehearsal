@@ -675,6 +675,7 @@ source if you are changing the code.
 |---|---|
 | `Rehearsal: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file, or the selection |
 | `Rehearsal: Explore Schema` (`ctrl + alt + s`) | Draw the database, and edit it |
+| `Rehearsal: Preview This Statement` | The link above each statement: preview just that one |
 | `Rehearsal: Switch Connection` | Pick another saved database without opening the sidebar |
 | `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Rehearsal: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
@@ -711,6 +712,7 @@ a preview takes.
 | `rehearsal.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
 | `rehearsal.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
 | `rehearsal.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
+| `rehearsal.codeLens` | `true` | Show a line above each statement: its verdict once previewed, or a link to preview just that statement. |
 | `rehearsal.previewOnSave` | `false` | Re-run the preview when you save a file the panel is already showing. Only that file, and only when a connection is already open — saving never opens one. |
 | `rehearsal.productionRows` | `{}` | How many rows each table holds in the database you actually deploy to, as `{"users": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. |
 | `rehearsal.mysql.measureOnCopy` | `false` | MySQL only. Measure a schema change by copying the table, running the statement against the copy and dropping it, instead of counting. Gives you the server's real error message. Off by default because it writes, and because copying a table costs the disk and the time. |
