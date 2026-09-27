@@ -334,6 +334,30 @@ button:disabled {
   opacity: 0.9;
 }
 
+.lost {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.lost #lost-text {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.lost button {
+  flex: none;
+  padding: 2px 10px;
+}
+
+.connected.is-lost .dot {
+  background: var(--vscode-editorWarning-foreground, #d29922);
+}
+
 /* ---- actions ------------------------------------------------------------- */
 
 .action {

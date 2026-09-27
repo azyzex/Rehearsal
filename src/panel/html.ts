@@ -262,6 +262,10 @@ export function sidebarHtml(options: HtmlOptions): string {
       <span class="dot"></span>
       <span id="connected-label"></span>
     </div>
+    <div id="lost" class="lost" role="alert" hidden>
+      <span id="lost-text">Not answering.</span>
+      <button id="reconnect" type="button">Reconnect</button>
+    </div>
     <div class="connected-meta">
       <span id="connected-engine" class="badge-engine"></span>
       <span id="connected-source"></span>

@@ -30,6 +30,9 @@
     connectedEngine: /** @type {HTMLElement} */ (document.getElementById('connected-engine')),
     connectedSource: /** @type {HTMLElement} */ (document.getElementById('connected-source')),
     connectedNote: /** @type {HTMLElement} */ (document.getElementById('connected-note')),
+    lost: /** @type {HTMLElement} */ (document.getElementById('lost')),
+    lostText: /** @type {HTMLElement} */ (document.getElementById('lost-text')),
+    reconnect: /** @type {HTMLButtonElement} */ (document.getElementById('reconnect')),
     disconnect: /** @type {HTMLButtonElement} */ (document.getElementById('disconnect')),
     footer: /** @type {HTMLElement} */ (document.getElementById('footer')),
   };
@@ -110,6 +113,16 @@
             : 'MySQL commits schema changes the moment they run, so they are measured by ' +
               'counting rather than by being run — and a changeset containing one cannot ' +
               'be applied as a single unit.';
+      }
+
+      // A connection that has stopped answering says so, instead of sitting
+      // under a green dot while every command fails.
+      el.lost.hidden = !state.connected.lost;
+      el.lost.closest('.connected').classList.toggle('is-lost', Boolean(state.connected.lost));
+      if (state.connected.lost) {
+        el.lostText.textContent = 'Not answering: ' + state.connected.lost;
+        el.reconnect.disabled = false;
+        el.reconnect.textContent = 'Reconnect';
       }
 
       show('ready');
@@ -307,6 +320,12 @@
   }
 
   // ---- wiring --------------------------------------------------------------
+
+  el.reconnect.addEventListener('click', () => {
+    el.reconnect.disabled = true;
+    el.reconnect.textContent = 'Reconnecting…';
+    vscode.postMessage({ type: 'reconnect' });
+  });
 
   el.connection.addEventListener('input', () => {
     el.error.hidden = true;

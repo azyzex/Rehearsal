@@ -52,8 +52,39 @@ export class ConnectionManager implements vscode.Disposable {
 
   constructor(private readonly state?: vscode.Memento) {}
 
+  /**
+   * Set when a command failed because the connection itself is gone.
+   *
+   * Postgres reconnects once on its own when a socket dies, so this is the
+   * case after that: the server really is unreachable. Without it the sidebar
+   * kept a green "connected" dot while every command failed underneath it.
+   */
+  private lostReason: string | undefined;
+
   get current(): ActiveConnection | null {
     return this.active;
+  }
+
+  get lost(): string | undefined {
+    return this.active ? this.lostReason : undefined;
+  }
+
+  /** The connection stopped answering. Said once, to everyone listening. */
+  markLost(reason: string): void {
+    if (this.lostReason === reason) {
+      return;
+    }
+    this.lostReason = reason;
+    this.changed();
+  }
+
+  /** Something just worked, so whatever was lost is back. */
+  markAlive(): void {
+    if (this.lostReason === undefined) {
+      return;
+    }
+    this.lostReason = undefined;
+    this.changed();
   }
 
   onChanged(listener: () => void): void {

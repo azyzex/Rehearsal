@@ -28,6 +28,31 @@ interface ErrorLike {
   readonly syscall?: unknown;
 }
 
+/**
+ * Whether a failure is the connection itself going away, on any engine.
+ *
+ * Not "the statement failed" — that is a finding. This is the socket, the
+ * server, or the network, and it is the one kind of failure that should change
+ * what the sidebar says about being connected.
+ */
+export function isConnectionLost(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const code = String((error as { code?: unknown }).code ?? '');
+  const name = String((error as { name?: unknown }).name ?? '');
+  const message = String((error as { message?: unknown }).message ?? '');
+
+  return (
+    ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ENOTCONN', 'ECONNREFUSED', 'EHOSTUNREACH',
+      'PROTOCOL_CONNECTION_LOST', '57P01', '57P02', '08006', '08003', '08000'].includes(code) ||
+    /^Mongo(Network|ServerSelection)Error$/.test(name) ||
+    /connection error and is not queryable|Connection terminated|server closed the connection unexpectedly|Connection lost|topology was destroyed/i.test(
+      message,
+    )
+  );
+}
+
 export function describeError(error: unknown): string {
   const explained = explain(error);
   if (explained) {

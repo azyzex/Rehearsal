@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { describeError } from './errors';
+import { describeError, isConnectionLost } from './errors';
 import { buildDiagram } from './analysis/impact';
 import { editsFromClassifications } from './edit/fromSql';
 import { findOffenders } from './analysis/offenders';
@@ -82,7 +82,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const showConnection = (): void => {
     const current = connections.current;
     statusBar.showConnection(
-      current ? { display: current.identity.display, engine: current.adapter.engine } : undefined,
+      current
+        ? {
+            display: current.identity.display,
+            engine: current.adapter.engine,
+            lost: connections.lost,
+          }
+        : undefined,
     );
   };
   connections.onChanged(showConnection);
@@ -100,6 +106,7 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       const result = await preview(context, connections, output, diagnostics, saved);
       if (result) {
+        connections.markAlive();
         statusBar.showVerdict(result.findings, result.file);
       }
     } finally {
@@ -192,6 +199,7 @@ export function activate(context: vscode.ExtensionContext): void {
           const result = await tx.query('SELECT version() AS v');
           return String(result.rows[0]?.['v'] ?? 'unknown');
         });
+        connections.markAlive();
         output.appendLine(`Connected to ${connection.identity.display} (via ${connection.source})`);
         output.appendLine(version);
         void vscode.window.showInformationMessage(
@@ -1050,6 +1058,10 @@ function reportError(
   connections?: ConnectionManager,
   quiet = false,
 ): void {
+  if (connections && isConnectionLost(error)) {
+    connections.markLost(errorMessage(error));
+  }
+
   if (error instanceof ProductionRefusedError) {
     output.appendLine(`Refused: ${error.message}`);
     if (quiet) {

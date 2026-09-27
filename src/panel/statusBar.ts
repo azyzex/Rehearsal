@@ -40,7 +40,9 @@ export class StatusBar implements vscode.Disposable {
   }
 
   /** The database in use, or an invitation to pick one. */
-  showConnection(current: { display: string; engine: Engine } | undefined): void {
+  showConnection(
+    current: { display: string; engine: Engine; lost?: string } | undefined,
+  ): void {
     if (!current) {
       this.connection.text = '$(database) Rehearsal';
       this.connection.tooltip = 'Not connected. Click to pick a database.';
@@ -51,6 +53,17 @@ export class StatusBar implements vscode.Disposable {
       return;
     }
 
+    if (current.lost) {
+      this.connection.text = `$(debug-disconnect) ${current.display}: not answering`;
+      this.connection.tooltip =
+        `The last command failed because the connection is gone: ${current.lost}\n\n` +
+        'Click to reconnect or pick another database.';
+      this.connection.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.connection.show();
+      return;
+    }
+
+    this.connection.backgroundColor = undefined;
     this.connection.text = `$(database) ${current.display}`;
     this.connection.tooltip = new vscode.MarkdownString(
       `**${current.display}** · ${engineName(current.engine)}\n\n` +

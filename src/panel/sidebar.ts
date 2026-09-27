@@ -83,6 +83,7 @@ export class Sidebar implements vscode.WebviewViewProvider {
             label: active.identity.display,
             engine: active.adapter.engine,
             engineName: engineName(active.adapter.engine),
+            lost: this.host.connections.lost,
             source: active.source,
             transactionalDdl: active.adapter.supportsTransactionalDDL,
           }
@@ -126,6 +127,13 @@ export class Sidebar implements vscode.WebviewViewProvider {
         await this.refresh();
         return;
       }
+
+      case 'reconnect':
+        // The test connection command is the reconnect: it acquires, runs one
+        // query, and clears the lost state when that query comes back.
+        await vscode.commands.executeCommand('rehearsal.testConnection');
+        await this.refresh();
+        return;
 
       case 'disconnect':
         await this.host.connections.clearChoice();
