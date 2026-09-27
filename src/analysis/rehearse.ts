@@ -1,0 +1,180 @@
+import type { Rehearsal, RehearsalInput } from '../adapters/postgresRehearsal';
+import { SchemaSnapshot } from '../adapters/types';
+import { maskLiterals } from '../parser/mask';
+import { StatementLanguage } from '../parser/language';
+import { SplitStatement } from '../parser/splitter';
+import { formatCount } from './severity';
+
+/**
+ * Which tables to copy, and which statements can be run against the copies.
+ *
+ * A statement is run only when it cannot reach an original. Unqualified names
+ * resolve to the copies once the search path points at them, so the danger is
+ * a name that says which schema it means — `public.orders` would be the real
+ * table. Those are skipped and said to be, rather than guessed at.
+ */
+export function planRehearsal(
+  statements: readonly SplitStatement[],
+  language: StatementLanguage,
+  snapshot: SchemaSnapshot,
+): RehearsalInput & { rows: number } {
+  const known = new Map(snapshot.tables.map((table) => [table.name.toLowerCase(), table]));
+  const schemas = snapshot.schemas.map((schema) => schema.toLowerCase());
+  const tables = new Map<string, number>();
+
+  const planned = statements.map((statement) => {
+    const classification = language.classify(statement.sql);
+    const masked = maskLiterals(statement.sql);
+
+    for (const name of [classification.table, classification.references?.table]) {
+      const table = name ? known.get(bareName(name).toLowerCase()) : undefined;
+      if (table) {
+        // Qualified, so a table outside the default schema is copied from
+        // where it really lives.
+        tables.set(table.qualified, table.rows);
+      }
+    }
+
+    let skip: string | undefined;
+    if (/^\s*(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END)\b/i.test(masked)) {
+      skip = 'Transaction control. The rehearsal is one transaction already.';
+    } else if (/\bCONCURRENTLY\b/i.test(masked)) {
+      skip =
+        'CONCURRENTLY cannot run inside a transaction. Its lock is the weak one ' +
+        'anyway: writes keep working while it builds.';
+    } else if (
+      schemas.some((schema) => new RegExp(`(^|[^\\w"])"?${escape(schema)}"?\\s*\\.`, 'i').test(masked))
+    ) {
+      skip =
+        'It names a schema explicitly, so it would reach the real table rather than ' +
+        'the copy. Remove the schema name to rehearse it.';
+    }
+
+    return {
+      index: statement.index,
+      sql: statement.sql,
+      ...(statement.params ? { params: statement.params } : {}),
+      ...(skip ? { skip } : {}),
+    };
+  });
+
+  return {
+    tables: [...tables.keys()],
+    statements: planned,
+    rows: [...tables.values()].reduce((sum, rows) => sum + rows, 0),
+  };
+}
+
+/** The rehearsal as a document: what ran, how long each took, where it stopped. */
+export function rehearsalReport(
+  rehearsal: Rehearsal,
+  statements: readonly SplitStatement[],
+  options: { file: string; connection: string },
+): string {
+  const lines = [
+    '# Rehearsal on a copy',
+    '',
+    `**File:** ${options.file}  `,
+    `**Database:** ${options.connection}`,
+    '',
+  ];
+
+  if (!rehearsal.ran) {
+    lines.push(String(rehearsal.skipped), '');
+    return lines.join('\n');
+  }
+
+  const copied = rehearsal.copied
+    .map((entry) => `${entry.table} (${formatCount(entry.rows)} rows)`)
+    .join(', ');
+  lines.push(
+    `Copied ${copied || 'nothing'} in ${formatMs(rehearsal.copyMilliseconds)}, ran every ` +
+      'statement against the copies for real, then rolled everything back. The originals ' +
+      'were only ever read.',
+    '',
+    '| Line | Statement | Result | Time |',
+    '| ---: | --- | --- | ---: |',
+  );
+
+  let total = 0;
+  let longest: { index: number; ms: number } | undefined;
+
+  for (const result of rehearsal.statements) {
+    const statement = statements.find((candidate) => candidate.index === result.index);
+    const sql = (statement?.sql ?? '').replace(/\s+/g, ' ').slice(0, 70).replace(/\|/g, '\\|');
+    const line = statement ? statement.startLine + 1 : '';
+    const time = result.milliseconds === undefined ? '' : formatMs(result.milliseconds);
+    const outcome =
+      result.status === 'ran'
+        ? 'ran'
+        : result.status === 'failed'
+          ? `**failed**: ${String(result.error).replace(/\|/g, '\\|')}`
+          : result.status === 'skipped'
+            ? `skipped: ${result.reason}`
+            : 'not reached';
+
+    lines.push(`| ${line} | \`${sql}\` | ${outcome} | ${time} |`);
+
+    if (result.milliseconds !== undefined) {
+      total += result.milliseconds;
+      if (!longest || result.milliseconds > longest.ms) {
+        longest = { index: result.index, ms: result.milliseconds };
+      }
+    }
+  }
+
+  lines.push('');
+
+  const failed = rehearsal.statements.find((result) => result.status === 'failed');
+  if (failed) {
+    const statement = statements.find((candidate) => candidate.index === failed.index);
+    lines.push(
+      `**It stops at line ${statement ? statement.startLine + 1 : '?'}.** A migration halts at ` +
+        'its first failure, so nothing after it ran — here or, if you apply it, for real.',
+      '',
+    );
+  }
+
+  if (longest) {
+    const statement = statements.find((candidate) => candidate.index === longest!.index);
+    lines.push(
+      `In total the statements took ${formatMs(total)}. The longest, at line ` +
+        `${statement ? statement.startLine + 1 : '?'}, took ${formatMs(longest.ms)} — for a ` +
+        'statement that takes an exclusive lock, that is how long every read and write on ' +
+        'the table would wait.',
+      '',
+    );
+  }
+
+  lines.push(
+    '---',
+    '',
+    'These are real timings at this database\'s size, on a copy with no traffic. A copy has',
+    'no queue, so a statement that would wait behind a long transaction in production runs',
+    'straight through here: the preview\'s lock check is what answers that. Foreign keys are',
+    'not copied, so a statement whose only failure would be a foreign key violation succeeds',
+    'here.',
+    '',
+  );
+
+  return lines.join('\n');
+}
+
+function bareName(name: string): string {
+  const parts = name.split('.');
+  return (parts[parts.length - 1] ?? name).replace(/"/g, '');
+}
+
+function escape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}

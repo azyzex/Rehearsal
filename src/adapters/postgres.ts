@@ -1,3 +1,4 @@
+import { Rehearsal, RehearsalInput, rehearseOnCopy } from './postgresRehearsal';
 import { Client } from 'pg';
 import {
   Partitioning,
@@ -1297,6 +1298,11 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
 
     return undefined;
+  }
+
+  /** A migration run for real against copies, and timed. */
+  async rehearseOnCopy(input: RehearsalInput): Promise<Rehearsal> {
+    return rehearseOnCopy((fn) => this.withRollback(fn), quoteIdent, input);
   }
 
   async supportsHypotheticalIndexes(): Promise<boolean> {

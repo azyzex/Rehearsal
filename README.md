@@ -678,6 +678,7 @@ source if you are changing the code.
 | `Rehearsal: Try It on a Sample Database` | No database needed: builds a small SQLite file and previews a sample migration against it |
 | `Rehearsal: Preview This Statement` | The link above each statement: preview just that one |
 | `Rehearsal: Compare With the Prisma Schema` | Where `schema.prisma` and the database disagree: missing tables and columns, and null allowed in one and not the other |
+| `Rehearsal: Rehearse on a Copy` | Postgres: copy the tables a migration touches, run it for real against the copies, time every statement, roll it all back |
 | `Rehearsal: Switch Connection` | Pick another saved database without opening the sidebar |
 | `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Rehearsal: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
@@ -714,6 +715,7 @@ a preview takes.
 | `rehearsal.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
 | `rehearsal.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
 | `rehearsal.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
+| `rehearsal.rehearsalRowLimit` | `1000000` | Rehearse on a Copy stops and asks above this many rows in total, because the copy costs the disk and the time. |
 | `rehearsal.codeLens` | `true` | Show a line above each statement: its verdict once previewed, or a link to preview just that statement. |
 | `rehearsal.previewOnSave` | `false` | Re-run the preview when you save a file the panel is already showing. Only that file, and only when a connection is already open — saving never opens one. |
 | `rehearsal.productionRows` | `{}` | How many rows each table holds in the database you actually deploy to, as `{"users": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. |

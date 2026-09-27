@@ -113,6 +113,11 @@
         "command": "rehearsal.ormDrift",
         "title": "Compare With the Prisma Schema",
         "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.rehearse",
+        "title": "Rehearse on a Copy",
+        "category": "Rehearsal"
       }
     ],
     "configuration": [
@@ -233,6 +238,13 @@
             "default": true,
             "order": 3,
             "description": "Show a line above each statement in a migration file: its verdict once it has been previewed, or a link to preview just that statement."
+          },
+          "rehearsal.rehearsalRowLimit": {
+            "type": "number",
+            "default": 1000000,
+            "minimum": 0,
+            "order": 4,
+            "description": "Rehearse on a Copy copies every table a migration touches. Above this many rows in total it stops and asks, because the copy costs the disk and the time."
           }
         }
       },
@@ -273,6 +285,11 @@
           "command": "rehearsal.suggestIndexes",
           "when": "resourceLangId == sql",
           "group": "rehearsal@2"
+        },
+        {
+          "command": "rehearsal.rehearse",
+          "when": "resourceLangId == sql",
+          "group": "rehearsal@3"
         }
       ],
       "explorer/context": [

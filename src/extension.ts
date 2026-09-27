@@ -19,6 +19,7 @@ import { RecentPreviews } from './panel/recent';
 import { StatementLenses, TableHover } from './panel/editorLens';
 import { buildSample } from './sample/sampleDatabase';
 import { compareWithPrisma, driftReport, parsePrisma } from './analysis/prismaDrift';
+import { planRehearsal, rehearsalReport } from './analysis/rehearse';
 import { SchemaSnapshot } from './adapters/types';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
@@ -162,6 +163,71 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
+
+    // The open migration, run for real against copies of its tables inside a
+    // transaction that is rolled back, and timed statement by statement.
+    vscode.commands.registerCommand('rehearsal.rehearse', async () => {
+      const document = vscode.window.activeTextEditor?.document;
+      if (!document) {
+        void vscode.window.showWarningMessage('Rehearsal: open a migration file first.');
+        return;
+      }
+
+      try {
+        const connection = await connections.acquire();
+        const adapter = connection.adapter;
+
+        if (!adapter.rehearseOnCopy) {
+          void vscode.window.showInformationMessage(
+            adapter.engine === 'mysql'
+              ? 'Rehearsing on a copy is Postgres only. On MySQL, turn on ' +
+                  'rehearsal.mysql.measureOnCopy, which copies each table a schema change touches.'
+              : adapter.engine === 'sqlite'
+                ? 'On SQLite the preview already runs every statement for real and rolls it ' +
+                    'back, so there is nothing a copy would add.'
+                : 'Rehearsing on a copy needs transactional schema changes, which MongoDB does not have.',
+          );
+          return;
+        }
+
+        const language = languageFor(adapter.engine);
+        const statements = language.split(document.getText());
+        const snapshot = await adapter.schemaSnapshot();
+        const plan = planRehearsal(statements, language, snapshot);
+
+        const limit = vscode.workspace
+          .getConfiguration('rehearsal')
+          .get<number>('rehearsalRowLimit', 1_000_000);
+        if (plan.rows > limit) {
+          void vscode.window.showWarningMessage(
+            `Rehearsing this means copying about ${plan.rows.toLocaleString()} rows, over the ` +
+              `${limit.toLocaleString()} limit in rehearsal.rehearsalRowLimit. Raise it if the ` +
+              'disk and the time are worth it.',
+          );
+          return;
+        }
+
+        const rehearsal = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Rehearsal: copying ${plan.tables.length} ${plan.tables.length === 1 ? 'table' : 'tables'} and running the migration against them…`,
+            cancellable: false,
+          },
+          () => adapter.rehearseOnCopy!(plan),
+        );
+
+        const report = await vscode.workspace.openTextDocument({
+          language: 'markdown',
+          content: rehearsalReport(rehearsal, statements, {
+            file: vscode.workspace.asRelativePath(document.uri),
+            connection: connection.identity.display,
+          }),
+        });
+        await vscode.window.showTextDocument(report, { viewColumn: vscode.ViewColumn.Beside });
+      } catch (error) {
+        reportError(error, output, connections);
+      }
+    }),
 
     // What the Prisma schema believes against what the database is. Read from
     // the file, compared with a snapshot, written as a document: nothing runs.

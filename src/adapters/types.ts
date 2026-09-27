@@ -545,6 +545,15 @@ export interface DatabaseAdapter {
   partitioning?(table: string): Promise<Partitioning | undefined>;
 
   /**
+   * Runs a migration for real against copies of its tables, inside one
+   * transaction that is rolled back, and times every statement. See
+   * postgresRehearsal.ts.
+   */
+  rehearseOnCopy?(
+    input: import('./postgresRehearsal').RehearsalInput,
+  ): Promise<import('./postgresRehearsal').Rehearsal>;
+
+  /**
    * What `indexSql` would do to `query`.
    *
    * Prefers the hypothetical path, which takes no lock and writes nothing. When

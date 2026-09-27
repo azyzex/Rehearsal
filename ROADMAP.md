@@ -57,7 +57,7 @@ thing that looks broken in VS Code.
 - [x] 43. Partitioned and Timescale tables
 - [x] 44. WAL volume, and what it does to your replicas
 - [x] 45. ORM schema drift
-- [ ] 46. Rehearse on a real copy
+- [x] 46. Rehearse on a real copy
 - [ ] 47. SQL Server
 - [ ] 48. Query cost after the migration
 - [ ] 49. Lock-queue replay
