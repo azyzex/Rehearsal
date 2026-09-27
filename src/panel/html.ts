@@ -135,6 +135,11 @@ export function schemaPanelHtml(options: HtmlOptions): string {
       <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
       <div id="tables"></div>
     </div>
+    <div id="zoom" class="zoom" role="group" aria-label="Zoom">
+      <button id="zoom-out" type="button" title="Zoom out (-)" aria-label="Zoom out">−</button>
+      <button id="zoom-level" type="button" title="Back to 100%">100%</button>
+      <button id="zoom-in" type="button" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
     <div id="status" class="status">Connecting…</div>
   </div>
 

@@ -212,6 +212,15 @@
         el.rerun.hidden = false;
         el.rows.innerHTML = '';
         el.rows.appendChild(banner(message.message));
+        if (message.action === 'connect') {
+          const pick = document.createElement('button');
+          pick.type = 'button';
+          pick.className = 'primary-action';
+          pick.textContent = 'Pick a database';
+          pick.addEventListener('click', () => vscode.postMessage({ type: 'pickDatabase' }));
+          el.rows.appendChild(pick);
+          el.rerun.hidden = true;
+        }
         break;
 
       case 'copied':
@@ -290,7 +299,14 @@
       el.rows.innerHTML = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No statements found in this file.';
+      // Says what was looked for, so "none" can be checked rather than
+      // trusted: a file of comments, or the wrong file open, both land here.
+      empty.textContent =
+        engine === 'mongo'
+          ? 'No operations in this file. Rehearsal reads calls like ' +
+            'db.getCollection("users").updateMany(…) — check this is the right file.'
+          : 'No statements in this file. Rehearsal splits on semicolons and skips ' +
+            'comments — check this is the migration you meant.';
       el.rows.appendChild(empty);
       return;
     }

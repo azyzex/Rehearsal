@@ -42,6 +42,9 @@
 
   const el = {
     stage: /** @type {HTMLElement} */ (document.getElementById('stage')),
+    zoomIn: /** @type {HTMLButtonElement} */ (document.getElementById('zoom-in')),
+    zoomOut: /** @type {HTMLButtonElement} */ (document.getElementById('zoom-out')),
+    zoomLevel: /** @type {HTMLButtonElement} */ (document.getElementById('zoom-level')),
     canvas: /** @type {HTMLElement} */ (document.getElementById('canvas')),
     tables: /** @type {HTMLElement} */ (document.getElementById('tables')),
     edges: /** @type {SVGSVGElement} */ (/** @type {any} */ (document.getElementById('edges'))),
@@ -176,7 +179,7 @@
     if (tables.length === 0) {
       el.status.hidden = false;
       el.status.textContent = snapshot
-        ? 'No tables in this schema.'
+        ? 'No tables here yet. Press + Table to add one, or choose another schema above.'
         : 'Nothing to show yet.';
       el.tables.replaceChildren();
       el.edges.replaceChildren();
@@ -787,7 +790,53 @@
 
   function apply() {
     el.canvas.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+    if (el.zoomLevel) {
+      el.zoomLevel.textContent = `${Math.round(view.scale * 100)}%`;
+    }
   }
+
+  /**
+   * Zooms by `factor`, keeping the point (px, py) of the stage still. The
+   * wheel keeps the cursor still; the buttons keep the middle still.
+   */
+  function zoomBy(factor, px, py) {
+    const next = Math.min(2.5, Math.max(0.08, view.scale * factor));
+    view.x = px - ((px - view.x) / view.scale) * next;
+    view.y = py - ((py - view.y) / view.scale) * next;
+    view.scale = next;
+    apply();
+  }
+
+  function zoomAtCentre(factor) {
+    const frame = el.stage.getBoundingClientRect();
+    zoomBy(factor, frame.width / 2, frame.height / 2);
+  }
+
+  // Zoom was scroll-only, plus Fit — and nothing on screen said scrolling
+  // zoomed. The buttons say it, and show where you are.
+  // The control sits on the stage, and a press on the stage starts a pan.
+  el.zoomIn.parentElement.addEventListener('pointerdown', (event) => event.stopPropagation());
+  el.zoomIn.addEventListener('click', () => zoomAtCentre(1.25));
+  el.zoomOut.addEventListener('click', () => zoomAtCentre(0.8));
+  el.zoomLevel.addEventListener('click', () => zoomAtCentre(1 / view.scale));
+
+  window.addEventListener('keydown', (event) => {
+    const target = /** @type {HTMLElement} */ (event.target);
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+    ) {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    if (event.key === '+' || event.key === '=') {
+      zoomAtCentre(1.25);
+    } else if (event.key === '-' || event.key === '_') {
+      zoomAtCentre(0.8);
+    }
+  });
 
   function fit() {
     const bounds = contentBounds();
@@ -853,14 +902,8 @@
       const px = event.clientX - frame.left;
       const py = event.clientY - frame.top;
 
-      const factor = Math.exp(-event.deltaY * 0.0016);
-      const next = Math.min(2.5, Math.max(0.08, view.scale * factor));
-
       // Keep the point under the cursor stationary while zooming.
-      view.x = px - ((px - view.x) / view.scale) * next;
-      view.y = py - ((py - view.y) / view.scale) * next;
-      view.scale = next;
-      apply();
+      zoomBy(Math.exp(-event.deltaY * 0.0016), px, py);
     },
     { passive: false },
   );

@@ -402,7 +402,10 @@ async function preview(
       : { findings, file: vscode.workspace.asRelativePath(document.uri) };
   } catch (error) {
     reportError(error, output, connections);
-    panel.fail(errorMessage(error));
+    panel.fail(
+      errorMessage(error),
+      error instanceof ConnectionResolutionError ? 'connect' : undefined,
+    );
     return undefined;
   }
 }

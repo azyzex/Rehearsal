@@ -283,6 +283,20 @@ main {
   background: var(--vscode-list-hoverBackground);
 }
 
+.primary-action {
+  margin: 0 14px 14px;
+  padding: 5px 14px;
+  font: inherit;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: none;
+  cursor: pointer;
+}
+
+.primary-action:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
 #copy {
   margin-left: 6px;
 }

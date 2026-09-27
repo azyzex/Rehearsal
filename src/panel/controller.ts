@@ -177,8 +177,12 @@ export class PreviewPanel {
     void this.panel.webview.postMessage({ type: 'done', summary });
   }
 
-  fail(message: string): void {
-    void this.panel.webview.postMessage({ type: 'failed', message });
+  /**
+   * A run that could not happen. `action` offers the one thing that fixes it,
+   * so the panel is not left showing a sentence with nothing to press.
+   */
+  fail(message: string, action?: 'connect'): void {
+    void this.panel.webview.postMessage({ type: 'failed', message, action });
   }
 
   private onMessage(message: {
@@ -205,6 +209,11 @@ export class PreviewPanel {
       void vscode.env.clipboard.writeText(report).then(() => {
         void this.panel.webview.postMessage({ type: 'copied' });
       });
+      return;
+    }
+
+    if (message.type === 'pickDatabase') {
+      void vscode.commands.executeCommand('rehearsal.switchConnection');
       return;
     }
 

@@ -140,6 +140,43 @@ button:focus {
 
 /* ---- stage ---- */
 
+.zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  border: 1px solid var(--s-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  cursor: default;
+}
+
+.zoom button {
+  min-width: 30px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.zoom button + button {
+  border-left: 1px solid var(--s-border);
+}
+
+.zoom button:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+#zoom-level {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+}
+
 #stage {
   position: relative;
   flex: 1;

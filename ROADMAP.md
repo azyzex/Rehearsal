@@ -38,8 +38,8 @@ thing that looks broken in VS Code.
 - [x] 24. Preview: filter by severity from the counts
 - [x] 25. Preview: ↑/↓ between findings, Enter jumps to the line
 - [x] 26. Preview: "Couldn't analyze" says where the error came from
-- [ ] 27. Empty states that say what to press
-- [ ] 28. Schema explorer: zoom buttons
+- [x] 27. Empty states that say what to press
+- [x] 28. Schema explorer: zoom buttons
 - [ ] 29. Sidebar: a dropped connection says so
 - [ ] 30. The safe-migration preamble (`lock_timeout` and retry)
 - [ ] 31. Sidebar: recent previews, one click to re-run
