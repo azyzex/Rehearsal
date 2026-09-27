@@ -4,6 +4,7 @@ import { Engine } from '../adapters/types';
 import { ConnectionManager } from '../connection/manager';
 import { SavedConnections } from '../connection/saved';
 import { detect, engineName } from '../connection/detect';
+import { RecentPreviews } from './recent';
 import { sidebarHtml } from './html';
 import { htmlOptionsFor } from './htmlOptions';
 
@@ -28,6 +29,7 @@ import { htmlOptionsFor } from './htmlOptions';
 export interface SidebarHost {
   readonly connections: ConnectionManager;
   readonly saved: SavedConnections;
+  readonly recent?: RecentPreviews;
   /** Runs one of the extension's commands, by id. */
   run(command: string): void;
   report(error: unknown): void;
@@ -89,6 +91,7 @@ export class Sidebar implements vscode.WebviewViewProvider {
           }
         : null,
       saved: this.host.saved.all(),
+      recent: this.host.recent?.all() ?? [],
     });
   }
 
@@ -125,6 +128,14 @@ export class Sidebar implements vscode.WebviewViewProvider {
           await this.host.saved.rename(String(message['id'] ?? ''), label);
         }
         await this.refresh();
+        return;
+      }
+
+      case 'previewRecent': {
+        const uri = String(message['uri'] ?? '');
+        if (uri) {
+          await vscode.commands.executeCommand('rehearsal.previewFile', vscode.Uri.parse(uri));
+        }
         return;
       }
 

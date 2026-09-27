@@ -273,6 +273,9 @@ export function sidebarHtml(options: HtmlOptions): string {
     <div id="connected-note" class="connected-note" hidden></div>
   </div>
 
+  <h2 id="recent-head" hidden>Recent</h2>
+  <div id="recent"></div>
+
   <h2>Look at it</h2>
   <button class="action" type="button" data-command="rehearsal.exploreSchema">
     <span class="action-name">Explore the schema<span class="action-key" data-key="ctrl+alt+s"></span></span>

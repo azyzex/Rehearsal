@@ -33,6 +33,8 @@
     lost: /** @type {HTMLElement} */ (document.getElementById('lost')),
     lostText: /** @type {HTMLElement} */ (document.getElementById('lost-text')),
     reconnect: /** @type {HTMLButtonElement} */ (document.getElementById('reconnect')),
+    recent: /** @type {HTMLElement} */ (document.getElementById('recent')),
+    recentHead: /** @type {HTMLElement} */ (document.getElementById('recent-head')),
     disconnect: /** @type {HTMLButtonElement} */ (document.getElementById('disconnect')),
     footer: /** @type {HTMLElement} */ (document.getElementById('footer')),
   };
@@ -125,6 +127,7 @@
         el.reconnect.textContent = 'Reconnect';
       }
 
+      renderRecent(state.recent || []);
       show('ready');
     } else {
       show('connect');
@@ -317,6 +320,38 @@
   for (const hint of document.querySelectorAll('.action-key')) {
     const key = hint.getAttribute('data-key') || '';
     hint.textContent = (mac ? key.replace(/^ctrl\+/, 'cmd+') : key).split('+').join(' + ');
+  }
+
+  /**
+   * The last few files previewed, each with what it said last time. One click
+   * measures it again: edit, preview, edit, preview is how migrations get
+   * written, and the second preview should not need the file tree.
+   */
+  function renderRecent(entries) {
+    el.recentHead.hidden = entries.length === 0;
+    el.recent.replaceChildren(
+      ...entries.map((entry) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'recent-row';
+        button.title = 'Preview ' + entry.file + ' again';
+
+        const name = document.createElement('span');
+        name.className = 'recent-file';
+        name.textContent = entry.file;
+
+        const verdict = document.createElement('span');
+        verdict.className = 'recent-verdict';
+        verdict.dataset.severity = entry.severity;
+        verdict.textContent = entry.verdict;
+
+        button.append(name, verdict);
+        button.addEventListener('click', () =>
+          vscode.postMessage({ type: 'previewRecent', uri: entry.uri }),
+        );
+        return button;
+      }),
+    );
   }
 
   // ---- wiring --------------------------------------------------------------

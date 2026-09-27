@@ -358,6 +358,47 @@ button:disabled {
   background: var(--vscode-editorWarning-foreground, #d29922);
 }
 
+.recent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 9px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.recent-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.recent-file {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-verdict {
+  flex: none;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.recent-verdict[data-severity='destructive'],
+.recent-verdict[data-severity='blocking'] {
+  color: var(--vscode-editorError-foreground, #f85149);
+}
+
+.recent-verdict[data-severity='caution'] {
+  color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
 /* ---- actions ------------------------------------------------------------- */
 
 .action {

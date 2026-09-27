@@ -15,6 +15,7 @@ import { PreviewPanel } from './panel/controller';
 import { FindingDiagnostics } from './panel/diagnostics';
 import { RewriteActions } from './panel/quickFixes';
 import { StatusBar } from './panel/statusBar';
+import { RecentPreviews } from './panel/recent';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
 import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
@@ -43,9 +44,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // The front door. Connections live in the OS keychain; only their labels go
   // in global state, so the list can be drawn without touching a credential.
   const saved = new SavedConnections(context.globalState, context.secrets);
+  // The last few files previewed here, so measuring one again is one click.
+  const recent = new RecentPreviews(context.workspaceState);
   const sidebar = new Sidebar(context, {
     connections,
     saved,
+    recent,
     run: (command) => void vscode.commands.executeCommand(command),
     // Quiet: the sidebar puts the failure in a red box of its own, and a
     // notification repeating it word for word is the tool talking over itself.
@@ -108,6 +112,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (result) {
         connections.markAlive();
         statusBar.showVerdict(result.findings, result.file);
+        await recent.add(result.uri, result.file, result.findings);
+        void sidebar.refresh();
       }
     } finally {
       previewing = false;
@@ -250,7 +256,7 @@ async function preview(
   diagnostics: FindingDiagnostics,
   /** Set when a save triggered this rather than the command. */
   saved?: vscode.TextDocument,
-): Promise<{ findings: Finding[]; file: string } | undefined> {
+): Promise<{ findings: Finding[]; file: string; uri: vscode.Uri } | undefined> {
   const editor = saved
     ? vscode.window.visibleTextEditors.find(
         (candidate) => candidate.document.uri.toString() === saved.uri.toString(),
@@ -407,7 +413,7 @@ async function preview(
     panel.finish(summarize(findings, statements.length, cancelled));
     return cancelled
       ? undefined
-      : { findings, file: vscode.workspace.asRelativePath(document.uri) };
+      : { findings, file: vscode.workspace.asRelativePath(document.uri), uri: document.uri };
   } catch (error) {
     reportError(error, output, connections);
     panel.fail(
