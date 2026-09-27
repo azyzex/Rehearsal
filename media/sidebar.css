@@ -30,13 +30,13 @@ h2 {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  opacity: 0.6;
+  color: var(--vscode-descriptionForeground);
   margin: 18px 0 6px;
 }
 
 .lede {
   margin: 0 0 12px;
-  opacity: 0.85;
+  color: var(--vscode-descriptionForeground);
   line-height: 1.45;
 }
 
@@ -45,7 +45,7 @@ h2 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.6;
+  color: var(--vscode-descriptionForeground);
   margin-bottom: 4px;
 }
 
@@ -82,12 +82,12 @@ textarea:focus {
 }
 
 .detected-label {
-  opacity: 0.9;
+  color: var(--vscode-descriptionForeground);
 }
 
 .detected-guess {
   font-size: 11px;
-  opacity: 0.6;
+  color: var(--vscode-descriptionForeground);
 }
 
 .badge-engine {
@@ -135,7 +135,7 @@ textarea:focus {
 .note {
   font-size: 11px;
   line-height: 1.45;
-  opacity: 0.85;
+  color: var(--vscode-descriptionForeground);
   padding: 5px 8px;
   margin-top: 5px;
   border-left: 2px solid var(--vscode-charts-orange, #d18616);
@@ -148,7 +148,7 @@ textarea:focus {
   gap: 6px;
   margin: 10px 0;
   font-size: 12px;
-  opacity: 0.9;
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
 }
 
@@ -428,14 +428,14 @@ button:disabled {
   float: right;
   margin-left: 8px;
   font-size: 11px;
-  opacity: 0.55;
+  color: var(--vscode-descriptionForeground);
   font-variant-numeric: tabular-nums;
 }
 
 .action-why {
   display: block;
   font-size: 11px;
-  opacity: 0.65;
+  color: var(--vscode-descriptionForeground);
   margin-top: 1px;
   line-height: 1.35;
 }
@@ -445,7 +445,7 @@ button:disabled {
   padding-top: 8px;
   border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
   font-size: 11px;
-  opacity: 0.6;
+  color: var(--vscode-descriptionForeground);
   line-height: 1.4;
 }
 
@@ -471,4 +471,12 @@ button:disabled {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* High-contrast themes: nothing is faded. People choose these themes for
+   contrast, and transparency takes it away without asking. The diagram's
+   focus dimming is left alone, because it is a state, not a colour. */
+body.vscode-high-contrast *,
+body.vscode-high-contrast-light * {
+  opacity: 1 !important;
 }

@@ -45,7 +45,7 @@ thing that looks broken in VS Code.
 - [x] 31. Sidebar: recent previews, one click to re-run
 - [x] 32. Schema explorer: `ctrl + z` undoes the last pending change
 - [x] 33. Schema explorer: remember dragged positions per database
-- [ ] 34. Contrast pass on small text, light and high-contrast themes
+- [x] 34. Contrast pass on small text, light and high-contrast themes
 - [ ] 35. Hover on a table name: rows, size, indexes
 - [ ] 36. CodeLens above each statement
 - [ ] 37. Get Started walkthrough

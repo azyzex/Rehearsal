@@ -1028,3 +1028,11 @@ kbd {
     scroll-behavior: auto !important;
   }
 }
+
+/* High-contrast themes: nothing is faded. People choose these themes for
+   contrast, and transparency takes it away without asking. The diagram's
+   focus dimming is left alone, because it is a state, not a colour. */
+body.vscode-high-contrast :is(#toolbar, #drawer, #changes, #legend) *,
+body.vscode-high-contrast-light :is(#toolbar, #drawer, #changes, #legend) * {
+  opacity: 1 !important;
+}
