@@ -4,7 +4,7 @@ The Postgres testbed. A small e-commerce schema seeded with data shaped so that
 every probe in spec §6.2 has something real to find, and a set of migration files
 that each land on a different severity.
 
-**Status: live.** This is the engine Dry Run v1 supports.
+**Status: live.** This is the engine Rehearsal v1 supports.
 
 ## Setup
 

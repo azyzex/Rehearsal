@@ -57,7 +57,7 @@ export class NonTransactionalDdlError extends Error {
     super(
       `MySQL commits DDL the moment it runs — an implicit commit happens before and ` +
         `after every ALTER, CREATE and DROP, so a ROLLBACK afterwards undoes nothing. ` +
-        `Dry Run refuses to execute DDL here because it could not take it back ` +
+        `Rehearsal refuses to execute DDL here because it could not take it back ` +
         `(found: ${statement}). Its effects are measured by counting instead.`,
     );
     this.name = 'NonTransactionalDdlError';

@@ -78,7 +78,7 @@
     } catch (error) {
       // The diagram half. Same reasoning as the editor half: a thrown handler
       // leaves a panel that has stopped responding and says nothing about it.
-      console.error('Dry Run: ' + (error && error.message ? error.message : String(error)), error);
+      console.error('Rehearsal: ' + (error && error.message ? error.message : String(error)), error);
       el.status.hidden = false;
       el.status.textContent = 'Could not draw that: ' + (error && error.message ? error.message : error);
     }
@@ -1318,7 +1318,7 @@
    * is what stops the editor reaching into the layout and the layout growing
    * opinions about editing.
    */
-  window.__dryrunSchema = {
+  window.__rehearsalSchema = {
     /** Draws a different snapshot: used to flip between now and after. */
     render(next) {
       snapshot = next;

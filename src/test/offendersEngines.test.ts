@@ -44,7 +44,7 @@ describe('the offending rows, per engine', () => {
         connectionString: fixture.connectionString,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -93,7 +93,7 @@ describe('the offending rows, per engine', () => {
         connectionString: fixture.uri,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -181,7 +181,7 @@ describe('the probes nothing had run off Postgres', () => {
         connectionString: fixture.connectionString,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -245,7 +245,7 @@ describe('the probes nothing had run off Postgres', () => {
         connectionString: fixture.uri,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -326,7 +326,7 @@ describe('the last MySQL probes nothing had called', () => {
       connectionString: fixture.connectionString,
       statementTimeoutMs: 20_000,
       lockTimeoutMs: 5000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 

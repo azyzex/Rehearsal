@@ -3,18 +3,18 @@
 The MongoDB testbed. Six collections and about 690,000 documents, shaped like a
 document database rather than like a relational one with different words.
 
-**Status: live.** Dry Run connects to MongoDB, and `mongodb://` or
+**Status: live.** Rehearsal connects to MongoDB, and `mongodb://` or
 `mongodb+srv://` selects the adapter.
 
 One condition, and it is not optional: previews need a **replica set**.
 Multi-document transactions are what the rollback is, and a standalone
-`mongod` does not have them — so Dry Run refuses to connect to one rather
+`mongod` does not have them — so Rehearsal refuses to connect to one rather
 than running a preview it could not undo. Atlas gives you a replica set on
 the free tier, and a local single-node one works too.
 
 ## What survives the port, and what doesn't
 
-Most of Dry Run's DDL analysis is meaningless here. There are no columns to
+Most of Rehearsal's DDL analysis is meaningless here. There are no columns to
 drop, no `NOT NULL` to add, no foreign keys to violate. Schemalessness removes
 the entire category.
 
@@ -32,7 +32,7 @@ Mongo as it is in SQL, and nothing warns you first.
 
 **Transactions need a replica set.** A plain local `mongod` is a standalone and
 does not support them, which means there is no way to roll a preview back, which
-means Dry Run must refuse to run there rather than execute something it cannot
+means Rehearsal must refuse to run there rather than execute something it cannot
 undo. Atlas's free M0 tier is a three-node replica set, so it works.
 
 The seed script checks this and tells you which one you have.
@@ -85,7 +85,7 @@ here because it is a thing the schema explorer has to render honestly:
   them apart — which is why the rescue file's filter asks for present *and* not
   null rather than just not null.
 - **Relationships that are a convention, not a constraint.** There are no
-  foreign keys. Dry Run infers all seven by looking at how far the values
+  foreign keys. Rehearsal infers all seven by looking at how far the values
   overlap, and draws them as inferences.
 
 Three of the reference fields are deliberately left unindexed, so the schema

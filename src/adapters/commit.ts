@@ -2,7 +2,7 @@ import { Client } from 'pg';
 import { QueryResult } from './types';
 
 /**
- * The only file in Dry Run that commits.
+ * The only file in Rehearsal that commits.
  *
  * Everywhere else, a COMMIT is banned — by an ESLint rule and by a test that
  * scans the source. Both of those exempt exactly this file, and nothing else.

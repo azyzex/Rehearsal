@@ -4,7 +4,7 @@ import { Row } from './types';
  * Measuring a MySQL schema change by running it, against a copy.
  *
  * MySQL commits DDL the moment it runs. There is no transaction to roll back,
- * so Dry Run refuses to execute an `ALTER` and measures its effect by counting
+ * so Rehearsal refuses to execute an `ALTER` and measures its effect by counting
  * instead — how many rows hold a null, how many would not convert. That is a
  * good answer and it is an inference.
  *
@@ -49,8 +49,8 @@ import { Row } from './types';
  * test.
  */
 
-/** Reserved. Anything under this name belongs to Dry Run and is disposable. */
-export const CLONE_PREFIX = '_dryrun_clone_';
+/** Reserved. Anything under this name belongs to Rehearsal and is disposable. */
+export const CLONE_PREFIX = '_rehearsal_clone_';
 
 /** Above this many rows, copying costs more than the better answer is worth. */
 export const DEFAULT_ROW_CEILING = 500_000;
@@ -138,7 +138,7 @@ export async function measureOnClone(
 
   const bare = bareName(table);
   if (bare.startsWith(CLONE_PREFIX)) {
-    return { ran: false, skipped: 'That is already a Dry Run copy.' };
+    return { ran: false, skipped: 'That is already a Rehearsal copy.' };
   }
 
   const rewritten = rewriteTarget(statement, bare);
@@ -146,7 +146,7 @@ export async function measureOnClone(
     return {
       ran: false,
       skipped:
-        'Dry Run could not be certain which table that statement names, so it was not run ' +
+        'Rehearsal could not be certain which table that statement names, so it was not run ' +
         'against a copy. The count below is the answer.',
     };
   }
@@ -195,7 +195,7 @@ export async function measureOnClone(
     // and let the count stand.
     return {
       ran: false,
-      skipped: `Dry Run could not copy ${table} to measure against: ${messageOf(error)}`,
+      skipped: `Rehearsal could not copy ${table} to measure against: ${messageOf(error)}`,
     };
   } finally {
     if (created) {
@@ -331,7 +331,7 @@ function quote(name: string): string {
  * Puts the real table's name back into what the server said.
  *
  * MySQL names the table it was actually working on, which is the copy:
- * "Duplicate entry 'a@b.com' for key '_dryrun_clone_m3x9_users.one_email'".
+ * "Duplicate entry 'a@b.com' for key '_rehearsal_clone_m3x9_users.one_email'".
  * Showing that to someone means showing them a table that does not exist and
  * an implementation detail they never asked about, in the one sentence here
  * that is supposed to be the clearest.

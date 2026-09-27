@@ -34,7 +34,7 @@ export interface ActiveConnection {
  * Where the last usable `.env` was found. Only the path is remembered, never
  * anything read out of it — a location is not a credential.
  */
-const ENV_PATH_KEY = 'dryrun.lastEnvFile';
+const ENV_PATH_KEY = 'rehearsal.lastEnvFile';
 
 export class ConnectionManager implements vscode.Disposable {
   private adapter: DatabaseAdapter | null = null;
@@ -105,7 +105,7 @@ export class ConnectionManager implements vscode.Disposable {
       return this.active;
     }
 
-    const config = vscode.workspace.getConfiguration('dryrun');
+    const config = vscode.workspace.getConfiguration('rehearsal');
     const resolved = this.chosen
       ? { connectionString: this.chosen, source: { kind: 'chosen' as const, detail: 'chosen in the sidebar' } }
       : resolveConnection({

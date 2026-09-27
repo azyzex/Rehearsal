@@ -30,7 +30,7 @@ const REBUILD =
   'SQLite cannot do this with ALTER TABLE. The documented way is to create a ' +
   'replacement table with the shape you want, copy every row into it, drop the ' +
   'original and rename — with foreign keys disabled while you do it, and every ' +
-  'index and trigger recreated afterwards. Dry Run will not generate that for ' +
+  'index and trigger recreated afterwards. Rehearsal will not generate that for ' +
   'you: it moves every row, and being wrong about it loses the table.';
 
 export function toSqliteStatement(edit: Edit, editIndex: number): GeneratedStatement {

@@ -40,7 +40,7 @@
     } catch (error) {
       // Same guard as every other webview here. A thrown handler leaves a panel
       // that has stopped responding with nothing on screen to say why.
-      console.error('Dry Run: ' + (error && error.message ? error.message : String(error)), error);
+      console.error('Rehearsal: ' + (error && error.message ? error.message : String(error)), error);
       show('connect');
       fail(error && error.message ? error.message : String(error));
     }
@@ -87,7 +87,7 @@
     el.error.textContent =
       text.length > 0
         ? text
-        : 'That did not work, and the error said nothing about why. The Dry Run output ' +
+        : 'That did not work, and the error said nothing about why. The Rehearsal output ' +
           'channel may have more.';
   }
 

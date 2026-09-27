@@ -1,6 +1,6 @@
 # Testbed
 
-Three sample projects to develop and demo Dry Run against. None of them is
+Three sample projects to develop and demo Rehearsal against. None of them is
 packaged into the extension — `testbed/` is excluded from the `.vsix`.
 
 | Project | Engine | Status |
@@ -25,7 +25,7 @@ Two reasons, and one caveat.
 rows resolve independently, a slow count on one table must not block the rest)
 only actually gets tested when the counts are slow enough to see.
 
-**It's the realistic pointing.** The README tells people to point Dry Run at
+**It's the realistic pointing.** The README tells people to point Rehearsal at
 staging or a replica, not at an empty local dev database. Testing it the way it
 will be used surfaces things — SSL, connection limits, cold starts — that a
 local socket never will.
@@ -76,7 +76,7 @@ the demo, for the latency reasons above.
 Neon is free, needs no credit card, and gives you a plain Postgres connection
 string. Roughly two minutes.
 
-> The project used while building this is called `dryrun-testbed`, on Postgres 18
+> The project used while building this is called `rehearsal-testbed`, on Postgres 18
 > in `us-east-1`. The steps below are what to repeat from scratch — and worth
 > reading anyway for the two settings that matter, in steps 2 and 5.
 
@@ -84,7 +84,7 @@ string. Roughly two minutes.
 
 1. Go to **https://neon.com** and sign up (GitHub or Google is fastest).
 2. You'll land on **Create project**. The defaults are fine, but set:
-   - **Project name** — `dryrun-testbed`
+   - **Project name** — `rehearsal-testbed`
    - **Postgres version** — 17
    - **Region** — pick the one nearest you. This is the latency you'll be
      testing against, so somewhere realistic rather than somewhere fast.
@@ -101,7 +101,7 @@ postgresql://neondb_owner:npg_XXXXXXXX@ep-cool-name-a1b2c3d4.eu-central-1.aws.ne
 
 Two things to check before you copy it:
 
-- There's a **Pooled connection** toggle. Leave it **off**. Dry Run opens one
+- There's a **Pooled connection** toggle. Leave it **off**. Rehearsal opens one
   connection and holds a transaction open on it; a pooler in transaction mode
   can hand your statements to a different backend and quietly break that.
 - Keep the `?sslmode=require` on the end. Neon refuses plaintext connections,
@@ -127,7 +127,7 @@ depending on region.
 
 Create a `.env` at the **repo root** as well — that's the one the extension
 reads — with the same `DATABASE_URL`. Then press <kbd>F5</kbd> and run
-**Dry Run: Test Connection** from the command palette in the new window.
+**Rehearsal: Test Connection** from the command palette in the new window.
 
 ### 5. Resetting between tests
 
@@ -149,10 +149,10 @@ seconds. If your first **Test Connection** feels slow or times out, run it again
 — that's a cold start, not a bug. It's also worth knowing when you record the
 demo GIF: warm the database up first with one throwaway preview.
 
-**The extension will refuse some hostnames.** Dry Run blocks connection strings
+**The extension will refuse some hostnames.** Rehearsal blocks connection strings
 matching `prod`, `production`, or `live`. Neon hostnames are randomly generated,
 so if you're unlucky enough to get `ep-prod-something`, that's the guard working
-correctly — either add the `host:port/database` to `dryrun.allowedConnections`
+correctly — either add the `host:port/database` to `rehearsal.allowedConnections`
 in settings, or just create a new project.
 
 **An SSL deprecation warning is expected, and harmless.** `sslmode=require`

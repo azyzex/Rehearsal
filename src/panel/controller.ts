@@ -8,7 +8,7 @@ import { htmlOptionsFor } from './htmlOptions';
 import { SplitStatement } from '../parser/splitter';
 
 /**
- * The panel is the product (spec §9). Everything Dry Run measures is delivered
+ * The panel is the product (spec §9). Everything Rehearsal measures is delivered
  * as a colour and a number next to the line that causes it.
  *
  * The controller owns the webview and the editor decorations, and keeps the two
@@ -78,8 +78,8 @@ export class PreviewPanel {
 
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.panel = vscode.window.createWebviewPanel(
-      'dryrun.preview',
-      'Dry Run',
+      'rehearsal.preview',
+      'Rehearsal',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       {
         enableScripts: true,

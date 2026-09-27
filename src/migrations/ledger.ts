@@ -47,7 +47,7 @@ export async function readLedger(
     default:
       return everythingPending(
         layout,
-        'These files are plain SQL with no ledger, so Dry Run cannot tell which have ' +
+        'These files are plain SQL with no ledger, so Rehearsal cannot tell which have ' +
           'already been applied. Every one is listed.',
       );
   }

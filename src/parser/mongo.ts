@@ -149,7 +149,7 @@ export function parseMongo(source: string): MongoStatement | { unreadable: strin
   if (!match) {
     return {
       unreadable:
-        'Not a collection operation. Dry Run reads statements of the form ' +
+        'Not a collection operation. Rehearsal reads statements of the form ' +
         'db.<collection>.<operation>({ … }).',
     };
   }
@@ -366,7 +366,7 @@ class Reader {
     // about the wrong documents.
     const offending = /^[^,)\]}\s]+/.exec(rest)?.[0] ?? rest.slice(0, 20);
     throw new Error(
-      `Cannot read ${JSON.stringify(offending)}. Dry Run reads literal values only, ` +
+      `Cannot read ${JSON.stringify(offending)}. Rehearsal reads literal values only, ` +
         `so that it never has to run your migration to find out what it means.`,
     );
   }
@@ -429,7 +429,7 @@ export function classifyMongo(source: string): MongoClassification {
       ...base,
       kind: 'other',
       unreadable:
-        `Dry Run does not know what ${operation}() would do. It reads the operations ` +
+        `Rehearsal does not know what ${operation}() would do. It reads the operations ` +
         `that change documents or the collection.`,
     };
   }

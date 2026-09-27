@@ -43,8 +43,8 @@ export interface DmlResult {
   readonly plan?: AnalysedPlan;
 }
 
-const SAVEPOINT = 'dryrun_stmt';
-const PLAN_SAVEPOINT = 'dryrun_plan';
+const SAVEPOINT = 'rehearsal_stmt';
+const PLAN_SAVEPOINT = 'rehearsal_plan';
 
 export async function analyzeDml(
   adapter: DatabaseAdapter,
@@ -106,12 +106,12 @@ export async function analyzeDml(
     const captured = await tx.query(
       plain
         ? `${stripTrailingSemicolon(sql)} RETURNING ${keyList}`
-        : `WITH dryrun_affected AS (
+        : `WITH rehearsal_affected AS (
          ${stripTrailingSemicolon(sql)}
          RETURNING ${keyList}
        )
-       SELECT count(*) OVER () AS dryrun_total, *
-         FROM dryrun_affected
+       SELECT count(*) OVER () AS rehearsal_total, *
+         FROM rehearsal_affected
         LIMIT ${limit}`,
       params,
     );
@@ -119,7 +119,7 @@ export async function analyzeDml(
     const rowCount = plain
       ? captured.rows.length
       : captured.rows.length > 0
-        ? Number(captured.rows[0]!['dryrun_total'])
+        ? Number(captured.rows[0]!['rehearsal_total'])
         : 0;
     const keys = (plain ? captured.rows.slice(0, limit) : captured.rows).map((row) =>
       pick(row, pkColumns),

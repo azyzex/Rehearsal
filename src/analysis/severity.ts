@@ -4,8 +4,8 @@ import { Severity, Thresholds } from './types';
  * Severity is computed from measured numbers, never from the text of the
  * statement (spec §7).
  *
- * That distinction is the whole difference between Dry Run and a linter. A
- * linter sees `DROP COLUMN` and warns. Dry Run counts the column first, and if
+ * That distinction is the whole difference between Rehearsal and a linter. A
+ * linter sees `DROP COLUMN` and warns. Rehearsal counts the column first, and if
  * nothing is in it, says so: `safe`. Getting that case right is what makes the
  * red rows worth believing — a tool that cries wolf gets switched off, and then
  * it is not there on the day it would have mattered.

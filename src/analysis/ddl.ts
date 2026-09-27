@@ -296,7 +296,7 @@ async function countDdl(
       };
 
     default:
-      return unanalysable(`Dry Run does not analyse this kind of statement yet`);
+      return unanalysable(`Rehearsal does not analyse this kind of statement yet`);
   }
 }
 

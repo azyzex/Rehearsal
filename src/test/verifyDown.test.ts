@@ -47,7 +47,7 @@ describe('verifying a down migration by running it', () => {
       connectionString: fixture.connectionString,
       statementTimeoutMs: 20_000,
       lockTimeoutMs: 5000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 

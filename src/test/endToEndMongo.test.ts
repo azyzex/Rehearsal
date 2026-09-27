@@ -133,7 +133,7 @@ describe('the same migration, against a real MongoDB', () => {
     // The splitter and the classifier are chosen from the engine. Pointed at
     // MongoDB, `db.users.deleteMany({...})` has to become three statements
     // rather than one unparseable blob.
-    await recorded.commands.get('dryrun.preview')!();
+    await recorded.commands.get('rehearsal.preview')!();
 
     const begin = await waitForMessage(recorded, 'begin');
     const statements = begin['statements'] as { sql: string }[];

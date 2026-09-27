@@ -15,7 +15,7 @@
  */
 
 (function () {
-  const host = window.__dryrunSchema;
+  const host = window.__rehearsalSchema;
 
   // NOT acquireVsCodeApi(). It may be called exactly once per webview, and
   // schema.js has already called it — a second call throws, and because it
@@ -87,7 +87,7 @@
    */
   function reportFailure(error) {
     const description = error && error.message ? error.message : String(error);
-    console.error('Dry Run: ' + description, error);
+    console.error('Rehearsal: ' + description, error);
     try {
       openDrawer(errorDrawer('Something went wrong', description));
     } catch {

@@ -45,8 +45,8 @@ export class IndexPanel {
 
   private constructor(context: vscode.ExtensionContext) {
     this.panel = vscode.window.createWebviewPanel(
-      'dryrun.indexes',
-      'Dry Run — Indexes',
+      'rehearsal.indexes',
+      'Rehearsal — Indexes',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       {
         enableScripts: true,
@@ -89,7 +89,7 @@ export class IndexPanel {
   private async insert(sql: string): Promise<void> {
     if (!this.origin) {
       void vscode.window.showWarningMessage(
-        'Dry Run does not know which file this query came from. Copy the statement instead.',
+        'Rehearsal does not know which file this query came from. Copy the statement instead.',
       );
       return;
     }

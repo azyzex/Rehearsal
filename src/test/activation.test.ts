@@ -58,13 +58,13 @@ describe('starting the extension', () => {
     // Without this the icon opens an empty panel, which is the first thing
     // anyone sees.
     assert.ok(
-      recorded.webviewViewProviders.has('dryrun.sidebar'),
+      recorded.webviewViewProviders.has('rehearsal.sidebar'),
       `registered ${[...recorded.webviewViewProviders.keys()].join(', ') || 'nothing'}`,
     );
   });
 
   it('opens somewhere to write to, and somewhere to put problems', () => {
-    assert.deepEqual(recorded.outputChannels, ['Dry Run']);
+    assert.deepEqual(recorded.outputChannels, ['Rehearsal']);
     assert.equal(recorded.diagnosticCollections.length, 1);
   });
 
@@ -159,11 +159,11 @@ describe('every command, with nothing connected', () => {
     // said so by now. Silence is the failure being described here: the command
     // runs, nothing appears, and the extension looks broken.
     const needsConnection = [
-      'dryrun.exploreSchema',
-      'dryrun.schemaHealth',
-      'dryrun.suggestIndexes',
-      'dryrun.pendingMigrations',
-      'dryrun.compareSchemas',
+      'rehearsal.exploreSchema',
+      'rehearsal.schemaHealth',
+      'rehearsal.suggestIndexes',
+      'rehearsal.pendingMigrations',
+      'rehearsal.compareSchemas',
     ];
 
     for (const id of needsConnection) {
@@ -178,7 +178,7 @@ describe('every command, with nothing connected', () => {
 
   it('says it is not connected, in words, not in a stack trace', async () => {
     recorded.shown.length = 0;
-    await recorded.commands.get('dryrun.exploreSchema')!();
+    await recorded.commands.get('rehearsal.exploreSchema')!();
 
     const said = recorded.shown.map((one) => one.message).join('\n');
     assert.match(said, /not connected/i);

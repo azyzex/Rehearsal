@@ -1,14 +1,14 @@
 /**
  * Production detection.
  *
- * Dry Run executes real statements against whatever database it is pointed at.
+ * Rehearsal executes real statements against whatever database it is pointed at.
  * Rolled back or not, that is not something to do casually against production:
  * it takes real locks, burns real I/O, and shares a connection slot with real
  * traffic. So a connection whose identity looks like production is refused
  * outright.
  *
  * There is deliberately no "connect anyway" affordance here. The escape hatch
- * is editing `dryrun.allowedConnections` in settings, which is slow enough to
+ * is editing `rehearsal.allowedConnections` in settings, which is slow enough to
  * require actually meaning it.
  */
 
@@ -24,7 +24,7 @@ export interface ConnectionIdentity {
   readonly port: string;
   readonly database: string;
   readonly user: string;
-  /** `host:port/database` — the form used in `dryrun.allowedConnections`. */
+  /** `host:port/database` — the form used in `rehearsal.allowedConnections`. */
   readonly key: string;
   /** Safe to display and to log. Never contains the password. */
   readonly display: string;
@@ -73,7 +73,7 @@ export function identify(connectionString: string): ConnectionIdentity {
   return { host, port, database, user, key, display };
 }
 
-/** Returns whether Dry Run is willing to connect to this database. */
+/** Returns whether Rehearsal is willing to connect to this database. */
 export function checkConnection(connectionString: string, options: GuardOptions): GuardResult {
   const identity = identify(connectionString);
 
@@ -100,9 +100,9 @@ export function checkConnection(connectionString: string, options: GuardOptions)
         matchedPattern: source,
         reason:
           `This connection (${identity.display}) matches the production pattern ` +
-          `"${source}". Dry Run will not run previews against it. Point it at a ` +
+          `"${source}". Rehearsal will not run previews against it. Point it at a ` +
           `staging database or a replica instead — or, if this really is safe, ` +
-          `add "${identity.key}" to dryrun.allowedConnections in settings.`,
+          `add "${identity.key}" to rehearsal.allowedConnections in settings.`,
       };
     }
   }

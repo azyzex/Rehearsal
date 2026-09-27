@@ -10,7 +10,7 @@ import { PostgresFixture, startPostgres } from './support/pgFixture';
 /**
  * The write path.
  *
- * Everything else in this suite proves Dry Run cannot change your data. This
+ * Everything else in this suite proves Rehearsal cannot change your data. This
  * file proves the one exception behaves: it commits when it should, refuses
  * when it should, and leaves nothing half-applied when a statement fails.
  */

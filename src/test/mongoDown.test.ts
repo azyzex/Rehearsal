@@ -34,7 +34,7 @@ describe('undoing a changeset, in MongoDB', () => {
       connectionString: fixture.uri,
       statementTimeoutMs: 20_000,
       lockTimeoutMs: 5000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 

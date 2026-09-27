@@ -139,7 +139,7 @@ function buildIntegrations() {
         enabled: id % 9 !== 0,
         config,
         // Never set by anything. The schemaless equivalent of a column nobody
-        // has ever written to, and the case Dry Run should call safe to drop.
+        // has ever written to, and the case Rehearsal should call safe to drop.
         deprecated_scopes: null,
         connected_at: new Date(Date.now() - (id % 400) * 86_400_000),
       });
@@ -348,7 +348,7 @@ async function main() {
       isReplicaSet
         ? '\nSeeded. This deployment is a replica set, so transactions — and therefore previews — will work.'
         : '\nSeeded, but this deployment is NOT a replica set. Multi-document transactions are ' +
-            'unavailable, so Dry Run could not roll back a preview here. Use a replica set.',
+            'unavailable, so Rehearsal could not roll back a preview here. Use a replica set.',
     );
   } finally {
     await client.close();

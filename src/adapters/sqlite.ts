@@ -101,7 +101,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     } catch {
       throw new Error(
         'SQLite support needs Node 22 or newer, which provides the built-in ' +
-          '`node:sqlite` module. This runtime does not have it, so Dry Run cannot ' +
+          '`node:sqlite` module. This runtime does not have it, so Rehearsal cannot ' +
           'open the database file.',
       );
     }
@@ -445,7 +445,7 @@ export class SqliteAdapter implements DatabaseAdapter {
    *
    * `PRAGMA foreign_keys` is per connection, and in SQLite itself it is off by
    * default. So the same `ON DELETE CASCADE` is enforced or ignored depending on
-   * which connection runs the delete, and Dry Run's connection is not the
+   * which connection runs the delete, and Rehearsal's connection is not the
    * application's.
    *
    * The rows are counted as though the keys are enforced, because that is the

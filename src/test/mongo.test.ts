@@ -67,7 +67,7 @@ describe('mongo', () => {
         await assert.rejects(
           () =>
             alone.connect({
-              connectionString: `${standalone.getUri()}dryrun`,
+              connectionString: `${standalone.getUri()}rehearsal`,
               statementTimeoutMs: 10_000,
               lockTimeoutMs: 5000,
               applicationName: APPLICATION_NAME,

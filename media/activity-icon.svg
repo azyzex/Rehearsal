@@ -1,15 +1,20 @@
 <!--
   The activity-bar icon.
 
-  A table with a line through it: the shape of a change, and the shape of it
-  not landing. Single-colour and stroke-only, because VS Code recolours this
-  to match the theme and fills come out as solid blocks.
+  A database whose bottom band sweeps back on itself: the change runs, and the
+  change comes back. One shape plus one arrowhead, because at 24 pixels two
+  stacked symbols read as neither of them — the first version of this put a
+  full undo ring under the cylinder and it came out as a smudge.
+
+  Stroke-only apart from the head, because VS Code recolours this to match the
+  theme and a filled body comes out as a solid block. The head is filled with
+  `currentColor` so it recolours with everything else.
 -->
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
-     fill="none" stroke="currentColor" stroke-width="1.5"
+     fill="none" stroke="currentColor" stroke-width="1.6"
      stroke-linecap="round" stroke-linejoin="round">
-  <ellipse cx="12" cy="5.5" rx="7" ry="2.75"/>
-  <path d="M5 5.5v6c0 1.52 3.13 2.75 7 2.75s7-1.23 7-2.75v-6"/>
-  <path d="M5 11.5v6c0 1.52 3.13 2.75 7 2.75 1.02 0 2-.09 2.87-.24"/>
-  <path d="M15.5 17.5l6-6"/>
+  <ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/>
+  <path d="M4.5 5.5v6.2c0 1.55 3.36 2.8 7.5 2.8s7.5-1.25 7.5-2.8V5.5"/>
+  <path d="M19.5 16.4c0 1.55-3.36 2.8-7.5 2.8-2.45 0-4.65-.44-6-1.15"/>
+  <path d="M7.6 15.2 4.2 18.1l4.3 1.5z" fill="currentColor" stroke="none"/>
 </svg>

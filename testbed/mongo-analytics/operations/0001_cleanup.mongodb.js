@@ -2,7 +2,7 @@
 // to run against real data.
 //
 // Every one of these is here because the count is not guessable from the text.
-// Open this file with the testbed connected and run Dry Run: Preview.
+// Open this file with the testbed connected and run Rehearsal: Preview.
 
 // Destructive, and the number is the point: a fifth of 400,000 documents carry
 // this field. There is no schema to consult afterwards to find out what was in

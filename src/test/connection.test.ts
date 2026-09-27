@@ -118,13 +118,13 @@ describe('resolveConnection', () => {
     assert.equal(resolved.source.kind, 'setting');
   });
 
-  it('falls back to the environment, DRYRUN_DATABASE_URL first', () => {
+  it('falls back to the environment, REHEARSAL_DATABASE_URL first', () => {
     const resolved = resolveConnection({
       setting: '',
-      env: { DRYRUN_DATABASE_URL: 'postgres://dryrun', DATABASE_URL: 'postgres://generic' },
+      env: { REHEARSAL_DATABASE_URL: 'postgres://rehearsal', DATABASE_URL: 'postgres://generic' },
     });
-    assert.equal(resolved.connectionString, 'postgres://dryrun');
-    assert.equal(resolved.source.detail, 'DRYRUN_DATABASE_URL');
+    assert.equal(resolved.connectionString, 'postgres://rehearsal');
+    assert.equal(resolved.source.detail, 'REHEARSAL_DATABASE_URL');
   });
 
   it('falls back to the .env file last', () => {

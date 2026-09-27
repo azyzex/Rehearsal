@@ -34,7 +34,7 @@ export interface SidebarHost {
 }
 
 export class Sidebar implements vscode.WebviewViewProvider {
-  static readonly viewId = 'dryrun.sidebar';
+  static readonly viewId = 'rehearsal.sidebar';
 
   private view: vscode.WebviewView | undefined;
 

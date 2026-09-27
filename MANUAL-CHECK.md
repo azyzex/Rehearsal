@@ -36,7 +36,7 @@ The extension is installed, so there is no `f5` any more:
 
 ```
 npm run vsix
-code --install-extension dryrun-0.0.1.vsix
+code --install-extension rehearsal-0.0.1.vsix
 ```
 
 1. Open `testbed/postgres-shop` as a folder in VS Code (`ctrl + k` then
@@ -69,7 +69,7 @@ the sidebar, and holds the terminal open until Ctrl+C. Leave it running while
 you test.
 
 The Mongo one is a single-node replica set on purpose: a standalone `mongod`
-has no multi-document transactions, and Dry Run refuses to connect to one
+has no multi-document transactions, and Rehearsal refuses to connect to one
 rather than run something it could not undo — so a standalone would show you
 the refusal instead of the feature. If you ever want to see that refusal
 deliberately, point it at a standalone and check the message says what is wrong
@@ -169,7 +169,7 @@ These are the newest and least verified. Tick as you go.
   `SELECT id FROM orders WHERE user_id = 4242 AND status = 'paid';`
 - [ ] Put the cursor inside that line.
 - [ ] `ctrl + alt + i`.
-- [ ] **Expect:** a new panel titled **Dry Run — Indexes** with a card, a green
+- [ ] **Expect:** a new panel titled **Rehearsal — Indexes** with a card, a green
   **Used** badge, and two bars — a long one for *Now* and a very short one
   for *With the index*.
 - [ ] **The thing to catch:** an empty panel, or "no sequential scan found".
@@ -177,10 +177,10 @@ These are the newest and least verified. Tick as you go.
 
 ### 4. Schema health and the diagram overlays
 
-- [ ] `ctrl + shift + p` → `Dry Run: Schema Health Report`.
+- [ ] `ctrl + shift + p` → `Rehearsal: Schema Health Report`.
 - [ ] **Expect:** a markdown document opens listing unindexed foreign keys with
   `CREATE INDEX CONCURRENTLY` statements.
-- [ ] `ctrl + shift + p` → `Dry Run: Explore Schema`.
+- [ ] `ctrl + shift + p` → `Rehearsal: Explore Schema`.
 - [ ] In the toolbar, the dropdown that says **No overlay** → pick
   **Colour by rows**.
 - [ ] **Expect:** cards take on an orange tint, darkest for the biggest table,
@@ -192,13 +192,13 @@ These are the newest and least verified. Tick as you go.
 ### 5. The Problems view
 
 - [ ] With a preview still open, press `ctrl + shift + m`.
-- [ ] **Expect:** one entry per risky statement, source **Dry Run**, and
+- [ ] **Expect:** one entry per risky statement, source **Rehearsal**, and
   clicking one jumps to the line.
 - [ ] Type a character into the SQL file. **Expect:** the entries disappear.
 
 ### 6. Pending migrations
 
-- [ ] `ctrl + shift + p` → `Dry Run: Preview Pending Migrations`.
+- [ ] `ctrl + shift + p` → `Rehearsal: Preview Pending Migrations`.
 - [ ] **Expect:** a picker listing the migration files, with a note that they
   are plain SQL and it cannot tell which have been applied.
 - [ ] Pick one. It should open the file and preview it.
@@ -211,21 +211,21 @@ These are the newest and least verified. Tick as you go.
 
 Do this one on a table you do not mind changing.
 
-- [ ] `Dry Run: Explore Schema`, click a table, and use **Drop** on a column.
+- [ ] `Rehearsal: Explore Schema`, click a table, and use **Drop** on a column.
 - [ ] Click **Down SQL**. **Expect:** a SQL document with a header listing what
   it cannot undo.
 - [ ] Click **Preview**, then **Apply**.
-- [ ] **Expect:** a `.dryrun/rescue-<timestamp>.sql` file opens *before* the
+- [ ] **Expect:** a `.rehearsal/rescue-<timestamp>.sql` file opens *before* the
   confirmation dialog, and the dialog itself mentions how many rows were
   saved.
 - [ ] Cancel the dialog. Nothing should have changed.
 - [ ] Do it again and confirm this time. Then `ctrl + shift + p` →
-  `Dry Run: Applied Changes` and check the entry is there with both the
+  `Rehearsal: Applied Changes` and check the entry is there with both the
   down migration and the rescue file.
 
 ### Comparing two databases
 
-- [ ] `ctrl + shift + p` → `Dry Run: Compare With Another Database`.
+- [ ] `ctrl + shift + p` → `Rehearsal: Compare With Another Database`.
 - [ ] Paste the same connection string as the current one.
 - [ ] **Expect:** "The two schemas match."
 
@@ -258,6 +258,6 @@ A screenshot is enough. If a button does nothing, the useful extra detail is in
 **Help → Toggle Developer Tools → Console** in the Extension Development Host
 window: a red line there names the file and the line number.
 
-Also worth pasting: the **Dry Run** output channel
-(`ctrl + shift + u`, then pick **Dry Run** from the dropdown). Failures that are
+Also worth pasting: the **Rehearsal** output channel
+(`ctrl + shift + u`, then pick **Rehearsal** from the dropdown). Failures that are
 deliberately not shown as dialogs are written there.

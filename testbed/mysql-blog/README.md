@@ -3,7 +3,7 @@
 The MySQL testbed. A blog schema with the same hidden problems as
 `postgres-shop`, in an engine that behaves differently enough to matter.
 
-**Status: live.** Dry Run connects to MySQL, and `mysql://` in a connection
+**Status: live.** Rehearsal connects to MySQL, and `mysql://` in a connection
 string is what selects the adapter.
 
 ## What is different about MySQL

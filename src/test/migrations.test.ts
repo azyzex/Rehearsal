@@ -20,7 +20,7 @@ import { PostgresFixture, startPostgres } from './support/pgFixture';
  */
 
 function scratch(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-migrations-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-migrations-'));
 }
 
 function write(file: string, content: string): void {
@@ -270,7 +270,7 @@ describe('finding operations for an engine that does not write SQL', () => {
   let root: string;
 
   before(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-mongo-migrations-'));
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-mongo-migrations-'));
     const operations = path.join(root, 'operations');
     fs.mkdirSync(operations);
 
@@ -307,7 +307,7 @@ describe('finding operations for an engine that does not write SQL', () => {
   });
 
   it('still finds a plain SQL folder for the engines that use one', () => {
-    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-sql-migrations-'));
+    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-sql-migrations-'));
     const directory = path.join(sqlRoot, 'migrations');
     fs.mkdirSync(directory);
     fs.writeFileSync(path.join(directory, '0001_init.sql'), 'CREATE TABLE a (id int);\n', 'utf8');
@@ -321,7 +321,7 @@ describe('finding operations for an engine that does not write SQL', () => {
   });
 
   it('defaults to SQL when nothing says otherwise', () => {
-    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-default-migrations-'));
+    const sqlRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-default-migrations-'));
     const directory = path.join(sqlRoot, 'migrations');
     fs.mkdirSync(directory);
     fs.writeFileSync(path.join(directory, '0001_init.sql'), 'SELECT 1;\n', 'utf8');

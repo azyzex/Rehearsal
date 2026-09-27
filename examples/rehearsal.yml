@@ -9,11 +9,11 @@
 # the measurements are then taken against real data and the branch is thrown
 # away afterwards.
 #
-# The credential this job needs is read-only. Dry Run has no flag that applies
+# The credential this job needs is read-only. Rehearsal has no flag that applies
 # anything, and giving CI a connection string that can write would be a much
 # worse thing to leave lying around than any migration it might catch.
 
-name: Dry Run
+name: Rehearsal
 
 on:
   pull_request:
@@ -46,7 +46,7 @@ jobs:
       - name: Measure the migrations this PR adds
         id: measure
         env:
-          DATABASE_URL: ${{ secrets.DRYRUN_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.REHEARSAL_DATABASE_URL }}
         run: |
           changed=$(git diff --name-only --diff-filter=A \
             "origin/${{ github.base_ref }}...HEAD" -- '*.sql')
@@ -68,11 +68,11 @@ jobs:
           # continues on failure so that the comment still gets written; the
           # exit code is re-raised at the end.
           set +e
-          node dist/cli.js $changed --format markdown --output dryrun.md
+          node dist/cli.js $changed --format markdown --output rehearsal.md
           echo "status=$?" >> "$GITHUB_OUTPUT"
           set -e
 
-          cat dryrun.md >> "$GITHUB_STEP_SUMMARY"
+          cat rehearsal.md >> "$GITHUB_STEP_SUMMARY"
 
       # One comment, edited in place on every push. A check that adds a new
       # comment each time is a check people mute by the third round of review.
@@ -81,16 +81,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          marker='<!-- dryrun-report -->'
+          marker='<!-- rehearsal-report -->'
           existing=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.number }}/comments" \
             --jq ".[] | select(.body | contains(\"$marker\")) | .id" | tail -1)
 
           if [ -n "$existing" ]; then
             gh api --method PATCH \
               "repos/${{ github.repository }}/issues/comments/$existing" \
-              -F body=@dryrun.md
+              -F body=@rehearsal.md
           else
-            gh pr comment "${{ github.event.number }}" --body-file dryrun.md
+            gh pr comment "${{ github.event.number }}" --body-file rehearsal.md
           fi
 
       - name: Fail if the migration is destructive

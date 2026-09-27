@@ -1,4 +1,4 @@
-# Dry Run — build specification
+# Rehearsal — build specification
 
 A VS Code extension that shows you what a SQL query or migration will actually do to your
 database, before you run it for real.
@@ -92,7 +92,7 @@ the line that causes it.
 
 ### Explicit non-goals
 
-- Not a query editor. Dry Run never commits. There is no "run for real" button, ever. The user runs it through their normal tooling.
+- Not a query editor. Rehearsal never commits. There is no "run for real" button, ever. The user runs it through their normal tooling.
 - Not a schema diagram tool. That space is saturated.
 - Not a linter. No opinions about SQL style.
 - Not a migration runner.
@@ -315,16 +315,16 @@ the harm the tool exists to prevent. Every item below is mandatory.
 3. **Never execute DDL**, even inside a transaction. Probes only. See §6.2.
 
 4. **Production detection.** Before connecting, check the connection string against
-   `dryrun.productionPatterns` (default: `/prod/i`, `/production/i`, `/live/i`). On a match:
+   `rehearsal.productionPatterns` (default: `/prod/i`, `/production/i`, `/live/i`). On a match:
    refuse to run, show a banner explaining why, and require the user to explicitly add that
-   connection to `dryrun.allowedConnections` in settings. Never offer a one-click "connect
+   connection to `rehearsal.allowedConnections` in settings. Never offer a one-click "connect
    anyway" button — the friction is the point.
 
-5. **Tag the connection.** Set `application_name = 'vscode-dryrun'` so a DBA looking at
+5. **Tag the connection.** Set `application_name = 'vscode-rehearsal'` so a DBA looking at
    `pg_stat_activity` can immediately identify and kill these sessions.
 
 6. **Manual trigger by default.** Do not analyze automatically on file open in v1. The user
-   invokes `Dry Run: Preview`. Auto-analyze-on-save can be added later behind a setting that
+   invokes `Rehearsal: Preview`. Auto-analyze-on-save can be added later behind a setting that
    defaults to off.
 
 7. **Never store credentials.** Read connection config from `.env`, from an existing VS Code
@@ -352,11 +352,11 @@ fine, so §6.1 ports directly. For DDL, §6.2's probe-only approach already avoi
 it also ports without change.
 
 The optional enhancement for MySQL, when higher fidelity is needed: clone only the tables the
-statement touches (`CREATE TABLE _dryrun_x LIKE x; INSERT INTO _dryrun_x SELECT * FROM x`),
+statement touches (`CREATE TABLE _rehearsal_x LIKE x; INSERT INTO _rehearsal_x SELECT * FROM x`),
 run against the clones, then drop them. Constraints:
 - Only viable below a configured row ceiling (suggest 500k). Above that, fall back to probes.
 - Foreign keys referencing uncloned tables must be stripped from the clone or the clone must include the referenced tables transitively.
-- Clones must use a reserved prefix and be dropped in a `finally`. Orphaned clones are a real hazard — add a startup sweep that drops any stale `_dryrun_*` tables older than an hour.
+- Clones must use a reserved prefix and be dropped in a `finally`. Orphaned clones are a real hazard — add a startup sweep that drops any stale `_rehearsal_*` tables older than an hour.
 - Requires `CREATE TABLE` privilege, which many read-only analysis users will not have. Detect and degrade gracefully.
 
 Ship probe-based MySQL first. Table cloning is a follow-up, and a good standalone post.

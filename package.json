@@ -1,6 +1,6 @@
 {
-  "name": "dryrun",
-  "displayName": "Dry Run",
+  "name": "rehearsal",
+  "displayName": "Rehearsal",
   "description": "See what a database change will actually do to your data, before you do it.",
   "version": "0.0.1",
   "publisher": "azizguenni",
@@ -18,22 +18,22 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:sql",
-    "onView:dryrun.sidebar"
+    "onView:rehearsal.sidebar"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "dryrun",
-          "title": "Dry Run",
+          "id": "rehearsal",
+          "title": "Rehearsal",
           "icon": "media/activity-icon.svg"
         }
       ]
     },
     "views": {
-      "dryrun": [
+      "rehearsal": [
         {
-          "id": "dryrun.sidebar",
+          "id": "rehearsal.sidebar",
           "name": "Database",
           "type": "webview"
         }
@@ -41,65 +41,65 @@
     },
     "commands": [
       {
-        "command": "dryrun.preview",
+        "command": "rehearsal.preview",
         "title": "Preview",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.exploreSchema",
+        "command": "rehearsal.exploreSchema",
         "title": "Explore Schema",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.appliedChanges",
+        "command": "rehearsal.appliedChanges",
         "title": "Applied Changes",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.compareSchemas",
+        "command": "rehearsal.compareSchemas",
         "title": "Compare With Another Database",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.schemaHealth",
+        "command": "rehearsal.schemaHealth",
         "title": "Schema Health Report",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.pendingMigrations",
+        "command": "rehearsal.pendingMigrations",
         "title": "Preview Pending Migrations",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.suggestIndexes",
+        "command": "rehearsal.suggestIndexes",
         "title": "Would an Index Help?",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.testConnection",
+        "command": "rehearsal.testConnection",
         "title": "Test Connection",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       },
       {
-        "command": "dryrun.disconnect",
+        "command": "rehearsal.disconnect",
         "title": "Disconnect",
-        "category": "Dry Run"
+        "category": "Rehearsal"
       }
     ],
     "configuration": {
-      "title": "Dry Run",
+      "title": "Rehearsal",
       "properties": {
-        "dryrun.connectionString": {
+        "rehearsal.connectionString": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` \u2014 never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
+          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` \u2014 never paste a password here. Leave empty to read `REHEARSAL_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
         },
-        "dryrun.envFile": {
+        "rehearsal.envFile": {
           "type": "string",
           "default": ".env",
           "description": "Path (relative to the workspace root) of the .env file to read the connection string from."
         },
-        "dryrun.productionPatterns": {
+        "rehearsal.productionPatterns": {
           "type": "array",
           "items": {
             "type": "string"
@@ -109,9 +109,9 @@
             "production",
             "live"
           ],
-          "description": "Case-insensitive regular expressions. If a connection string matches any of them, Dry Run refuses to connect."
+          "description": "Case-insensitive regular expressions. If a connection string matches any of them, Rehearsal refuses to connect."
         },
-        "dryrun.allowedConnections": {
+        "rehearsal.allowedConnections": {
           "type": "array",
           "items": {
             "type": "string"
@@ -119,47 +119,47 @@
           "default": [],
           "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act \u2014 there is no one-click override."
         },
-        "dryrun.statementTimeoutMs": {
+        "rehearsal.statementTimeoutMs": {
           "type": "number",
           "default": 5000,
           "minimum": 100,
           "description": "statement_timeout applied inside every preview transaction."
         },
-        "dryrun.lockTimeoutMs": {
+        "rehearsal.lockTimeoutMs": {
           "type": "number",
           "default": 2000,
           "minimum": 100,
           "maximum": 10000,
           "description": "lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue."
         },
-        "dryrun.sampleSize": {
+        "rehearsal.sampleSize": {
           "type": "number",
           "default": 20,
           "minimum": 1,
           "maximum": 200,
           "description": "How many affected rows to show in a before/after sample."
         },
-        "dryrun.cautionRowThreshold": {
+        "rehearsal.cautionRowThreshold": {
           "type": "number",
           "default": 100,
           "description": "Rows affected above which a statement is marked 'caution'."
         },
-        "dryrun.destructiveRowThreshold": {
+        "rehearsal.destructiveRowThreshold": {
           "type": "number",
           "default": 1000,
           "description": "Rows affected above which a statement is marked 'destructive'."
         },
-        "dryrun.largeTableThreshold": {
+        "rehearsal.largeTableThreshold": {
           "type": "number",
           "default": 100000,
           "description": "Row count above which a table is treated as large for lock and index-build warnings."
         },
-        "dryrun.explainAnalyze": {
+        "rehearsal.explainAnalyze": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason."
         },
-        "dryrun.productionRows": {
+        "rehearsal.productionRows": {
           "type": "object",
           "default": {},
           "additionalProperties": {
@@ -167,27 +167,27 @@
           },
           "markdownDescription": "How many rows each table holds in the database you actually deploy to, as `{\"users\": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. Nothing is read from that database — these are numbers you supply."
         },
-        "dryrun.previewOnSave": {
+        "rehearsal.previewOnSave": {
           "type": "boolean",
           "default": false,
-          "description": "Re-run the preview when you save a file the Dry Run panel is already showing. Only that file, and only when a connection is already open — saving never opens one."
+          "description": "Re-run the preview when you save a file the Rehearsal panel is already showing. Only that file, and only when a connection is already open — saving never opens one."
         },
-        "dryrun.mysql.measureOnCopy": {
+        "rehearsal.mysql.measureOnCopy": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "On MySQL, measure a schema change by **running it against a copy of the table** rather than only by counting. MySQL commits DDL the moment it runs, so there is no transaction to roll one back \u2014 a copy is the only way to see what the server really does.\n\nThis is the one setting that causes a write. The copy carries a reserved `_dryrun_clone_` prefix, is never the table you named, is dropped when the measurement finishes, and is swept up on the next connection if a crash left it behind. Your table is never touched.\n\nWhat it buys: the server's own error \u2014 *Incorrect integer value: 'a@b.com' for column 'email' at row 13* \u2014 instead of *88 rows cannot convert*. It cannot tell you about foreign key violations, because `CREATE TABLE \u2026 LIKE` does not copy foreign keys; the counts remain the authority for those."
+          "markdownDescription": "On MySQL, measure a schema change by **running it against a copy of the table** rather than only by counting. MySQL commits DDL the moment it runs, so there is no transaction to roll one back \u2014 a copy is the only way to see what the server really does.\n\nThis is the one setting that causes a write. The copy carries a reserved `_rehearsal_clone_` prefix, is never the table you named, is dropped when the measurement finishes, and is swept up on the next connection if a crash left it behind. Your table is never touched.\n\nWhat it buys: the server's own error \u2014 *Incorrect integer value: 'a@b.com' for column 'email' at row 13* \u2014 instead of *88 rows cannot convert*. It cannot tell you about foreign key violations, because `CREATE TABLE \u2026 LIKE` does not copy foreign keys; the counts remain the authority for those."
         },
-        "dryrun.mysql.measureOnCopyRowLimit": {
+        "rehearsal.mysql.measureOnCopyRowLimit": {
           "type": "number",
           "default": 500000,
-          "description": "Above this many rows, Dry Run will not copy a table to measure against \u2014 the copy costs more than the better answer is worth, and the counted result is used instead."
+          "description": "Above this many rows, Rehearsal will not copy a table to measure against \u2014 the copy costs more than the better answer is worth, and the counted result is used instead."
         }
       }
     },
     "menus": {
       "editor/title": [
         {
-          "command": "dryrun.preview",
+          "command": "rehearsal.preview",
           "when": "resourceLangId == sql",
           "group": "navigation"
         }
@@ -195,13 +195,13 @@
     },
     "keybindings": [
       {
-        "command": "dryrun.preview",
+        "command": "rehearsal.preview",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
         "when": "resourceLangId == sql"
       },
       {
-        "command": "dryrun.suggestIndexes",
+        "command": "rehearsal.suggestIndexes",
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
         "when": "resourceLangId == sql"
@@ -209,7 +209,7 @@
     ]
   },
   "bin": {
-    "dryrun": "./dist/cli.js"
+    "rehearsal": "./dist/cli.js"
   },
   "icon": "media/marketplace-icon.png",
   "scripts": {
@@ -260,10 +260,21 @@
     "schema",
     "diagram",
     "preview",
+    "dry run",
+    "dry-run",
     "safety"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/azyzex/Rehearsal.git"
-  }
+  },
+  "homepage": "https://github.com/azyzex/Rehearsal#readme",
+  "bugs": {
+    "url": "https://github.com/azyzex/Rehearsal/issues"
+  },
+  "galleryBanner": {
+    "color": "#161d2b",
+    "theme": "dark"
+  },
+  "qna": "https://github.com/azyzex/Rehearsal/issues"
 }

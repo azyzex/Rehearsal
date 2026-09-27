@@ -20,7 +20,7 @@ import { MongoFixture, seedMongo, startMongo } from './support/mongoFixture';
  * mongosh had better be one mongosh can read.
  */
 
-describe('what Dry Run writes for MongoDB, run by MongoDB', () => {
+describe('what Rehearsal writes for MongoDB, run by MongoDB', () => {
   let fixture: MongoFixture;
 
   before(async () => {
@@ -142,9 +142,9 @@ describe('what Dry Run writes for MongoDB, run by MongoDB', () => {
     // The whole point of the pipeline: a SELECT handed to a MongoDB user is a
     // query that cannot run. This one has to run, and has to return something.
     const snapshot = {
-      schemas: ['dryrun_test'],
+      schemas: ['rehearsal_test'],
       tables: ['orgs', 'users'].map((name) => ({
-        schema: 'dryrun_test',
+        schema: 'rehearsal_test',
         name,
         qualified: name,
         rows: 1,

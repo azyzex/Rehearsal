@@ -56,7 +56,7 @@ describe('measuring a MySQL change against a copy', () => {
       connectionString: fixture.connectionString,
       statementTimeoutMs: 30_000,
       lockTimeoutMs: 5000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 
@@ -202,7 +202,7 @@ describe('measuring a MySQL change against a copy', () => {
       );
 
       assert.equal(result.ran, false);
-      assert.match(String(result.skipped), /already a Dry Run copy/);
+      assert.match(String(result.skipped), /already a Rehearsal copy/);
     });
   });
 
@@ -305,7 +305,7 @@ describe('what the panel is told, with and without a copy', () => {
       connectionString: fixture.connectionString,
       statementTimeoutMs: 30_000,
       lockTimeoutMs: 5000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 

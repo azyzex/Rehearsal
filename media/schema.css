@@ -732,14 +732,14 @@ button.primary:hover { background: var(--vscode-button-hoverBackground); }
  * quietly centring the view leaves you hunting for what moved. Something has
  * to say "this one".
  */
-@keyframes dryrun-locate {
+@keyframes rehearsal-locate {
   0%   { box-shadow: 0 0 0 0 var(--s-fk); }
   60%  { box-shadow: 0 0 0 10px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 .table.locating {
-  animation: dryrun-locate 900ms ease-out 2;
+  animation: rehearsal-locate 900ms ease-out 2;
   border-color: var(--s-fk);
 }
 

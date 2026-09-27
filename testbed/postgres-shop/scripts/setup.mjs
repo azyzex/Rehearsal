@@ -97,7 +97,7 @@ async function main() {
 
   const client = new pg.Client({
     connectionString: url,
-    application_name: 'dryrun-testbed-setup',
+    application_name: 'rehearsal-testbed-setup',
     statement_timeout: 120_000,
   });
   await client.connect();
@@ -419,7 +419,7 @@ async function report(client) {
   }
 
   console.log(
-    `\nNext: point the extension at this database and run "Dry Run: Preview" on ` +
+    `\nNext: point the extension at this database and run "Rehearsal: Preview" on ` +
       `testbed/postgres-shop/migrations/0007_update.sql`,
   );
 }

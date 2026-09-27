@@ -122,7 +122,7 @@ describe('the same migration, against a real MySQL', () => {
   it('works out it is talking to MySQL from the connection string', {
     timeout: RUN_TIMEOUT,
   }, async () => {
-    await recorded.commands.get('dryrun.preview')!();
+    await recorded.commands.get('rehearsal.preview')!();
 
     const begin = await waitForMessage(recorded, 'begin');
     assert.match(String(begin['connection']), /@127\.0\.0\.1|mysql/i);

@@ -148,7 +148,7 @@ export function toMongoStatement(edit: Edit, editIndex: number): GeneratedStatem
     case 'add_foreign_key':
       throw new Error(
         'MongoDB has no foreign keys. The relationship between two collections is a convention ' +
-          'the application keeps, which is why Dry Run infers the ones it draws rather than ' +
+          'the application keeps, which is why Rehearsal infers the ones it draws rather than ' +
           'reading them.',
       );
 

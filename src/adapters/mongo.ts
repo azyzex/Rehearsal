@@ -53,7 +53,7 @@ export class NoTransactionsError extends Error {
   constructor(reason: string) {
     super(
       `This MongoDB deployment cannot do multi-document transactions (${reason}), so ` +
-        `Dry Run has no way to undo what a preview does. It will not run one: a preview ` +
+        `Rehearsal has no way to undo what a preview does. It will not run one: a preview ` +
         `that cannot be rolled back is just an apply with a reassuring name. ` +
         `Transactions need a replica set or a sharded cluster — Atlas provides one, and ` +
         `a local single-node replica set works too.`,
@@ -677,7 +677,7 @@ export class MongoAdapter implements DatabaseAdapter {
 
   async runCommitted(): Promise<{ applied: number; rowCounts: readonly (number | null)[] }> {
     throw new Error(
-      'Dry Run does not apply MongoDB changes. Collection and index operations cannot ' +
+      'Rehearsal does not apply MongoDB changes. Collection and index operations cannot ' +
         'run inside a transaction at all, so a changeset containing one could not be ' +
         'undone if a later step failed. Export it and run it with your migration tool.',
     );
@@ -843,7 +843,7 @@ async function runStatement(
 
     default:
       throw new Error(
-        `${parsed.operation}() cannot run inside a transaction, so Dry Run will not ` +
+        `${parsed.operation}() cannot run inside a transaction, so Rehearsal will not ` +
           `run it. Its effects are measured by counting instead.`,
       );
   }

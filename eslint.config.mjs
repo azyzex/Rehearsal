@@ -16,11 +16,11 @@ export default tseslint.config(
         {
           selector: 'Literal[value=/\\bCOMMIT\\b/]',
           message:
-            'Dry Run never commits. If this is user-supplied SQL, route it through findTransactionControl instead.',
+            'Rehearsal never commits. If this is user-supplied SQL, route it through findTransactionControl instead.',
         },
         {
           selector: 'TemplateElement[value.raw=/\\bCOMMIT\\b/]',
-          message: 'Dry Run never commits.',
+          message: 'Rehearsal never commits.',
         },
       ],
       '@typescript-eslint/no-non-null-assertion': 'off',

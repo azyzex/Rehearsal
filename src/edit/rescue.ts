@@ -267,7 +267,7 @@ function render(sections: readonly RescuedRows[], writer: RescueWriter): string 
   const mark = writer.comment;
 
   const lines: string[] = [
-    `${mark} Dry Run rescue file`,
+    `${mark} Rehearsal rescue file`,
     `${mark} Written ${new Date().toISOString()}, before applying a changeset that destroys data.`,
     mark,
     `${mark} These ${writer.noun} put back what the changeset removed. Read them before`,

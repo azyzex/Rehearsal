@@ -25,8 +25,8 @@ export interface SavedConnection {
   readonly lastUsed: string;
 }
 
-const LIST_KEY = 'dryrun.connections';
-const SECRET_PREFIX = 'dryrun.connection.';
+const LIST_KEY = 'rehearsal.connections';
+const SECRET_PREFIX = 'rehearsal.connection.';
 
 export class SavedConnections {
   constructor(

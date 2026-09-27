@@ -217,7 +217,7 @@ async function analyzeOne(
       detail:
         classification.kind === 'select'
           ? 'This statement only reads. It changes nothing.'
-          : 'Dry Run does not recognise this statement, so nothing was measured. Treat it as unknown rather than safe.',
+          : 'Rehearsal does not recognise this statement, so nothing was measured. Treat it as unknown rather than safe.',
     };
   }
 

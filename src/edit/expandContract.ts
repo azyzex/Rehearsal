@@ -148,7 +148,7 @@ function dropColumnPlan(table: string, column: string): Plan {
         title: 'Drop it',
         why:
           `Nothing reads it and nothing writes it. The statement itself is ` +
-          `instant, and the data is gone for good — Dry Run's rescue file is the ` +
+          `instant, and the data is gone for good — Rehearsal's rescue file is the ` +
           `only copy you will have.`,
         statements: [`ALTER TABLE ${relation} DROP COLUMN ${name}`],
       },
@@ -490,7 +490,7 @@ function handle(name: string): string {
   // Postgres identifiers are truncated at 63 bytes; doing it here means the
   // CREATE and the DROP agree on the name rather than both being truncated
   // and hoping.
-  return (cleaned.length > 0 ? cleaned : 'dryrun_sync').slice(0, 55);
+  return (cleaned.length > 0 ? cleaned : 'rehearsal_sync').slice(0, 55);
 }
 
 function escapeRegex(value: string): string {

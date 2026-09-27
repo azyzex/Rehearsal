@@ -29,7 +29,7 @@ import { APPLICATION_NAME } from './constants';
 
 export function activate(context: vscode.ExtensionContext): void {
   const connections = new ConnectionManager(context.workspaceState);
-  const output = vscode.window.createOutputChannel('Dry Run');
+  const output = vscode.window.createOutputChannel('Rehearsal');
   // The panel is the product, but the panel is also something you have to be
   // looking at. These put the same findings in the Problems view, the ruler and
   // the tab's badge, none of which needed building.
@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('dryrun.preview', () => runPreview()),
+    vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
 
     // Saving is when a migration is finished being typed, which is exactly when
     // its measurements are worth having again. Deliberately narrow: only a file
@@ -99,7 +99,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // connection or queries a database nobody pointed at this file.
     vscode.workspace.onDidSaveTextDocument((document) => {
       const on = vscode.workspace
-        .getConfiguration('dryrun')
+        .getConfiguration('rehearsal')
         .get<boolean>('previewOnSave', false);
       if (!on || !connections.current || !PreviewPanel.isShowing(document.uri)) {
         return;
@@ -107,7 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
       void runPreview(document);
     }),
 
-    vscode.commands.registerCommand('dryrun.testConnection', async () => {
+    vscode.commands.registerCommand('rehearsal.testConnection', async () => {
       try {
         const connection = await connections.acquire();
         const version = await connection.adapter.withRollback(async (tx) => {
@@ -117,38 +117,38 @@ export function activate(context: vscode.ExtensionContext): void {
         output.appendLine(`Connected to ${connection.identity.display} (via ${connection.source})`);
         output.appendLine(version);
         void vscode.window.showInformationMessage(
-          `Dry Run connected to ${connection.identity.display}.`,
+          `Rehearsal connected to ${connection.identity.display}.`,
         );
       } catch (error) {
         reportError(error, output, connections);
       }
     }),
 
-    vscode.commands.registerCommand('dryrun.exploreSchema', () =>
+    vscode.commands.registerCommand('rehearsal.exploreSchema', () =>
       exploreSchema(context, connections, output, history),
     ),
 
-    vscode.commands.registerCommand('dryrun.appliedChanges', () => appliedChanges(history)),
+    vscode.commands.registerCommand('rehearsal.appliedChanges', () => appliedChanges(history)),
 
-    vscode.commands.registerCommand('dryrun.suggestIndexes', () =>
+    vscode.commands.registerCommand('rehearsal.suggestIndexes', () =>
       suggestIndexes(context, connections, output),
     ),
 
-    vscode.commands.registerCommand('dryrun.pendingMigrations', () =>
+    vscode.commands.registerCommand('rehearsal.pendingMigrations', () =>
       pendingMigrations(context, connections, output, diagnostics),
     ),
 
-    vscode.commands.registerCommand('dryrun.schemaHealth', () =>
+    vscode.commands.registerCommand('rehearsal.schemaHealth', () =>
       schemaHealth(connections, output),
     ),
 
-    vscode.commands.registerCommand('dryrun.compareSchemas', () =>
+    vscode.commands.registerCommand('rehearsal.compareSchemas', () =>
       compareWithAnother(connections, output),
     ),
 
-    vscode.commands.registerCommand('dryrun.disconnect', async () => {
+    vscode.commands.registerCommand('rehearsal.disconnect', async () => {
       await connections.close();
-      void vscode.window.showInformationMessage('Dry Run disconnected.');
+      void vscode.window.showInformationMessage('Rehearsal disconnected.');
     }),
   );
 }
@@ -173,7 +173,7 @@ async function preview(
 
   const document = saved ?? editor?.document;
   if (!document) {
-    void vscode.window.showWarningMessage('Dry Run: open a SQL file first.');
+    void vscode.window.showWarningMessage('Rehearsal: open a SQL file first.');
     return;
   }
 
@@ -375,7 +375,7 @@ async function appliedChanges(history: ChangesetHistory): Promise<void> {
   const entries = history.all();
   if (entries.length === 0) {
     void vscode.window.showInformationMessage(
-      'Nothing has been applied from Dry Run in this workspace yet.',
+      'Nothing has been applied from Rehearsal in this workspace yet.',
     );
     return;
   }
@@ -496,7 +496,7 @@ async function compareWithAnother(
     // missing — so a diff between them would be a list of differences that are
     // not differences.
     void vscode.window.showWarningMessage(
-      `Dry Run compares two databases of the same kind. This connection is ` +
+      `Rehearsal compares two databases of the same kind. This connection is ` +
         `${connection.adapter.engine} and the one you gave is ${second.engine}.`,
     );
     return;
@@ -504,7 +504,7 @@ async function compareWithAnother(
 
   try {
     const { left, right } = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Dry Run: reading both schemas…' },
+      { location: vscode.ProgressLocation.Notification, title: 'Rehearsal: reading both schemas…' },
       async () => {
         const reference = await connection.adapter.schemaSnapshot();
 
@@ -577,7 +577,7 @@ async function schemaHealth(
   try {
     const connection = await connections.acquire();
     const health = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Dry Run: reading the catalogue…' },
+      { location: vscode.ProgressLocation.Notification, title: 'Rehearsal: reading the catalogue…' },
       () => connection.adapter.schemaHealth(),
     );
 
@@ -632,9 +632,9 @@ async function pendingMigrations(
   if (!layout) {
     void vscode.window.showWarningMessage(
       engine === 'mongo'
-        ? 'Dry Run found no operations. It looks for a migrations or operations folder ' +
+        ? 'Rehearsal found no operations. It looks for a migrations or operations folder ' +
             'of .js files.'
-        : 'Dry Run found no migrations. It looks for prisma/migrations, a Drizzle folder ' +
+        : 'Rehearsal found no migrations. It looks for prisma/migrations, a Drizzle folder ' +
             'with meta/_journal.json, or a migrations folder of .sql files.',
     );
     return;
@@ -703,7 +703,7 @@ async function pickMigration(
       title: note
         ? `${pending.length} migrations — ${note}`
         : `${pending.length} pending ${pending.length === 1 ? 'migration' : 'migrations'}`,
-      placeHolder: 'Which one should Dry Run measure against your data?',
+      placeHolder: 'Which one should Rehearsal measure against your data?',
     },
   );
   return choice?.migration;
@@ -724,7 +724,7 @@ async function suggestIndexes(
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
-    void vscode.window.showWarningMessage('Dry Run: open a SQL file first.');
+    void vscode.window.showWarningMessage('Rehearsal: open a SQL file first.');
     return;
   }
 
@@ -870,7 +870,7 @@ async function confirmBuildingIfNeeded(adapter: {
 
   const choice = await vscode.window.showWarningMessage(
     'Testing an index without building it needs the hypopg extension, which this database ' +
-      'does not have. Dry Run can instead build each index inside a transaction it rolls ' +
+      'does not have. Rehearsal can instead build each index inside a transaction it rolls ' +
       'back: the measurements are real and nothing is kept, but the build takes the same ' +
       'lock a real one would while it runs.',
     { modal: true },
@@ -902,7 +902,7 @@ function statementAtCursor(
 }
 
 function readThresholds(): Thresholds {
-  const config = vscode.workspace.getConfiguration('dryrun');
+  const config = vscode.workspace.getConfiguration('rehearsal');
   return {
     cautionRows: config.get<number>('cautionRowThreshold', 100),
     destructiveRows: config.get<number>('destructiveRowThreshold', 1000),
@@ -974,7 +974,7 @@ function reportError(
       if (choice === 'Open Settings') {
         void vscode.commands.executeCommand(
           'workbench.action.openSettings',
-          'dryrun.allowedConnections',
+          'rehearsal.allowedConnections',
         );
       }
     });
@@ -995,8 +995,8 @@ function reportError(
 
     void vscode.window
       .showWarningMessage(
-        'Dry Run is not connected to anything yet. Paste a connection string in the ' +
-          'Dry Run panel, or point it at a .env file.',
+        'Rehearsal is not connected to anything yet. Paste a connection string in the ' +
+          'Rehearsal panel, or point it at a .env file.',
         'Select .env file…',
       )
       .then(async (choice) => {
@@ -1012,7 +1012,7 @@ function reportError(
         if (picked?.[0]) {
           await connections.useEnvFile(picked[0]);
           void vscode.window.showInformationMessage(
-            `Dry Run will read ${vscode.workspace.asRelativePath(picked[0])}. Run the command again.`,
+            `Rehearsal will read ${vscode.workspace.asRelativePath(picked[0])}. Run the command again.`,
           );
         }
       });
@@ -1022,7 +1022,7 @@ function reportError(
   const message = errorMessage(error);
   output.appendLine(`Error: ${message}`);
   if (!quiet) {
-    void vscode.window.showErrorMessage(`Dry Run: ${message}`);
+    void vscode.window.showErrorMessage(`Rehearsal: ${message}`);
   }
 }
 

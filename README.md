@@ -1,14 +1,18 @@
-# Dry Run
+# Rehearsal
 
 See what a database change will actually do to your data, before you do it.
 
-> **Status: working, not yet published.** 1,204 tests: against a real Postgres, a
-> real MySQL and a real MongoDB, plus 168 that render the panels in a browser and
-> click them. The demo recording and the marketplace listing are the remaining
-> work.
+A dry run for your migrations: every statement is really executed against your
+real data, inside a transaction that is rolled back, and reported as a number
+rather than a guess. Postgres, MySQL, MongoDB and SQLite.
+
+> **Status: working, not yet published.** 1,204 tests: against a real Postgres,
+> a real MySQL, a real MongoDB and a real SQLite, plus 168 that render the panels
+> in a browser and click them. What is left is the demo recording and pressing
+> publish — see [PUBLISHING.md](PUBLISHING.md), which is free from end to end.
 
 <!-- DEMO: replace this line with the GIF. Under 10 seconds: open 0007_update.sql,
-     press Ctrl+Alt+D, land on four rows — red, red, amber, green — with the real
+     press ctrl + alt + d, land on four rows — red, red, amber, green — with the real
      40,072 on the first one. -->
 
 ## Installing it
@@ -16,7 +20,7 @@ See what a database change will actually do to your data, before you do it.
 ```
 npm install
 npm run vsix
-code --install-extension dryrun-0.0.1.vsix
+code --install-extension rehearsal-0.0.1.vsix
 ```
 
 Then click the database icon in the activity bar. Paste a connection string and
@@ -89,7 +93,7 @@ unexplained `NOT VALID` is a puzzle.
 
 **Measure against the size you deploy to.** Every count in a preview is exact
 about the database it measured, and that database is usually staging. Give Dry
-Run the row counts of the real one in `dryrun.productionRows` and each finding
+Run the row counts of the real one in `rehearsal.productionRows` and each finding
 gains a second line:
 
 ```
@@ -104,11 +108,11 @@ an empty table is the loudest case, not the quietest: pointed at a dev database
 where the table has no rows, every probe answers zero and every row is green,
 and it says so.
 
-**Re-measure on save.** Turn on `dryrun.previewOnSave` and the panel re-runs when
+**Re-measure on save.** Turn on `rehearsal.previewOnSave` and the panel re-runs when
 you save the file it is already showing. Only that file, and only when a
 connection is already open — a save must never be the thing that opens one.
 
-**See the plan.** Turn on `dryrun.explainAnalyze` and each `UPDATE`, `DELETE` and
+**See the plan.** Turn on `rehearsal.explainAnalyze` and each `UPDATE`, `DELETE` and
 `INSERT` also carries its query plan, with node widths drawn from time actually
 spent rather than estimated cost — a plan drawn by cost shows what the planner
 believed, and the interesting cases are where it believed wrong. Sequential scans
@@ -123,7 +127,7 @@ together — along with a statement that would clear them. Where only you can
 decide what a value should become, the statement comes with the decision left as
 a hole to fill rather than something quietly invented.
 
-**Would an index help?** `Dry Run: Would an Index Help?` (`ctrl + alt + i`) reads
+**Would an index help?** `Rehearsal: Would an Index Help?` (`ctrl + alt + i`) reads
 the plan for the query under your cursor, finds the sequential scans, works out
 which columns the filters actually test, and then — this is the part every other
 tool skips — tests each candidate index against the planner and reports whether
@@ -135,7 +139,7 @@ the price of a real build. Either way nothing is kept, and an index the planner
 ignores is reported as ignored — a suggestion that costs write throughput
 forever is worth refusing.
 
-**Answer the question your ORM would not.** `Dry Run: Preview Pending
+**Answer the question your ORM would not.** `Rehearsal: Preview Pending
 Migrations` finds your migrations — Prisma, Drizzle, or a plain folder of `.sql`
 files — asks the database which of them it has already run, and previews the
 rest. Prisma and Drizzle both hand you generated SQL and then warn about it
@@ -152,7 +156,7 @@ last looked, or foreign keys with no index behind them. Shaded by rank rather
 than by value, because table sizes are almost always a power law and a linear
 scale paints one table red and everything else the same shade of nothing.
 
-**Read the schema's own health.** `Dry Run: Schema Health Report` writes a
+**Read the schema's own health.** `Rehearsal: Schema Health Report` writes a
 markdown document: foreign keys with nothing behind them (with the
 `CREATE INDEX CONCURRENTLY` that fixes each one), indexes another index already
 covers, indexes nothing has read, and tables whose statistics the planner can no
@@ -163,7 +167,7 @@ a reason to drop anything.
 
 **Know what else fired.** The preview really executes the statement, so
 triggers really run — which is a feature: the row counts already include
-whatever they did. It becomes a problem in exactly one case, and Dry Run now
+whatever they did. It becomes a problem in exactly one case, and Rehearsal now
 says so loudly. A rollback takes back rows. It does not take back a
 notification already sent, a row pushed through a foreign data wrapper, or an
 HTTP request already answered. Trigger functions are read one level deep for
@@ -179,7 +183,7 @@ an ORM might have given it: `phone_number`, `phoneNumber`, `PhoneNumber`,
 `phone-number`. Finding nothing is reported as *finding nothing by text search*,
 never as safe.
 
-**Find the drift between two environments.** `Dry Run: Compare With Another
+**Find the drift between two environments.** `Rehearsal: Compare With Another
 Database` reads both schemas and writes what the second one is missing or has
 extra: tables, columns, types, nullability, defaults, foreign keys. Phrased as
 work to do rather than as a set of differences, because "these differ" is not
@@ -199,7 +203,7 @@ measurement describes the statement that produced it and an edited line no
 longer contains it.
 
 **Remember what was applied.** Applying used to leave no trace outside the
-database itself. `Dry Run: Applied Changes` now lists what ran, against which
+database itself. `Rehearsal: Applied Changes` now lists what ran, against which
 database, when, and what the preview said before it ran — each entry holding the
 rescue file and the down migration that were generated for it. Nothing on that
 list executes anything: getting back means opening the file and previewing it
@@ -207,12 +211,12 @@ like anything else, which keeps the property the whole extension rests on.
 
 **Keep a copy of what you destroy.** Applying is the one irreversible thing this
 extension does, so before it runs anything destructive it writes the rows that
-are about to be lost to `.dryrun/rescue-<timestamp>.sql` — the actual rows, as
+are about to be lost to `.rehearsal/rescue-<timestamp>.sql` — the actual rows, as
 statements that put them back — and opens the file before the confirmation, not
 after. If the capture hits its cap the confirmation says so, because a rescue
 file believed to be complete and isn't is worse than none at all.
 
-**Explore the schema.** `Dry Run: Explore Schema` draws the whole database —
+**Explore the schema.** `Rehearsal: Explore Schema` draws the whole database —
 every table, every relationship, laid out so that the shape of the schema is
 visible before you have read a name. Drag tables where you want them, search
 across table and column names, click one to isolate its relationships, and use
@@ -304,7 +308,7 @@ error, `--fail-on never` reports without failing, and `--format markdown` writes
 a table a pull request can render. `--output <file>` writes the report to a file
 instead of stdout, so the same run can both fail the build and be posted.
 
-`examples/dryrun.yml` is a GitHub Action that measures only the migrations a PR
+`examples/rehearsal.yml` is a GitHub Action that measures only the migrations a PR
 adds, puts the result in the job summary, and posts it as **one** pull-request
 comment that it edits in place on every push — a check that adds a new comment
 each time is a check people mute by the third round of review. The report
@@ -380,7 +384,7 @@ quietly would be worse than not offering Apply at all.
 
 Counting is a good answer and it is still an inference. There is one way to get
 a real one on MySQL: copy the table, run the statement against the copy, drop
-the copy. Off by default, `dryrun.mysql.measureOnCopy` turns it on.
+the copy. Off by default, `rehearsal.mysql.measureOnCopy` turns it on.
 
 What it buys is the difference between a count and the server's own words:
 
@@ -393,7 +397,7 @@ That second line is a failure the counting path missed entirely. A unique index
 on a column with duplicates reads, to a probe that measures locks and row
 counts, like an ordinary index build.
 
-The rules it works under are strict, because it is the only part of Dry Run that
+The rules it works under are strict, because it is the only part of Rehearsal that
 writes:
 
 - The original is never touched. Every statement is rewritten to name the copy,
@@ -415,7 +419,7 @@ transaction and the server refuses. So the discipline the MySQL adapter has to
 impose by hand is one this database already enforces.
 
 What it adds instead is a condition neither SQL engine has. Multi-document
-transactions require a replica set — point Dry Run at a standalone `mongod` and
+transactions require a replica set — point Rehearsal at a standalone `mongod` and
 there is no rollback available at all, so a preview would apply every change
 permanently while reporting it as previewed. The adapter checks on connect and
 refuses to work. A preview that cannot be rolled back is an apply with a
@@ -442,7 +446,7 @@ exactly what it matches — and the panel reports the referencing documents
 anyway, because "these 40,000 documents now point at nothing" is the same
 problem arriving by a different route.
 
-Migrations are read rather than run. Dry Run reads the declarative subset —
+Migrations are read rather than run. Rehearsal reads the declarative subset —
 `db.users.updateMany({ … }, { … })` and friends — and refuses anything with a
 variable or a loop in it, because running your migration to find out what it
 means is exactly the thing this tool exists not to do. A `$unset` applied across
@@ -500,14 +504,14 @@ shape you want, copy every row into it, drop the original and rename — twelve
 steps in a specific order, with foreign keys disabled in the middle and every
 index and trigger recreated by hand afterwards.
 
-So Dry Run refuses them by name, and says what it would take:
+So Rehearsal refuses them by name, and says what it would take:
 
 ```
 SQLite has no ALTER COLUMN, so users.email cannot be retyped in place.
 The documented way is to create a replacement table with the shape you want,
 copy every row into it, drop the original and rename — with foreign keys
 disabled while you do it, and every index and trigger recreated afterwards.
-Dry Run will not generate that for you: it moves every row, and being wrong
+Rehearsal will not generate that for you: it moves every row, and being wrong
 about it loses the table.
 ```
 
@@ -521,7 +525,7 @@ Two more things are different enough to be worth stating.
 **Foreign keys are off by default.** `PRAGMA foreign_keys` is per connection,
 and in SQLite itself it is off unless something turns it on — so the same
 `ON DELETE CASCADE` is enforced or ignored depending on which connection runs
-the delete, and Dry Run's connection is not your application's. The rows are
+the delete, and Rehearsal's connection is not your application's. The rows are
 counted as though the keys are enforced, because that is the larger blast
 radius; whether they actually go is the part that cannot be assumed, and the
 report says so rather than implying it. With the pragma off, nothing cascades
@@ -578,7 +582,7 @@ queries instead.
 - **DDL is never executed** while measuring, not even inside a rollback.
 - **Production connections are refused**, matched against the connection's
   identity rather than its password. There is no one-click override; you add the
-  connection to `dryrun.allowedConnections`, or you don't connect.
+  connection to `rehearsal.allowedConnections`, or you don't connect.
 - **Applying anything destructive is confirmed twice**, the second time in a
   modal that cannot be dismissed by muscle memory.
 - **Credentials never touch the disk in plain text.** A string you do not save is
@@ -586,7 +590,7 @@ queries instead.
   One you save with **Remember this one** goes to `SecretStorage`, which is the
   OS keychain; only its label is written to extension storage, so the saved list
   can be drawn without a credential being read at all.
-- **Sessions are tagged** `vscode-dryrun` in `pg_stat_activity`, so a DBA can see
+- **Sessions are tagged** `vscode-rehearsal` in `pg_stat_activity`, so a DBA can see
   what these connections are and kill them.
 
 ## Limitations
@@ -603,7 +607,7 @@ Stated plainly, because a README that hides them makes the rest less believable.
   back. See the table above for which is which.
 - **Results reflect the database you connect to.** Pointed at an empty local dev
   database, every answer is zero and none of them are useful. Point it at staging
-  or a replica — and set `dryrun.productionRows`, which makes every finding say
+  or a replica — and set `rehearsal.productionRows`, which makes every finding say
   what the same change costs at the size you deploy to. An empty table is the
   case it is loudest about, because that is where the panel is confidently
   useless.
@@ -635,7 +639,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/your_db
 or in settings, as an environment-variable reference — never a pasted password:
 
 ```json
-{ "dryrun.connectionString": "${env:DATABASE_URL}" }
+{ "rehearsal.connectionString": "${env:DATABASE_URL}" }
 ```
 
 Then click the database icon in the activity bar and connect. Everything below
@@ -644,15 +648,15 @@ source if you are changing the code.
 
 | Command | What it does |
 |---|---|
-| `Dry Run: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
-| `Dry Run: Explore Schema` | Draw the database, and edit it |
-| `Dry Run: Preview Pending Migrations` | Measure what your ORM has queued up |
-| `Dry Run: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
-| `Dry Run: Compare With Another Database` | Drift between two environments |
-| `Dry Run: Applied Changes` | What was applied, with its rescue file and down migration |
-| `Dry Run: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
-| `Dry Run: Test Connection` | Check the connection alone |
-| `Dry Run: Disconnect` | Close the connection |
+| `Rehearsal: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
+| `Rehearsal: Explore Schema` | Draw the database, and edit it |
+| `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |
+| `Rehearsal: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
+| `Rehearsal: Compare With Another Database` | Drift between two environments |
+| `Rehearsal: Applied Changes` | What was applied, with its rescue file and down migration |
+| `Rehearsal: Would an Index Help?` (`ctrl + alt + i`) | Test an index against the planner |
+| `Rehearsal: Test Connection` | Check the connection alone |
+| `Rehearsal: Disconnect` | Close the connection |
 
 In the explorer, **Export** writes the schema as a Mermaid ER diagram — GitHub
 renders it natively, so it can live in a README and stay readable in a diff.
@@ -666,21 +670,21 @@ a preview takes.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `dryrun.connectionString` | `""` | Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `DRYRUN_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root. |
-| `dryrun.envFile` | `".env"` | Path (relative to the workspace root) of the .env file to read the connection string from. |
-| `dryrun.productionPatterns` | `["prod", "production", "live"]` | Case-insensitive regular expressions. If a connection string matches any of them, Dry Run refuses to connect. |
-| `dryrun.allowedConnections` | `[]` | Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override. |
-| `dryrun.statementTimeoutMs` | `5000` | statement_timeout applied inside every preview transaction. |
-| `dryrun.lockTimeoutMs` | `2000` | lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue. |
-| `dryrun.sampleSize` | `20` | How many affected rows to show in a before/after sample. |
-| `dryrun.cautionRowThreshold` | `100` | Rows affected above which a statement is marked 'caution'. |
-| `dryrun.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
-| `dryrun.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
-| `dryrun.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
-| `dryrun.previewOnSave` | `false` | Re-run the preview when you save a file the panel is already showing. Only that file, and only when a connection is already open — saving never opens one. |
-| `dryrun.productionRows` | `{}` | How many rows each table holds in the database you actually deploy to, as `{"users": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. |
-| `dryrun.mysql.measureOnCopy` | `false` | MySQL only. Measure a schema change by copying the table, running the statement against the copy and dropping it, instead of counting. Gives you the server's real error message. Off by default because it writes, and because copying a table costs the disk and the time. |
-| `dryrun.mysql.measureOnCopyRowLimit` | `500000` | Tables larger than this are counted rather than copied. |
+| `rehearsal.connectionString` | `""` | Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `REHEARSAL_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root. |
+| `rehearsal.envFile` | `".env"` | Path (relative to the workspace root) of the .env file to read the connection string from. |
+| `rehearsal.productionPatterns` | `["prod", "production", "live"]` | Case-insensitive regular expressions. If a connection string matches any of them, Rehearsal refuses to connect. |
+| `rehearsal.allowedConnections` | `[]` | Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override. |
+| `rehearsal.statementTimeoutMs` | `5000` | statement_timeout applied inside every preview transaction. |
+| `rehearsal.lockTimeoutMs` | `2000` | lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue. |
+| `rehearsal.sampleSize` | `20` | How many affected rows to show in a before/after sample. |
+| `rehearsal.cautionRowThreshold` | `100` | Rows affected above which a statement is marked 'caution'. |
+| `rehearsal.destructiveRowThreshold` | `1000` | Rows affected above which a statement is marked 'destructive'. |
+| `rehearsal.largeTableThreshold` | `100000` | Row count above which a table is treated as large for lock and index-build warnings. |
+| `rehearsal.explainAnalyze` | `false` | Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason. |
+| `rehearsal.previewOnSave` | `false` | Re-run the preview when you save a file the panel is already showing. Only that file, and only when a connection is already open — saving never opens one. |
+| `rehearsal.productionRows` | `{}` | How many rows each table holds in the database you actually deploy to, as `{"users": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. |
+| `rehearsal.mysql.measureOnCopy` | `false` | MySQL only. Measure a schema change by copying the table, running the statement against the copy and dropping it, instead of counting. Gives you the server's real error message. Off by default because it writes, and because copying a table costs the disk and the time. |
+| `rehearsal.mysql.measureOnCopyRowLimit` | `500000` | Tables larger than this are counted rather than copied. |
 
 ## Development
 
@@ -705,7 +709,7 @@ Docker.
 
 ## Where this diverged from its spec
 
-[DRYRUN_SPEC.md](DRYRUN_SPEC.md) is the original design, kept as written. Two
+[REHEARSAL_SPEC.md](REHEARSAL_SPEC.md) is the original design, kept as written. Two
 things changed on contact with reality, both deliberately:
 
 **It has an Apply button.** The spec said, in bold, that there would never be one.

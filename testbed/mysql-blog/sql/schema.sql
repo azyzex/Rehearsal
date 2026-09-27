@@ -1,4 +1,4 @@
--- Dry Run testbed: MySQL.
+-- Rehearsal testbed: MySQL.
 --
 -- Same idea as postgres-shop, different engine. The shapes that matter are the
 -- same: a column that looks unused but is not, nulls where a NOT NULL is about

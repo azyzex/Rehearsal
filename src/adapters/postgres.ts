@@ -42,7 +42,7 @@ import { describeError } from '../errors';
  * serialized through a queue so overlapping analyses can never interleave
  * statements inside one another's transaction.
  */
-const CAST_SAVEPOINT = 'dryrun_cast';
+const CAST_SAVEPOINT = 'rehearsal_cast';
 
 export class PostgresAdapter implements DatabaseAdapter {
   readonly engine = 'postgres' as const;
@@ -1543,7 +1543,7 @@ export function isConnectionDead(error: unknown): boolean {
 export class UncertainApplyError extends Error {
   constructor(cause: string) {
     super(
-      `The connection died while applying, so Dry Run does not know whether the ` +
+      `The connection died while applying, so Rehearsal does not know whether the ` +
         `changes went through (${cause}). It has not retried, because applying twice ` +
         `is worse than applying once. Check the database before running this again.`,
     );

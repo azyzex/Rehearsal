@@ -6,11 +6,11 @@
  */
 
 :root {
-  --dryrun-safe: var(--vscode-charts-green, #2ea043);
-  --dryrun-caution: var(--vscode-editorWarning-foreground, #d29922);
-  --dryrun-blocking: var(--vscode-editorError-foreground, #f85149);
-  --dryrun-destructive: var(--vscode-editorError-foreground, #f85149);
-  --dryrun-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  --rehearsal-safe: var(--vscode-charts-green, #2ea043);
+  --rehearsal-caution: var(--vscode-editorWarning-foreground, #d29922);
+  --rehearsal-blocking: var(--vscode-editorError-foreground, #f85149);
+  --rehearsal-destructive: var(--vscode-editorError-foreground, #f85149);
+  --rehearsal-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
 }
 
 * {
@@ -51,7 +51,7 @@ header {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   position: sticky;
   top: 0;
   background: var(--vscode-editor-background);
@@ -117,7 +117,7 @@ button:hover {
 
 .summary {
   padding: 8px 14px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   color: var(--vscode-descriptionForeground);
   font-size: 0.92em;
 }
@@ -130,7 +130,7 @@ main {
 /* ---- one statement ---- */
 
 .row {
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   border-left: 3px solid transparent;
   padding: 10px 14px;
   cursor: pointer;
@@ -144,11 +144,11 @@ main {
   background: var(--vscode-list-inactiveSelectionBackground);
 }
 
-.row.safe { border-left-color: var(--dryrun-safe); }
-.row.caution { border-left-color: var(--dryrun-caution); }
-.row.blocking { border-left-color: var(--dryrun-blocking); }
-.row.destructive { border-left-color: var(--dryrun-destructive); }
-.row.pending { border-left-color: var(--dryrun-border); }
+.row.safe { border-left-color: var(--rehearsal-safe); }
+.row.caution { border-left-color: var(--rehearsal-caution); }
+.row.blocking { border-left-color: var(--rehearsal-blocking); }
+.row.destructive { border-left-color: var(--rehearsal-destructive); }
+.row.pending { border-left-color: var(--rehearsal-border); }
 
 /*
  * Badge, statement and line number on one line, with the statement taking
@@ -188,14 +188,14 @@ main {
   flex-shrink: 0;
 }
 
-.badge.safe { color: var(--dryrun-safe); }
+.badge.safe { color: var(--rehearsal-safe); }
 /* Yellow on a dark panel is the one severity that reads as decoration rather
    than as text. Mixed toward the foreground so the word stays a word. */
 .badge.caution {
-  color: color-mix(in srgb, var(--dryrun-caution) 70%, var(--vscode-foreground));
+  color: color-mix(in srgb, var(--rehearsal-caution) 70%, var(--vscode-foreground));
 }
-.badge.blocking { color: var(--dryrun-blocking); }
-.badge.destructive { color: var(--dryrun-destructive); }
+.badge.blocking { color: var(--rehearsal-blocking); }
+.badge.destructive { color: var(--rehearsal-destructive); }
 .badge.pending { color: var(--vscode-descriptionForeground); }
 
 .statement {
@@ -267,7 +267,7 @@ main {
   min-width: 40px;
   height: 6px;
   border-radius: 3px;
-  background: var(--vscode-progressBar-background, var(--dryrun-border));
+  background: var(--vscode-progressBar-background, var(--rehearsal-border));
   opacity: 0.35;
   overflow: hidden;
 }
@@ -278,10 +278,10 @@ main {
   background: currentColor;
 }
 
-.radius-track.safe { color: var(--dryrun-safe); }
-.radius-track.caution { color: var(--dryrun-caution); }
-.radius-track.blocking { color: var(--dryrun-blocking); }
-.radius-track.destructive { color: var(--dryrun-destructive); }
+.radius-track.safe { color: var(--rehearsal-safe); }
+.radius-track.caution { color: var(--rehearsal-caution); }
+.radius-track.blocking { color: var(--rehearsal-blocking); }
+.radius-track.destructive { color: var(--rehearsal-destructive); }
 
 .radius-label {
   color: var(--vscode-descriptionForeground);
@@ -304,7 +304,7 @@ main {
 .sample {
   margin-top: 10px;
   overflow-x: auto;
-  border: 1px solid var(--dryrun-border);
+  border: 1px solid var(--rehearsal-border);
   border-radius: 3px;
 }
 
@@ -318,7 +318,7 @@ table {
 th, td {
   text-align: left;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   white-space: nowrap;
 }
 
@@ -383,7 +383,7 @@ td.changed.after {
 
 .tab.active {
   color: var(--vscode-foreground);
-  border-color: var(--dryrun-border);
+  border-color: var(--rehearsal-border);
   background: var(--vscode-list-inactiveSelectionBackground);
 }
 
@@ -411,7 +411,7 @@ td.changed.after {
 
 .table-card {
   position: relative;
-  border: 1px solid var(--dryrun-border);
+  border: 1px solid var(--rehearsal-border);
   border-radius: 5px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   min-width: 210px;
@@ -420,9 +420,9 @@ td.changed.after {
   z-index: 1;
 }
 
-.table-card.caution { border-color: var(--dryrun-caution); }
+.table-card.caution { border-color: var(--rehearsal-caution); }
 .table-card.blocking,
-.table-card.destructive { border-color: var(--dryrun-destructive); }
+.table-card.destructive { border-color: var(--rehearsal-destructive); }
 
 .table-card.doomed {
   opacity: 0.72;
@@ -434,7 +434,7 @@ td.changed.after {
   justify-content: space-between;
   gap: 10px;
   padding: 7px 10px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   background: var(--vscode-editorWidget-background, transparent);
 }
 
@@ -496,10 +496,10 @@ td.changed.after {
   opacity: 0.75;
 }
 
-.column.sev-safe .column-note { color: var(--dryrun-safe); }
-.column.sev-caution .column-note { color: var(--dryrun-caution); }
+.column.sev-safe .column-note { color: var(--rehearsal-safe); }
+.column.sev-caution .column-note { color: var(--rehearsal-caution); }
 .column.sev-blocking .column-note,
-.column.sev-destructive .column-note { color: var(--dryrun-destructive); }
+.column.sev-destructive .column-note { color: var(--rehearsal-destructive); }
 
 .column .pk {
   color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
@@ -507,7 +507,7 @@ td.changed.after {
 }
 
 .table-notes {
-  border-top: 1px solid var(--dryrun-border);
+  border-top: 1px solid var(--rehearsal-border);
   padding: 5px 10px;
 }
 
@@ -517,10 +517,10 @@ td.changed.after {
   padding: 1px 0;
 }
 
-.table-note.safe { color: var(--dryrun-safe); }
-.table-note.caution { color: var(--dryrun-caution); }
+.table-note.safe { color: var(--rehearsal-safe); }
+.table-note.caution { color: var(--rehearsal-caution); }
 .table-note.blocking,
-.table-note.destructive { color: var(--dryrun-destructive); }
+.table-note.destructive { color: var(--rehearsal-destructive); }
 
 .edge-line {
   fill: none;
@@ -530,24 +530,24 @@ td.changed.after {
 }
 
 .edge-line.added {
-  stroke: var(--dryrun-safe);
+  stroke: var(--rehearsal-safe);
   opacity: 1;
 }
 
 .edge-line.added.blocking,
 .edge-line.added.destructive {
-  stroke: var(--dryrun-destructive);
+  stroke: var(--rehearsal-destructive);
   stroke-dasharray: 5 3;
 }
 
 .edge-label {
-  fill: var(--dryrun-destructive);
+  fill: var(--rehearsal-destructive);
   font-size: 10px;
   font-family: var(--vscode-font-family);
 }
 
 .edge-break {
-  stroke: var(--dryrun-destructive);
+  stroke: var(--rehearsal-destructive);
   stroke-width: 1.6;
 }
 
@@ -560,7 +560,7 @@ td.changed.after {
 
 footer {
   padding: 8px 14px;
-  border-top: 1px solid var(--dryrun-border);
+  border-top: 1px solid var(--rehearsal-border);
   color: var(--vscode-descriptionForeground);
   font-size: 0.85em;
   position: sticky;
@@ -571,7 +571,7 @@ footer {
 .banner {
   margin: 12px 14px;
   padding: 10px 12px;
-  border-left: 3px solid var(--dryrun-blocking);
+  border-left: 3px solid var(--rehearsal-blocking);
   background: var(--vscode-inputValidation-errorBackground, transparent);
   color: var(--vscode-foreground);
   line-height: 1.5;
@@ -581,14 +581,14 @@ footer {
 
 .plan {
   margin-top: 10px;
-  border: 1px solid var(--dryrun-border);
+  border: 1px solid var(--rehearsal-border);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .plan-head {
   padding: 5px 8px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   color: var(--vscode-descriptionForeground);
   font-size: 0.83em;
 }
@@ -619,7 +619,7 @@ footer {
 .plan-bar {
   flex: 1;
   height: 9px;
-  background: var(--vscode-progressBar-background, var(--dryrun-border));
+  background: var(--vscode-progressBar-background, var(--rehearsal-border));
   opacity: 0.25;
   border-radius: 2px;
   overflow: hidden;
@@ -632,9 +632,9 @@ footer {
   border-radius: 2px;
 }
 
-.plan-node.hot { color: var(--dryrun-destructive); }
-.plan-node.warm { color: var(--dryrun-caution); }
-.plan-node.cool { color: var(--dryrun-safe); }
+.plan-node.hot { color: var(--rehearsal-destructive); }
+.plan-node.warm { color: var(--rehearsal-caution); }
+.plan-node.cool { color: var(--rehearsal-safe); }
 
 .plan-ms {
   flex-shrink: 0;
@@ -648,8 +648,8 @@ footer {
   padding: 4px 8px;
   font-size: 0.83em;
   font-family: var(--vscode-font-family);
-  border-top: 1px solid var(--dryrun-border);
-  color: var(--dryrun-caution);
+  border-top: 1px solid var(--rehearsal-border);
+  color: var(--rehearsal-caution);
 }
 
 /* ---- lock outlook ---- */
@@ -662,14 +662,14 @@ footer {
 .queue-warning {
   margin-top: 9px;
   padding: 7px 9px;
-  border-left: 3px solid var(--dryrun-destructive);
+  border-left: 3px solid var(--rehearsal-destructive);
   background: var(--vscode-inputValidation-errorBackground, transparent);
   font-size: 0.9em;
   line-height: 1.45;
 }
 
 .queue-warning strong {
-  color: var(--dryrun-destructive);
+  color: var(--rehearsal-destructive);
 }
 
 .queue-blocker {
@@ -697,14 +697,14 @@ footer {
 
 .cascade {
   margin-top: 9px;
-  border: 1px solid var(--dryrun-border);
+  border: 1px solid var(--rehearsal-border);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .cascade-head {
   padding: 5px 9px;
-  border-bottom: 1px solid var(--dryrun-border);
+  border-bottom: 1px solid var(--rehearsal-border);
   font-size: 0.83em;
   color: var(--vscode-descriptionForeground);
 }
@@ -719,14 +719,14 @@ footer {
 }
 
 .cascade-rows {
-  color: var(--dryrun-destructive);
+  color: var(--rehearsal-destructive);
   font-weight: 600;
   min-width: 68px;
   text-align: right;
 }
 
 .cascade-node.nulled .cascade-rows {
-  color: var(--dryrun-caution);
+  color: var(--rehearsal-caution);
   font-weight: 400;
 }
 
@@ -742,8 +742,8 @@ footer {
 }
 
 .rewrite {
-  border: 1px solid var(--dryrun-border);
-  border-left: 3px solid var(--dryrun-safe);
+  border: 1px solid var(--rehearsal-border);
+  border-left: 3px solid var(--rehearsal-safe);
   border-radius: 3px;
   padding: 7px 9px;
   margin-top: 6px;
@@ -752,7 +752,7 @@ footer {
 .rewrite-title {
   font-weight: 600;
   font-size: 0.9em;
-  color: var(--dryrun-safe);
+  color: var(--rehearsal-safe);
 }
 
 .rewrite-why {
@@ -786,7 +786,7 @@ footer {
 .rewrite-warn {
   margin-top: 5px;
   font-size: 0.8em;
-  color: var(--dryrun-caution);
+  color: var(--rehearsal-caution);
 }
 
 /* A control has to look like one.

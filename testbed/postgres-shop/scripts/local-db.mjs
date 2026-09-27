@@ -28,8 +28,8 @@ const PROJECT = path.join(HERE, '..');
 const ROOT = path.join(PROJECT, '..', '..');
 
 const PORT = 54329;
-const DB = 'dryrun_shop';
-const DATA_DIR = path.join(os.tmpdir(), 'dryrun-local-pg');
+const DB = 'rehearsal_shop';
+const DATA_DIR = path.join(os.tmpdir(), 'rehearsal-local-pg');
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -92,7 +92,7 @@ async function main() {
 
   console.log(
     `\nReady. Press F5 in VS Code, open testbed/postgres-shop/migrations/0007_update.sql\n` +
-      `in the new window, and run "Dry Run: Preview" (Ctrl+Alt+D).\n\n` +
+      `in the new window, and run "Rehearsal: Preview" (Ctrl+Alt+D).\n\n` +
       `Leave this terminal open — the database stops when you Ctrl+C here.`,
   );
 

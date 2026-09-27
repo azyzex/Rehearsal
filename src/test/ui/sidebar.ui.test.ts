@@ -141,7 +141,7 @@ describe('the sidebar, rendered', () => {
           connectionString: 'redis://localhost',
           label: '',
           inferred: false,
-          problem: 'Dry Run does not know the "redis" scheme.',
+          problem: 'Rehearsal does not know the "redis" scheme.',
           notes: [],
         },
       });
@@ -320,11 +320,11 @@ describe('the sidebar, rendered', () => {
     });
 
     it('runs one when clicked', async () => {
-      await panel.click('.action[data-command="dryrun.exploreSchema"]');
+      await panel.click('.action[data-command="rehearsal.exploreSchema"]');
       const posted = (await panel.posted()) as { type?: string; command?: string }[];
       assert.ok(
         posted.some(
-          (message) => message.type === 'run' && message.command === 'dryrun.exploreSchema',
+          (message) => message.type === 'run' && message.command === 'rehearsal.exploreSchema',
         ),
       );
     });

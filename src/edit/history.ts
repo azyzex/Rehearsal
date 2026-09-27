@@ -36,7 +36,7 @@ export interface HistoryStore {
   update(key: string, value: unknown): Thenable<void> | Promise<void>;
 }
 
-const KEY = 'dryrun.appliedChangesets';
+const KEY = 'rehearsal.appliedChangesets';
 
 /**
  * How many to keep.

@@ -6,7 +6,7 @@ dist/
 .pgdata/
 
 # Rescue files written before a destructive apply.
-.dryrun/
+.rehearsal/
 
 # Screenshots the UI tests take. Useful to look at, not worth versioning.
 ui-shots/

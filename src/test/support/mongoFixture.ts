@@ -20,7 +20,7 @@ export interface MongoFixture {
   stop(): Promise<void>;
 }
 
-const DB_NAME = 'dryrun_test';
+const DB_NAME = 'rehearsal_test';
 
 let shared: Promise<MongoFixture> | undefined;
 

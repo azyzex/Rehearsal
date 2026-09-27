@@ -75,7 +75,7 @@ export function textReport(input: ReportInput): string {
 /** A markdown report, for a pull-request comment. */
 export function markdownReport(input: ReportInput): string {
   const lines = [
-    '## Dry Run',
+    '## Rehearsal',
     '',
     `\`${input.file}\`, measured against **${input.connection}**. Nothing was committed.`,
     '',

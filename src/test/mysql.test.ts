@@ -405,7 +405,7 @@ describe('mysql', () => {
         CREATE TRIGGER users_leak AFTER UPDATE ON users
         FOR EACH ROW
         BEGIN
-          SELECT NEW.id INTO OUTFILE '/tmp/dryrun-leak.txt';
+          SELECT NEW.id INTO OUTFILE '/tmp/rehearsal-leak.txt';
         END
       `);
 

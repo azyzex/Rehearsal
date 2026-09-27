@@ -191,7 +191,7 @@ describe('the message contract between each panel and its webview', () => {
  * The other contract: command identifiers.
  *
  * A command declared in the manifest and never registered still appears in the
- * palette, and running it says "command 'dryrun.x' not found" — which reads as
+ * palette, and running it says "command 'rehearsal.x' not found" — which reads as
  * the extension being broken rather than as one string being wrong. A command
  * registered and never declared cannot be found at all. A `data-command` on a
  * sidebar button that names neither is a button that does nothing, which is the

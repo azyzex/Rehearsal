@@ -20,7 +20,7 @@ export interface PostgresFixture {
   stop(): Promise<void>;
 }
 
-const DB_NAME = 'dryrun_test';
+const DB_NAME = 'rehearsal_test';
 
 /**
  * How long one attempt at a cluster gets.
@@ -84,7 +84,7 @@ export async function startPostgres(): Promise<PostgresFixture> {
   // one and using it. Anything that fails all three is a real fault.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const port = await freePort();
-    const databaseDir = path.join(os.tmpdir(), `dryrun-pg-${process.pid}-${port}`);
+    const databaseDir = path.join(os.tmpdir(), `rehearsal-pg-${process.pid}-${port}`);
 
     const pg = new EmbeddedPostgres({
       databaseDir,

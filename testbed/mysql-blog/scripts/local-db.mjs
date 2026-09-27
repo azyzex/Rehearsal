@@ -87,7 +87,7 @@ async function main() {
   console.log(`\nWrote ${path.relative(ROOT, envFile)}`);
 
   console.log(
-    `\nConnection string (paste this into the Dry Run sidebar):\n\n  ${url}\n\n` +
+    `\nConnection string (paste this into the Rehearsal sidebar):\n\n  ${url}\n\n` +
       `The engine badge should say MySQL before you press Connect, and once you\n` +
       `are connected the sidebar should warn that MySQL commits schema changes\n` +
       `the moment they run. That warning is the whole difference from Postgres.\n\n` +

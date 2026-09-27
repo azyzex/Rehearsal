@@ -97,7 +97,7 @@
     } catch (error) {
       // Same guard as the schema panel. A preview that silently stops updating
       // halfway through a migration is worse than one that says it broke.
-      console.error('Dry Run: ' + (error && error.message ? error.message : String(error)), error);
+      console.error('Rehearsal: ' + (error && error.message ? error.message : String(error)), error);
       el.rows.appendChild(banner('Could not render that: ' + (error && error.message ? error.message : error)));
     }
   });
@@ -1053,7 +1053,7 @@
     if (state === null) {
       const note = document.createElement('div');
       note.className = 'unavailable';
-      note.textContent = 'Could not search the workspace. The Dry Run output channel has why.';
+      note.textContent = 'Could not search the workspace. The Rehearsal output channel has why.';
       box.appendChild(note);
       return box;
     }
@@ -1138,7 +1138,7 @@
     if (state === null) {
       const note = document.createElement('div');
       note.className = 'unavailable';
-      note.textContent = 'Could not fetch the rows. The Dry Run output channel has the reason.';
+      note.textContent = 'Could not fetch the rows. The Rehearsal output channel has the reason.';
       box.appendChild(note);
       return box;
     }

@@ -29,14 +29,14 @@ describe('SQLite', () => {
   let adapter: SqliteAdapter;
 
   before(async () => {
-    file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-sqlite-')), 'app.db');
+    file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-sqlite-')), 'app.db');
 
     const seed = new SqliteAdapter();
     await seed.connect({
       connectionString: file,
       statementTimeoutMs: 5000,
       lockTimeoutMs: 2000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
     await seed.runCommitted([
       { sql: 'CREATE TABLE orgs (id integer primary key, name text not null)', params: [] },
@@ -65,7 +65,7 @@ describe('SQLite', () => {
       connectionString: `sqlite:${file}`,
       statementTimeoutMs: 5000,
       lockTimeoutMs: 2000,
-      applicationName: 'vscode-dryrun',
+      applicationName: 'vscode-rehearsal',
     });
   });
 
@@ -202,7 +202,7 @@ describe('SQLite', () => {
    *
    * `PRAGMA foreign_keys` is per connection and off by default in SQLite, so
    * the same ON DELETE CASCADE is enforced or ignored depending on who runs the
-   * delete — and Dry Run's connection is not the application's. The rows are
+   * delete — and Rehearsal's connection is not the application's. The rows are
    * counted, because that is the larger blast radius; whether they go is the
    * part that cannot be assumed, so it is said.
    */

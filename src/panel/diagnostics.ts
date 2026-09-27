@@ -50,7 +50,7 @@ export class FindingDiagnostics {
   private offset = 0;
 
   constructor() {
-    this.collection = vscode.languages.createDiagnosticCollection('dryrun');
+    this.collection = vscode.languages.createDiagnosticCollection('rehearsal');
     this.disposables.push(
       this.collection,
       // A measurement describes the statement that produced it, and an edited
@@ -148,7 +148,7 @@ export class FindingDiagnostics {
         SEVERITY[finding.severity],
       );
 
-      diagnostic.source = 'Dry Run';
+      diagnostic.source = 'Rehearsal';
       // The code shows in the Problems view next to the message, and it is the
       // one word that says how seriously to take the rest of the line.
       diagnostic.code = finding.severity;

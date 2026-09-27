@@ -64,7 +64,7 @@ export interface EditDialect {
   readonly hasDefaults: boolean;
 
   /**
-   * Whether Dry Run can generate the migration that undoes a changeset here.
+   * Whether Rehearsal can generate the migration that undoes a changeset here.
    *
    * True on all three now. It was false on MongoDB for exactly one commit,
    * while the alternative on offer was a SQL down migration.

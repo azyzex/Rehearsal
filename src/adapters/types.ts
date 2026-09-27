@@ -493,7 +493,7 @@ export interface DatabaseAdapter {
 export class TransactionControlError extends Error {
   constructor(public readonly statement: string) {
     super(
-      `Dry Run refuses to execute transaction-control statements inside a preview ` +
+      `Rehearsal refuses to execute transaction-control statements inside a preview ` +
         `(found: ${statement}). Committing would defeat the entire point of the preview.`,
     );
     this.name = "TransactionControlError";

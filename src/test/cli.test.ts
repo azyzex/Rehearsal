@@ -10,7 +10,7 @@ import { MongoFixture, seedMongo, startMongo } from './support/mongoFixture';
 import { PostgresFixture, startPostgres } from './support/pgFixture';
 
 /**
- * Dry Run outside the editor.
+ * Rehearsal outside the editor.
  *
  * The exit code is the whole feature: a report nobody reads still fails the
  * build, and a build that goes green on a migration that deletes forty thousand
@@ -154,7 +154,7 @@ describe('the markdown report', () => {
       findings: [finding('destructive', { detail: '40,072 rows.' })],
     });
 
-    assert.match(report, /^## Dry Run/);
+    assert.match(report, /^## Rehearsal/);
     assert.match(report, /\| 🔴 \| 1 \| Changes rows \| 40,072 rows\. \|/);
     assert.match(report, /Nothing was committed/);
   });
@@ -193,7 +193,7 @@ describe('running it', () => {
 
   before(async () => {
     fixture = await startPostgres();
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-cli-'));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-cli-'));
 
     const write = (name: string, sql: string): void => {
       const file = path.join(directory, name);
@@ -256,7 +256,7 @@ describe('running it', () => {
 
   it('writes markdown when asked', async () => {
     await run([written[0]!, '--url', fixture.connectionString, '--format', 'markdown'], io);
-    assert.match(captured(), /^## Dry Run/m);
+    assert.match(captured(), /^## Rehearsal/m);
   });
 
   it('measures several files in one run', async () => {
@@ -336,7 +336,7 @@ describe('running it against MongoDB', () => {
     fixture = await startMongo();
     await seedMongo(fixture.db());
 
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-cli-mongo-'));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-cli-mongo-'));
     operations = path.join(directory, 'cleanup.mongodb.js');
     fs.writeFileSync(
       operations,

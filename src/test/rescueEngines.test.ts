@@ -66,7 +66,7 @@ describe('the rescue file, per engine', () => {
         connectionString: fixture.connectionString,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -121,7 +121,7 @@ describe('the rescue file, per engine', () => {
         connectionString: fixture.uri,
         statementTimeoutMs: 20_000,
         lockTimeoutMs: 5000,
-        applicationName: 'vscode-dryrun',
+        applicationName: 'vscode-rehearsal',
       });
     });
 
@@ -172,7 +172,7 @@ describe('the rescue file, per engine', () => {
         { limit: 5 },
       );
 
-      assert.match(file.sql, /^\/\/ Dry Run rescue file/);
+      assert.match(file.sql, /^\/\/ Rehearsal rescue file/);
       assert.doesNotMatch(file.sql, /^-- /m);
       assert.match(file.sql, /These operations put back/);
     });

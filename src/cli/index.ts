@@ -8,7 +8,7 @@ import { APPLICATION_NAME } from '../constants';
 import { FailLevel, markdownReport, shouldFail, textReport } from './report';
 
 /**
- * Dry Run outside the editor.
+ * Rehearsal outside the editor.
  *
  * The same analysis, in the place a destructive migration is cheapest to
  * catch: the pull request that adds it, before anyone has deployed anything.
@@ -31,9 +31,9 @@ interface Options {
 }
 
 const USAGE = `
-dryrun — measure a migration against a real database, without applying it.
+rehearsal — measure a migration against a real database, without applying it.
 
-  dryrun <file.sql> [more.sql ...] [options]
+  rehearsal <file.sql> [more.sql ...] [options]
 
 Options:
   --url <string>        Connection string. Defaults to $DATABASE_URL.
@@ -75,7 +75,7 @@ const CONSOLE: Output = {
  * whole point: a check that adds a new comment on every push is a check people
  * turn off.
  */
-export const COMMENT_MARKER = '<!-- dryrun-report -->';
+export const COMMENT_MARKER = '<!-- rehearsal-report -->';
 
 export async function run(argv: readonly string[], io: Output = CONSOLE): Promise<number> {
   let options: Options;
@@ -154,7 +154,7 @@ export async function run(argv: readonly string[], io: Output = CONSOLE): Promis
       io.out(`Wrote ${options.output}\n`);
     }
   } catch (error) {
-    io.err(`dryrun: ${message(error)}\n`);
+    io.err(`rehearsal: ${message(error)}\n`);
     return 2;
   } finally {
     await adapter.dispose().catch(() => undefined);

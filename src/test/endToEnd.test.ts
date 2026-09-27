@@ -109,7 +109,7 @@ describe('a command, a real database, and a panel', () => {
     'draws the schema of the database it is pointed at',
     { timeout: RUN_TIMEOUT },
     async () => {
-      await recorded.commands.get('dryrun.exploreSchema')!();
+      await recorded.commands.get('rehearsal.exploreSchema')!();
 
       const message = await waitForMessage(recorded, 'schema');
       const snapshot = message['snapshot'] as {
@@ -147,14 +147,14 @@ describe('a command, a real database, and a panel', () => {
       // A markdown document rather than a panel, so it is read from the other
       // half of the stub.
       const before = recorded.documents.length;
-      await recorded.commands.get('dryrun.schemaHealth')!();
+      await recorded.commands.get('rehearsal.schemaHealth')!();
 
       assert.ok(recorded.documents.length > before, 'no report was opened');
       const report = recorded.documents[recorded.documents.length - 1]!;
 
       assert.equal(report.language, 'markdown');
       assert.match(report.content, /# Schema health/);
-      assert.match(report.content, /dryrun_test/, 'and says which database it read');
+      assert.match(report.content, /rehearsal_test/, 'and says which database it read');
 
       // The fixture is a healthy two-table schema, so the right answer is that
       // there is nothing to say — said out loud, rather than as a blank page.
@@ -178,8 +178,8 @@ describe('a command, a real database, and a panel', () => {
     async () => {
       const before = recorded.shown.filter((one) => one.kind === 'error').length;
 
-      await recorded.commands.get('dryrun.testConnection')!();
-      await recorded.commands.get('dryrun.disconnect')!();
+      await recorded.commands.get('rehearsal.testConnection')!();
+      await recorded.commands.get('rehearsal.disconnect')!();
 
       const errors = recorded.shown.filter((one) => one.kind === 'error');
       assert.equal(errors.length, before, `${errors.map((one) => one.message).join(' | ')}`);
@@ -197,7 +197,7 @@ describe('a command, a real database, and a panel', () => {
         panel.posted.length = 0;
       }
 
-      await recorded.commands.get('dryrun.exploreSchema')!();
+      await recorded.commands.get('rehearsal.exploreSchema')!();
       const message = await waitForMessage(recorded, 'schema');
 
       assert.ok((message['snapshot'] as { tables: unknown[] }).tables.length > 0);
@@ -248,7 +248,7 @@ describe('previewing a migration against real rows', () => {
   }
 
   it('measures all five statements', { timeout: RUN_TIMEOUT }, async () => {
-    await recorded.commands.get('dryrun.preview')!();
+    await recorded.commands.get('rehearsal.preview')!();
 
     const all = await findings();
     assert.equal(all.length, 5, `measured ${all.length} of 5`);
@@ -371,14 +371,14 @@ function wording(finding: Record<string, unknown>): string {
 describe('the questions the editor asks for the schema explorer', () => {
   /** The message handler the panel registered, whatever panel is open. */
   async function ask(message: Record<string, unknown>): Promise<void> {
-    await recorded.commands.get('dryrun.exploreSchema')!();
+    await recorded.commands.get('rehearsal.exploreSchema')!();
     await waitForMessage(recorded, 'schema');
     await deliver(message);
   }
 
   before(async () => {
     // Opened once here, so the panel exists before the first question.
-    await recorded.commands.get('dryrun.exploreSchema')!();
+    await recorded.commands.get('rehearsal.exploreSchema')!();
     await waitForMessage(recorded, 'schema');
   });
 
@@ -390,7 +390,7 @@ describe('the questions the editor asks for the schema explorer', () => {
    * than making a second.
    */
   function schemaPanel() {
-    const panel = recorded.panels.filter((one) => one.viewType === 'dryrun.schema').at(-1);
+    const panel = recorded.panels.filter((one) => one.viewType === 'rehearsal.schema').at(-1);
     assert.ok(panel, 'the schema panel is not open');
     return panel;
   }
@@ -523,13 +523,13 @@ describe('comparing against another database', () => {
     const before = recorded.asked.length;
     recorded.answers.push(undefined); // escape
 
-    await recorded.commands.get('dryrun.compareSchemas')!();
+    await recorded.commands.get('rehearsal.compareSchemas')!();
 
     assert.ok(recorded.asked.length > before, 'it asked nothing at all');
     const asked = recorded.asked[recorded.asked.length - 1]!;
     assert.match(
       String(asked.options['prompt']),
-      /dryrun_test/,
+      /rehearsal_test/,
       'the question does not say which database is being compared against',
     );
   });
@@ -543,7 +543,7 @@ describe('comparing against another database', () => {
     const before = recorded.shown.length;
     recorded.answers.push('mongodb://127.0.0.1:27017/other');
 
-    await recorded.commands.get('dryrun.compareSchemas')!();
+    await recorded.commands.get('rehearsal.compareSchemas')!();
 
     const said = recorded.shown.slice(before).map((one) => one.message).join('\n');
     assert.match(said, /same kind/i);
@@ -560,7 +560,7 @@ describe('comparing against another database', () => {
     const before = recorded.shown.length;
     recorded.answers.push('mysql://root@127.0.0.1:3306/blog');
 
-    await recorded.commands.get('dryrun.compareSchemas')!();
+    await recorded.commands.get('rehearsal.compareSchemas')!();
 
     const said = recorded.shown.slice(before).map((one) => one.message).join('\n');
     assert.match(said, /same kind/i);

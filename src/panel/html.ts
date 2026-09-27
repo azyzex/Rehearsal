@@ -54,7 +54,7 @@ export function previewPanelHtml(options: HtmlOptions): string {
 <meta http-equiv="Content-Security-Policy" content="${csp(options)}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${options.media('panel.css')}" rel="stylesheet">
-<title>Dry Run</title>
+<title>Rehearsal</title>
 </head>
 <body>
 <header id="header">
@@ -74,7 +74,7 @@ export function previewPanelHtml(options: HtmlOptions): string {
 <div id="summary" class="summary" hidden></div>
 <main id="rows"></main>
 <div id="diagram" hidden></div>
-<footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
+<footer id="footer">Nothing is committed. Rehearsal only ever reads and rolls back.</footer>
 <script nonce="${options.nonce}" src="${options.media('panel.js')}"></script>
 </body>
 </html>`;
@@ -179,7 +179,7 @@ export function indexPanelHtml(options: HtmlOptions): string {
       content="${csp(options)}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${options.media('panel.css')}" rel="stylesheet">
-<title>Dry Run — Indexes</title>
+<title>Rehearsal — Indexes</title>
 </head>
 <body>
 <header id="header">
@@ -193,7 +193,7 @@ export function indexPanelHtml(options: HtmlOptions): string {
 </header>
 <div id="summary" class="summary" hidden></div>
 <main id="results"></main>
-<footer id="footer">No index was kept. Dry Run only ever reads and rolls back.</footer>
+<footer id="footer">No index was kept. Rehearsal only ever reads and rolls back.</footer>
 <script nonce="${options.nonce}" src="${options.media('indexes.js')}"></script>
 </body>
 </html>`;
@@ -214,12 +214,12 @@ export function sidebarHtml(options: HtmlOptions): string {
 <meta http-equiv="Content-Security-Policy" content="${csp(options)}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${options.media('sidebar.css')}" rel="stylesheet">
-<title>Dry Run</title>
+<title>Rehearsal</title>
 </head>
 <body>
 <div id="connect">
   <p class="lede">
-    Point Dry Run at a database. It reads, measures, and rolls everything back.
+    Point Rehearsal at a database. It reads, measures, and rolls everything back.
   </p>
 
   <label class="field-label" for="connection">Connection string</label>
@@ -260,35 +260,35 @@ export function sidebarHtml(options: HtmlOptions): string {
   </div>
 
   <h2>Look at it</h2>
-  <button class="action" type="button" data-command="dryrun.exploreSchema">
+  <button class="action" type="button" data-command="rehearsal.exploreSchema">
     <span class="action-name">Explore the schema</span>
     <span class="action-why">Every table and relationship, drawn</span>
   </button>
-  <button class="action" type="button" data-command="dryrun.schemaHealth">
+  <button class="action" type="button" data-command="rehearsal.schemaHealth">
     <span class="action-name">Schema health</span>
     <span class="action-why">Unindexed keys, unread indexes, stale statistics</span>
   </button>
-  <button class="action" type="button" data-command="dryrun.compareSchemas">
+  <button class="action" type="button" data-command="rehearsal.compareSchemas">
     <span class="action-name">Compare with another database</span>
     <span class="action-why">Drift between two environments</span>
   </button>
 
   <h2>Measure a change</h2>
-  <button class="action" type="button" data-command="dryrun.preview">
+  <button class="action" type="button" data-command="rehearsal.preview">
     <span class="action-name">Preview the open file</span>
     <span class="action-why">What each statement would really do</span>
   </button>
-  <button class="action" type="button" data-command="dryrun.pendingMigrations">
+  <button class="action" type="button" data-command="rehearsal.pendingMigrations">
     <span class="action-name">Preview pending migrations</span>
     <span class="action-why">What your ORM has queued up</span>
   </button>
-  <button class="action" type="button" data-command="dryrun.suggestIndexes">
+  <button class="action" type="button" data-command="rehearsal.suggestIndexes">
     <span class="action-name">Would an index help?</span>
     <span class="action-why">Tested against the planner, not guessed</span>
   </button>
 
   <h2>Afterwards</h2>
-  <button class="action" type="button" data-command="dryrun.appliedChanges">
+  <button class="action" type="button" data-command="rehearsal.appliedChanges">
     <span class="action-name">Applied changes</span>
     <span class="action-why">What ran, with its rescue file and down migration</span>
   </button>
@@ -300,7 +300,7 @@ export function sidebarHtml(options: HtmlOptions): string {
   <p class="lede">Connecting…</p>
 </div>
 
-<footer id="footer">Nothing is committed. Dry Run only ever reads and rolls back.</footer>
+<footer id="footer">Nothing is committed. Rehearsal only ever reads and rolls back.</footer>
 <script nonce="${options.nonce}" src="${options.media('sidebar.js')}"></script>
 </body>
 </html>`;

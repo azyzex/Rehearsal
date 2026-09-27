@@ -94,7 +94,7 @@ export function detect(raw: string): Detection {
       label: '',
       inferred: false,
       problem:
-        `Dry Run does not know the "${scheme}" scheme. It speaks postgresql://, ` +
+        `Rehearsal does not know the "${scheme}" scheme. It speaks postgresql://, ` +
         `mysql://, mongodb:// and sqlite:.`,
       notes: [],
     };
@@ -159,7 +159,7 @@ function describe(connectionString: string, engine: Engine): { label: string; pr
 
     return { label: database ? `${database} on ${host}` : `${engine} on ${host}` };
   } catch {
-    return { label: '', problem: 'That is not a connection string Dry Run can read.' };
+    return { label: '', problem: 'That is not a connection string Rehearsal can read.' };
   }
 }
 
@@ -177,7 +177,7 @@ function notesFor(engine: Engine, connectionString: string): string[] {
     if (!srv) {
       notes.push(
         'Previews need a replica set. MongoDB rolls back with a transaction and a ' +
-          'standalone server has none, so Dry Run will refuse rather than run a preview ' +
+          'standalone server has none, so Rehearsal will refuse rather than run a preview ' +
           'it could not undo. Atlas connections are replica sets.',
       );
     }
@@ -192,7 +192,7 @@ function notesFor(engine: Engine, connectionString: string): string[] {
 
   if (engine === 'sqlite') {
     notes.push(
-      'A file rather than a server. Dry Run opens it read-only in practice \u2014 every ' +
+      'A file rather than a server. Rehearsal opens it read-only in practice \u2014 every ' +
         'preview runs inside a transaction that is rolled back \u2014 but it is the same ' +
         'file your application uses, so point it at a copy if anything else has it open.',
     );

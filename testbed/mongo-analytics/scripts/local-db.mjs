@@ -7,7 +7,7 @@
  *
  * A replica set rather than a standalone, and not for realism's sake: previews
  * need multi-document transactions, a standalone `mongod` does not have them,
- * and Dry Run refuses to connect to one rather than run something it could not
+ * and Rehearsal refuses to connect to one rather than run something it could not
  * undo. So a standalone would leave you looking at the refusal instead of the
  * feature.
  *
@@ -38,7 +38,7 @@ const DB = 'analytics';
 
 // Kept out of the OS temp sweep, so the data survives a reboot and a second run
 // starts in a second rather than reseeding two hundred thousand documents.
-const DATA_DIR = path.join(os.homedir(), '.dryrun', 'local-mongo');
+const DATA_DIR = path.join(os.homedir(), '.rehearsal', 'local-mongo');
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -88,7 +88,7 @@ async function main() {
   console.log(String.fromCharCode(10) + 'Wrote ' + path.relative(ROOT, envFile));
 
   console.log(
-    `\nConnection string (paste this into the Dry Run sidebar):\n\n  ${url}\n\n` +
+    `\nConnection string (paste this into the Rehearsal sidebar):\n\n  ${url}\n\n` +
       `The engine badge should say MongoDB before you press Connect.\n` +
       `Then open testbed/mongo-analytics as a folder and try Explore Schema.\n\n` +
       `Leave this terminal open — the database stops when you Ctrl+C here.`,

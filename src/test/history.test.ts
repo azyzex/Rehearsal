@@ -84,11 +84,11 @@ describe('the applied history', () => {
   it('keeps the rescue file and the down migration with it', async () => {
     const history = new ChangesetHistory(new Store());
     await history.record(
-      entry({ rescueFile: '.dryrun/rescue-x.sql', downSql: 'ALTER TABLE users ADD COLUMN x text;' }),
+      entry({ rescueFile: '.rehearsal/rescue-x.sql', downSql: 'ALTER TABLE users ADD COLUMN x text;' }),
     );
 
     const [found] = history.all();
-    assert.equal(found!.rescueFile, '.dryrun/rescue-x.sql');
+    assert.equal(found!.rescueFile, '.rehearsal/rescue-x.sql');
     assert.match(found!.downSql!, /ADD COLUMN x/);
   });
 
@@ -120,7 +120,7 @@ describe('the applied history', () => {
   describe('when the stored value is not what it should be', () => {
     it('survives something that is not an array', () => {
       const store = new Store();
-      store.poison('dryrun.appliedChangesets', { nope: true });
+      store.poison('rehearsal.appliedChangesets', { nope: true });
       assert.deepEqual(new ChangesetHistory(store).all(), []);
     });
 
@@ -129,7 +129,7 @@ describe('the applied history', () => {
       // history is a convenience; it must never be the reason a panel fails to
       // open.
       const store = new Store();
-      store.poison('dryrun.appliedChangesets', [
+      store.poison('rehearsal.appliedChangesets', [
         { id: 'a', appliedAt: '2026-01-01T00:00:00.000Z', statements: ['x'] },
         'not an object',
         { missing: 'everything' },

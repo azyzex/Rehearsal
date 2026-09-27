@@ -24,10 +24,10 @@ export interface ResolvedConnection {
 }
 
 /** Variables checked, in order, in both the process environment and the .env file. */
-export const CONNECTION_ENV_KEYS = ['DRYRUN_DATABASE_URL', 'DATABASE_URL'] as const;
+export const CONNECTION_ENV_KEYS = ['REHEARSAL_DATABASE_URL', 'DATABASE_URL'] as const;
 
 export interface ResolveInputs {
-  /** Value of `dryrun.connectionString`, which may contain `${env:VAR}`. */
+  /** Value of `rehearsal.connectionString`, which may contain `${env:VAR}`. */
   readonly setting: string;
   /** Process environment. */
   readonly env: Record<string, string | undefined>;
@@ -103,8 +103,8 @@ export class ConnectionResolutionError extends Error {
 
 /**
  * Resolves a connection string from, in order of precedence:
- *   1. `dryrun.connectionString` (with `${env:VAR}` expanded)
- *   2. `DRYRUN_DATABASE_URL` / `DATABASE_URL` in the process environment
+ *   1. `rehearsal.connectionString` (with `${env:VAR}` expanded)
+ *   2. `REHEARSAL_DATABASE_URL` / `DATABASE_URL` in the process environment
  *   3. the same keys in the workspace `.env` file
  */
 export function resolveConnection(inputs: ResolveInputs): ResolvedConnection {
@@ -114,14 +114,14 @@ export function resolveConnection(inputs: ResolveInputs): ResolvedConnection {
     const { expanded, missing } = expandEnvReferences(setting, inputs.env);
     if (missing.length > 0) {
       throw new ConnectionResolutionError(
-        `dryrun.connectionString references ${missing.map((m) => `$${m}`).join(', ')}, ` +
+        `rehearsal.connectionString references ${missing.map((m) => `$${m}`).join(', ')}, ` +
           `which ${missing.length === 1 ? 'is' : 'are'} not set in the environment.`,
       );
     }
     if (expanded.trim().length === 0) {
-      throw new ConnectionResolutionError('dryrun.connectionString expanded to an empty value.');
+      throw new ConnectionResolutionError('rehearsal.connectionString expanded to an empty value.');
     }
-    return { connectionString: expanded.trim(), source: { kind: 'setting', detail: 'dryrun.connectionString' } };
+    return { connectionString: expanded.trim(), source: { kind: 'setting', detail: 'rehearsal.connectionString' } };
   }
 
   for (const key of CONNECTION_ENV_KEYS) {
@@ -146,6 +146,6 @@ export function resolveConnection(inputs: ResolveInputs): ResolvedConnection {
 
   throw new ConnectionResolutionError(
     `No Postgres connection found. Set ${CONNECTION_ENV_KEYS.join(' or ')} in your .env file, ` +
-      `or point dryrun.connectionString at an environment variable such as \${env:DATABASE_URL}.`,
+      `or point rehearsal.connectionString at an environment variable such as \${env:DATABASE_URL}.`,
   );
 }

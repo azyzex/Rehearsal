@@ -1,4 +1,4 @@
--- Dry Run testbed: a small e-commerce schema.
+-- Rehearsal testbed: a small e-commerce schema.
 --
 -- Two jobs, deliberately in tension:
 --

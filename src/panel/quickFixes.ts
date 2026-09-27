@@ -62,7 +62,7 @@ export class RewriteActions implements vscode.CodeActionProvider {
         .getDiagnostics(document.uri)
         .filter(
           (diagnostic) =>
-            diagnostic.source === 'Dry Run' && diagnostic.range.start.line === start.line,
+            diagnostic.source === 'Rehearsal' && diagnostic.range.start.line === start.line,
         );
 
       // The first offer is the one to reach for. Where a statement cannot

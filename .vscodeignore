@@ -7,7 +7,7 @@ node_modules/**
 esbuild.js
 tsconfig*.json
 eslint.config.mjs
-DRYRUN_SPEC.md
+REHEARSAL_SPEC.md
 testbed/
 ui-shots/
 media/__ui-*.html

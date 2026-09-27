@@ -10,7 +10,7 @@ import { PostgresFixture, startPostgres } from './support/pgFixture';
  * M0 acceptance tests.
  *
  * `withRollback` is the single most important correctness property in the
- * codebase: everything else in Dry Run is built on the promise that a preview
+ * codebase: everything else in Rehearsal is built on the promise that a preview
  * cannot change your data. These tests are written against a real Postgres,
  * and they verify the promise from the outside — by reading the table back on
  * a separate connection after the preview has finished.

@@ -3,7 +3,7 @@ import { maskLiterals, statementStarts } from './mask';
 /**
  * Detection of transaction-control statements.
  *
- * The statements Dry Run executes come out of the user's own migration files.
+ * The statements Rehearsal executes come out of the user's own migration files.
  * A file that contains a literal `COMMIT;` would, without this check, commit
  * the preview transaction and persist every change the preview just made —
  * the exact harm the extension exists to prevent. So every statement is

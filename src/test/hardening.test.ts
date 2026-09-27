@@ -178,7 +178,7 @@ describe('safety under load', () => {
         connectionString: fixture.connectionString,
         statementTimeoutMs: 1000,
         lockTimeoutMs: 1000,
-        applicationName: 'vscode-dryrun-temporary',
+        applicationName: 'vscode-rehearsal-temporary',
       });
       await temporary.dispose();
 
@@ -187,7 +187,7 @@ describe('safety under load', () => {
       for (let attempt = 0; attempt < 20 && remaining > 0; attempt++) {
         const { rows } = await verifier.query(
           `SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE application_name = $1`,
-          ['vscode-dryrun-temporary'],
+          ['vscode-rehearsal-temporary'],
         );
         remaining = Number(rows[0].n);
         if (remaining > 0) {
