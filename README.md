@@ -675,6 +675,7 @@ source if you are changing the code.
 |---|---|
 | `Rehearsal: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file, or the selection |
 | `Rehearsal: Explore Schema` (`ctrl + alt + s`) | Draw the database, and edit it |
+| `Rehearsal: Try It on a Sample Database` | No database needed: builds a small SQLite file and previews a sample migration against it |
 | `Rehearsal: Preview This Statement` | The link above each statement: preview just that one |
 | `Rehearsal: Switch Connection` | Pick another saved database without opening the sidebar |
 | `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |

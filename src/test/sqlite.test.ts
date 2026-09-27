@@ -10,6 +10,7 @@ import { dialectFor } from '../edit/dialect';
 import { analyzeStatements } from '../analysis/orchestrator';
 import { Finding } from '../analysis/types';
 import { languageFor } from '../parser/language';
+import { buildSample } from '../sample/sampleDatabase';
 
 /**
  * The fourth engine, against a real database file.
@@ -253,6 +254,39 @@ describe('SQLite', () => {
     assert.match(String(tree.note), /per connection/);
     assert.match(String(tree.note), /orphans/);
     assert.equal(tree.truncated, undefined);
+  });
+
+  it('builds the sample database, and measures the sample migration against it', async () => {
+    // The first thing a new user can press. If it fails, the first impression
+    // is an error, so it gets the whole path: build, connect, split, measure.
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rehearsal-sample-'));
+    const sample = buildSample(directory);
+    const probe = new SqliteAdapter();
+    await probe.connect({
+      connectionString: `sqlite:${sample.database}`,
+      statementTimeoutMs: 5000,
+      lockTimeoutMs: 2000,
+      applicationName: 'vscode-rehearsal',
+    });
+
+    try {
+      const findings: Finding[] = [];
+      const language = languageFor('sqlite');
+      await analyzeStatements({
+        adapter: probe,
+        statements: language.split(fs.readFileSync(sample.migration, 'utf8')),
+        thresholds: { cautionRows: 100, destructiveRows: 1000, largeTable: 100_000, sampleSize: 5 },
+        onFinding: (finding) => findings.push(finding),
+      });
+
+      assert.equal(findings.length, 5);
+      assert.equal(findings[0]!.rowCount, 41, 'the archived notes');
+      assert.match(findings[1]!.detail, /62 rows share a duplicate slug/);
+      assert.equal(findings[4]!.severity, 'destructive', 'dropping a column every note fills');
+    } finally {
+      await probe.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   describe('the changes it has no syntax for', () => {

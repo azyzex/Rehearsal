@@ -17,6 +17,7 @@ import { RewriteActions } from './panel/quickFixes';
 import { StatusBar } from './panel/statusBar';
 import { RecentPreviews } from './panel/recent';
 import { StatementLenses, TableHover } from './panel/editorLens';
+import { buildSample } from './sample/sampleDatabase';
 import { SchemaSnapshot } from './adapters/types';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
@@ -159,6 +160,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
+
+    // No database, no credentials, no setup: a small SQLite file in the
+    // extension's own storage, a sample migration beside it, and a preview
+    // with real numbers in it seconds after installing.
+    vscode.commands.registerCommand('rehearsal.trySample', async () => {
+      try {
+        const sample = buildSample(vscode.Uri.joinPath(context.globalStorageUri, 'sample').fsPath);
+        await connections.useConnectionString(`sqlite:${sample.database}`);
+        const document = await vscode.workspace.openTextDocument(sample.migration);
+        await vscode.window.showTextDocument(document, { preview: false });
+        await runPreview(document);
+      } catch (error) {
+        reportError(error, output, connections);
+      }
+    }),
 
     // From a lens: select the one statement and preview the selection, which
     // is the path a hand selection already takes.

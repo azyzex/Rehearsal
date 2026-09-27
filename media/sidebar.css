@@ -401,6 +401,10 @@ button:disabled {
 
 /* ---- actions ------------------------------------------------------------- */
 
+.action.sample {
+  margin-top: 10px;
+}
+
 .action {
   display: block;
   width: 100%;

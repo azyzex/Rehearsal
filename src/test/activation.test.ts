@@ -144,6 +144,12 @@ describe('every command, with nothing connected', () => {
     const failed: string[] = [];
 
     for (const [id, handler] of recorded.commands) {
+      // The one command whose job is to connect: run here, it would leave
+      // everything after it connected to the sample, and this describes the
+      // extension with nothing connected. It is exercised in sqlite.test.ts.
+      if (id === 'rehearsal.trySample') {
+        continue;
+      }
       try {
         await handler();
       } catch (error) {

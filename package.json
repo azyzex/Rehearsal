@@ -103,6 +103,11 @@
         "command": "rehearsal.previewStatement",
         "title": "Preview This Statement",
         "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.trySample",
+        "title": "Try It on a Sample Database",
+        "category": "Rehearsal"
       }
     ],
     "configuration": [
@@ -300,6 +305,59 @@
         "command": "rehearsal.exploreSchema",
         "key": "ctrl+alt+s",
         "mac": "cmd+alt+s"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "rehearsal.start",
+        "title": "Get started with Rehearsal",
+        "description": "See what a database change will do to your data before you make it.",
+        "steps": [
+          {
+            "id": "sample",
+            "title": "See it work on a sample database",
+            "description": "No setup and no credentials: a small SQLite file, a sample migration, and a real preview.\n[Try the sample](command:rehearsal.trySample)",
+            "media": {
+              "markdown": "media/walkthrough/sample.md"
+            },
+            "completionEvents": [
+              "onCommand:rehearsal.trySample"
+            ]
+          },
+          {
+            "id": "connect",
+            "title": "Connect your own database",
+            "description": "Paste a connection string. Postgres, MySQL, MongoDB and SQLite.\n[Open the Rehearsal panel](command:rehearsal.sidebar.focus)",
+            "media": {
+              "markdown": "media/walkthrough/connect.md"
+            },
+            "completionEvents": [
+              "onView:rehearsal.sidebar"
+            ]
+          },
+          {
+            "id": "preview",
+            "title": "Preview a migration",
+            "description": "Open a migration and measure it against your data.\n[Preview the open file](command:rehearsal.preview)",
+            "media": {
+              "markdown": "media/walkthrough/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:rehearsal.preview"
+            ]
+          },
+          {
+            "id": "explore",
+            "title": "Explore the schema",
+            "description": "The database as a diagram you can change, with every change previewed first.\n[Explore the schema](command:rehearsal.exploreSchema)",
+            "media": {
+              "markdown": "media/walkthrough/explore.md"
+            },
+            "completionEvents": [
+              "onCommand:rehearsal.exploreSchema"
+            ]
+          }
+        ]
       }
     ]
   },

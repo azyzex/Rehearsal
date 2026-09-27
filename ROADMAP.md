@@ -48,8 +48,8 @@ thing that looks broken in VS Code.
 - [x] 34. Contrast pass on small text, light and high-contrast themes
 - [x] 35. Hover on a table name: rows, size, indexes
 - [x] 36. CodeLens above each statement
-- [ ] 37. Get Started walkthrough
-- [ ] 38. Try it on a sample database — no setup, no credentials
+- [x] 37. Get Started walkthrough
+- [x] 38. Try it on a sample database — no setup, no credentials
 - [ ] 39. Backup check before Apply
 - [ ] 40. Will it run out of disk?
 - [ ] 41. Dead column report

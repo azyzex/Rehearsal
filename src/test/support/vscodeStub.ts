@@ -1,3 +1,5 @@
+import * as nodeOs from 'node:os';
+import * as nodePath from 'node:path';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
@@ -156,8 +158,10 @@ export function makeContext(): any {
     extensionUri: uri('/extension'),
     extensionPath: '/extension',
     asAbsolutePath: (relative: string) => `/extension/${relative}`,
-    storageUri: uri('/storage'),
-    globalStorageUri: uri('/global-storage'),
+    // Under the temp directory: commands write here, and '/global-storage' on
+    // Windows is the root of the drive.
+    storageUri: uri(nodePath.join(nodeOs.tmpdir(), 'rehearsal-stub', 'storage')),
+    globalStorageUri: uri(nodePath.join(nodeOs.tmpdir(), 'rehearsal-stub', 'global-storage')),
     logUri: uri('/log'),
     extensionMode: 2,
   };

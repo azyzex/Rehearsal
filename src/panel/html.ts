@@ -250,6 +250,11 @@ export function sidebarHtml(options: HtmlOptions): string {
   <div class="or">or</div>
   <button id="from-env" class="ghost" type="button">Use a .env file…</button>
 
+  <button class="action sample" type="button" data-command="rehearsal.trySample">
+    <span class="action-name">Try it on a sample database</span>
+    <span class="action-why">No setup and no credentials. Builds a small SQLite file and previews a migration against it.</span>
+  </button>
+
   <section id="saved-section" hidden>
     <h2>Saved</h2>
     <div id="saved"></div>
