@@ -261,7 +261,7 @@ export function sidebarHtml(options: HtmlOptions): string {
 
   <h2>Look at it</h2>
   <button class="action" type="button" data-command="rehearsal.exploreSchema">
-    <span class="action-name">Explore the schema</span>
+    <span class="action-name">Explore the schema<span class="action-key" data-key="ctrl+alt+s"></span></span>
     <span class="action-why">Every table and relationship, drawn</span>
   </button>
   <button class="action" type="button" data-command="rehearsal.schemaHealth">
@@ -275,7 +275,7 @@ export function sidebarHtml(options: HtmlOptions): string {
 
   <h2>Measure a change</h2>
   <button class="action" type="button" data-command="rehearsal.preview">
-    <span class="action-name">Preview the open file</span>
+    <span class="action-name">Preview the open file<span class="action-key" data-key="ctrl+alt+d"></span></span>
     <span class="action-why">What each statement would really do</span>
   </button>
   <button class="action" type="button" data-command="rehearsal.pendingMigrations">
@@ -283,7 +283,7 @@ export function sidebarHtml(options: HtmlOptions): string {
     <span class="action-why">What your ORM has queued up</span>
   </button>
   <button class="action" type="button" data-command="rehearsal.suggestIndexes">
-    <span class="action-name">Would an index help?</span>
+    <span class="action-name">Would an index help?<span class="action-key" data-key="ctrl+alt+i"></span></span>
     <span class="action-why">Tested against the planner, not guessed</span>
   </button>
 

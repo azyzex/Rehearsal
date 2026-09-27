@@ -250,7 +250,8 @@
     const close = document.createElement('button');
     close.className = 'drawer-close';
     close.textContent = '✕';
-    close.title = 'Close';
+    close.title = 'Close (Esc)';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeDrawer);
     head.appendChild(close);
     wrap.appendChild(head);
@@ -280,7 +281,8 @@
     const close = document.createElement('button');
     close.className = 'drawer-close';
     close.textContent = '✕';
-    close.title = 'Close';
+    close.title = 'Close (Esc)';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeDrawer);
     head.appendChild(close);
     wrap.appendChild(head);
@@ -359,7 +361,8 @@
     const close = document.createElement('button');
     close.className = 'drawer-close';
     close.textContent = '✕';
-    close.title = 'Close';
+    close.title = 'Close (Esc)';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeDrawer);
     head.appendChild(close);
     wrap.appendChild(head);
@@ -715,7 +718,13 @@
 
     const search = document.createElement('input');
     search.type = 'search';
-    search.placeholder = 'Find a row — any column, any value';
+    // Short enough to fit the drawer. The full rule is in the tooltip and the
+    // accessible name: "any column, any value" was being cut to "any colun".
+    search.placeholder = 'Find a row';
+    search.title = 'Matches any column, any value, case-insensitively';
+    search.setAttribute('aria-label', 'Find a row: matches any column, any value');
+    search.style.flex = '1 1 auto';
+    search.style.minWidth = '0';
     search.value = detail.filter || '';
     search.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {

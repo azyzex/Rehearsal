@@ -9,10 +9,12 @@ import { analyzeStatements } from './analysis/orchestrator';
 import { rankSeverity } from './panel/controller';
 import { Finding, Severity, Thresholds } from './analysis/types';
 import { ConnectionManager, ProductionRefusedError } from './connection/manager';
+import { engineName } from './connection/detect';
 import { ConnectionResolutionError } from './connection/resolve';
 import { PreviewPanel } from './panel/controller';
 import { FindingDiagnostics } from './panel/diagnostics';
 import { RewriteActions } from './panel/quickFixes';
+import { StatusBar } from './panel/statusBar';
 import { Sidebar } from './panel/sidebar';
 import { SavedConnections } from './connection/saved';
 import { AppliedChangeset, ChangesetHistory, describeEntry } from './edit/history';
@@ -73,6 +75,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // — through a command, or through the .env fallback. Both have to reach it.
   connections.onChanged(() => void sidebar.refresh());
 
+  // Which database, and what the last preview said, in the one place in the
+  // window that is always visible.
+  const statusBar = new StatusBar();
+  context.subscriptions.push(statusBar);
+  const showConnection = (): void => {
+    const current = connections.current;
+    statusBar.showConnection(
+      current ? { display: current.identity.display, engine: current.adapter.engine } : undefined,
+    );
+  };
+  connections.onChanged(showConnection);
+  showConnection();
+
   // One preview at a time. Two runs against one connection would interleave
   // their transactions, and the second would redraw rows the first is still
   // filling in.
@@ -83,7 +98,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     previewing = true;
     try {
-      await preview(context, connections, output, diagnostics, saved);
+      const result = await preview(context, connections, output, diagnostics, saved);
+      if (result) {
+        statusBar.showVerdict(result.findings, result.file);
+      }
     } finally {
       previewing = false;
     }
@@ -91,6 +109,62 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('rehearsal.preview', () => runPreview()),
+
+    // From the Explorer's right-click menu: measure a file without opening it
+    // first. It is opened anyway, beside nothing, because a row in the panel
+    // reveals its line and needs a document to reveal it in.
+    vscode.commands.registerCommand('rehearsal.previewFile', async (uri?: vscode.Uri) => {
+      const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+      if (!target) {
+        return;
+      }
+      await vscode.window.showTextDocument(target, { preview: false });
+      await runPreview();
+    }),
+
+    // Changing database without opening the sidebar. The sidebar's own
+    // connect path does the work, so the two cannot drift apart — including
+    // the message for an entry whose password is no longer in the keychain.
+    vscode.commands.registerCommand('rehearsal.switchConnection', async () => {
+      const current = connections.current?.identity.display;
+      type Pick = vscode.QuickPickItem & { id?: string; action?: 'new' | 'disconnect' };
+
+      const items: Pick[] = saved.all().map((entry) => ({
+        label: `$(database) ${entry.label}`,
+        description: engineName(entry.engine),
+        detail: entry.label === current ? 'Connected now' : undefined,
+        id: entry.id,
+      }));
+
+      items.push(
+        { label: '', kind: vscode.QuickPickItemKind.Separator },
+        { label: '$(add) Connect to another database…', action: 'new' },
+      );
+      if (connections.current) {
+        items.push({ label: '$(debug-disconnect) Disconnect', action: 'disconnect' });
+      }
+
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'Rehearsal: switch database',
+        placeHolder: current ? `Connected to ${current}` : 'Not connected',
+        matchOnDescription: true,
+      });
+
+      if (!picked) {
+        return;
+      }
+      if (picked.action === 'new') {
+        await vscode.commands.executeCommand('rehearsal.sidebar.focus');
+        return;
+      }
+      if (picked.action === 'disconnect') {
+        await vscode.commands.executeCommand('rehearsal.disconnect');
+        return;
+      }
+      if (picked.id) {
+        await sidebar.connectSaved(picked.id);
+      }
+    }),
 
     // Saving is when a migration is finished being typed, which is exactly when
     // its measurements are worth having again. Deliberately narrow: only a file
@@ -164,7 +238,7 @@ async function preview(
   diagnostics: FindingDiagnostics,
   /** Set when a save triggered this rather than the command. */
   saved?: vscode.TextDocument,
-): Promise<void> {
+): Promise<{ findings: Finding[]; file: string } | undefined> {
   const editor = saved
     ? vscode.window.visibleTextEditors.find(
         (candidate) => candidate.document.uri.toString() === saved.uri.toString(),
@@ -319,9 +393,13 @@ async function preview(
     }
 
     panel.finish(summarize(findings, statements.length, cancelled));
+    return cancelled
+      ? undefined
+      : { findings, file: vscode.workspace.asRelativePath(document.uri) };
   } catch (error) {
     reportError(error, output, connections);
     panel.fail(errorMessage(error));
+    return undefined;
   }
 }
 

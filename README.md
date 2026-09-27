@@ -673,8 +673,9 @@ source if you are changing the code.
 
 | Command | What it does |
 |---|---|
-| `Rehearsal: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file |
-| `Rehearsal: Explore Schema` | Draw the database, and edit it |
+| `Rehearsal: Preview` (`ctrl + alt + d`) | Analyse the open `.sql` file, or the selection |
+| `Rehearsal: Explore Schema` (`ctrl + alt + s`) | Draw the database, and edit it |
+| `Rehearsal: Switch Connection` | Pick another saved database without opening the sidebar |
 | `Rehearsal: Preview Pending Migrations` | Measure what your ORM has queued up |
 | `Rehearsal: Schema Health Report` | Unindexed keys, unread indexes, stale statistics |
 | `Rehearsal: Compare With Another Database` | Drift between two environments |
@@ -683,7 +684,11 @@ source if you are changing the code.
 | `Rehearsal: Test Connection` | Check the connection alone |
 | `Rehearsal: Disconnect` | Close the connection |
 
-In the explorer, **Export** writes the schema as a Mermaid ER diagram — GitHub
+Preview is also on the editor's title bar, on the right-click menu inside a
+migration, and as **Preview with Rehearsal** on the right-click menu of a file in
+the Explorer — so a file can be measured without being opened first.
+
+In the schema explorer, **Export** writes the schema as a Mermaid ER diagram — GitHub
 renders it natively, so it can live in a README and stay readable in a diff.
 
 ### Settings

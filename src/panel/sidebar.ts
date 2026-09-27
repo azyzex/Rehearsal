@@ -175,7 +175,8 @@ export class Sidebar implements vscode.WebviewViewProvider {
     }
   }
 
-  private async connectSaved(id: string): Promise<void> {
+  /** Public so the status bar's switcher behaves exactly like a click here. */
+  async connectSaved(id: string): Promise<void> {
     const secret = await this.host.saved.secretFor(id);
     if (!secret) {
       this.post({

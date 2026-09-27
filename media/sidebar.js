@@ -157,6 +157,9 @@
       rename.className = 'saved-rename';
       rename.type = 'button';
       rename.title = 'Rename this connection';
+      // The glyph is the whole visible label, so without this a screen reader
+      // announces "pencil" — or, for the button below, "multiplication sign".
+      rename.setAttribute('aria-label', 'Rename ' + entry.label);
       rename.textContent = '✎';
       rename.addEventListener('click', () => startRename(row, entry));
       row.appendChild(rename);
@@ -165,6 +168,7 @@
       forget.className = 'saved-forget';
       forget.type = 'button';
       forget.title = 'Forget this connection';
+      forget.setAttribute('aria-label', 'Forget ' + entry.label);
       forget.textContent = '×';
       forget.addEventListener('click', () => vscode.postMessage({ type: 'forget', id: entry.id }));
       row.appendChild(forget);
@@ -276,12 +280,30 @@
     }
   }
 
+  // Every engine by name. The fallthrough used to be MongoDB, so a saved
+  // SQLite connection was listed as one — and "SQL" for MySQL said nothing
+  // Postgres could not also claim.
+  const ENGINES = {
+    postgres: { name: 'PostgreSQL', short: 'PG' },
+    mysql: { name: 'MySQL', short: 'MySQL' },
+    mongo: { name: 'MongoDB', short: 'Mongo' },
+    sqlite: { name: 'SQLite', short: 'SQLite' },
+  };
+
   function engineName(engine) {
-    return engine === 'postgres' ? 'PostgreSQL' : engine === 'mysql' ? 'MySQL' : 'MongoDB';
+    return (ENGINES[engine] || { name: engine }).name;
   }
 
   function shortEngine(engine) {
-    return engine === 'postgres' ? 'PG' : engine === 'mysql' ? 'SQL' : 'MDB';
+    return (ENGINES[engine] || { short: engine }).short;
+  }
+
+  // Shortcuts are written in the markup once and spelled for this platform
+  // here, in plain words: "cmd + alt + d" on a Mac, "ctrl + alt + d" elsewhere.
+  const mac = /mac/i.test(navigator.platform || navigator.userAgent || '');
+  for (const hint of document.querySelectorAll('.action-key')) {
+    const key = hint.getAttribute('data-key') || '';
+    hint.textContent = (mac ? key.replace(/^ctrl\+/, 'cmd+') : key).split('+').join(' + ');
   }
 
   // ---- wiring --------------------------------------------------------------

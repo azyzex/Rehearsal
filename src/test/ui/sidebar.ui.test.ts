@@ -27,6 +27,9 @@ const SAVED = [
   { id: 'a', label: 'shop on ep-cool-mode.neon.tech', engine: 'postgres', lastUsed: '2026-08-25' },
   { id: 'b', label: 'blog on localhost', engine: 'mysql', lastUsed: '2026-08-24' },
   { id: 'c', label: 'analytics on cluster0.mongodb.net', engine: 'mongo', lastUsed: '2026-08-23' },
+  // The fourth engine. Without it here, a saved SQLite file was listed as
+  // MongoDB for as long as nothing looked.
+  { id: 'd', label: 'notes.db (file)', engine: 'sqlite', lastUsed: '2026-08-22' },
 ];
 
 describe('the sidebar, rendered', () => {
@@ -180,13 +183,15 @@ describe('the sidebar, rendered', () => {
 
   describe('the saved list', () => {
     it('shows one row per saved connection', async () => {
-      assert.equal(await count(panel.page, '.saved-row'), 3);
+      assert.equal(await count(panel.page, '.saved-row'), SAVED.length);
       assert.deepEqual(await texts(panel.page, '.saved-name'), SAVED.map((s) => s.label));
     });
 
     it('colours each by engine, so the list reads without being read', async () => {
       const badges = await texts(panel.page, '.saved-row .badge-engine');
-      assert.deepEqual(badges, ['PG', 'SQL', 'MDB']);
+      // Each one names its engine. "SQL" for MySQL said nothing Postgres could
+      // not also claim, and SQLite fell through to MongoDB.
+      assert.deepEqual(badges, ['PG', 'MySQL', 'Mongo', 'SQLite']);
 
       const colours = (await panel.page.evaluate(`
         Array.prototype.map.call(
@@ -194,7 +199,7 @@ describe('the sidebar, rendered', () => {
           function (badge) { return getComputedStyle(badge).backgroundColor; }
         )
       `)) as string[];
-      assert.equal(new Set(colours).size, 3, `all three are ${colours.join(', ')}`);
+      assert.equal(new Set(colours).size, 4, `only ${new Set(colours).size} colours: ${colours.join(', ')}`);
     });
 
     it('connects to one when clicked', async () => {

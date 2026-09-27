@@ -103,8 +103,11 @@ textarea:focus {
 .badge-engine.small {
   font-size: 10px;
   padding: 0 4px;
-  min-width: 26px;
+  /* Wide enough for the longest short name, so the labels beside them line
+     up and the list reads as a column rather than a ragged edge. */
+  min-width: 40px;
   text-align: center;
+  flex: none;
 }
 
 /* One colour per engine, so the list is scannable without reading it. */
@@ -118,6 +121,10 @@ textarea:focus {
 }
 .badge-engine[data-engine='mongo'] {
   background: var(--vscode-charts-green, #89d185);
+  color: #1f1f1f;
+}
+.badge-engine[data-engine='sqlite'] {
+  background: var(--vscode-charts-purple, #b180d7);
   color: #1f1f1f;
 }
 
@@ -348,6 +355,16 @@ button:disabled {
 .action-name {
   display: block;
   font-size: 13px;
+}
+
+/* The shortcut, beside the name it triggers. Quiet on purpose: it is for the
+   second time someone reaches for this, not the first. */
+.action-key {
+  float: right;
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
 }
 
 .action-why {

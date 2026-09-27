@@ -38,6 +38,8 @@ export interface Recorded {
   readonly commands: Map<string, (...args: unknown[]) => unknown>;
   /** Every code-action provider the extension registered. */
   readonly codeActionProviders: unknown[];
+  /** Every status bar item, with what it currently says. */
+  readonly statusBarItems: { text: string; visible: boolean }[];
   /** Every `showInputBox` the extension opened. */
   readonly asked: Asked[];
   /**
@@ -164,6 +166,7 @@ export function makeContext(): any {
 export function makeVscodeStub(): { api: any; recorded: Recorded; context: any } {
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const codeActionProviders: unknown[] = [];
+  const statusBarItems: { text: string; visible: boolean }[] = [];
   const webviewViewProviders = new Map<string, unknown>();
   const outputChannels: string[] = [];
   const diagnosticCollections: string[] = [];
@@ -304,7 +307,31 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
       constructor(readonly id: string) {}
     },
 
+    QuickPickItemKind: { Separator: -1, Default: 0 },
     window: {
+      // The status bar. Items are recorded rather than drawn, so a test can
+      // read what the extension put there.
+      createStatusBarItem: () => {
+        const item = {
+          text: '',
+          tooltip: undefined as unknown,
+          command: undefined as unknown,
+          name: undefined as unknown,
+          backgroundColor: undefined as unknown,
+          visible: false,
+          show: () => {
+            item.visible = true;
+          },
+          hide: () => {
+            item.visible = false;
+          },
+          dispose: () => {
+            disposed += 1;
+          },
+        };
+        statusBarItems.push(item);
+        return item;
+      },
       activeTextEditor: undefined,
       visibleTextEditors: [] as unknown[],
       createOutputChannel: (name: string) => {
@@ -482,6 +509,7 @@ export function makeVscodeStub(): { api: any; recorded: Recorded; context: any }
 
   const recorded: Recorded = {
     codeActionProviders,
+    statusBarItems,
     commands,
     webviewViewProviders,
     outputChannels,

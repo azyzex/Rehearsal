@@ -264,12 +264,18 @@ describe('the README, against what the extension contributes', () => {
   const manifest = JSON.parse(read('package.json')) as {
     contributes: {
       commands?: { command: string; title: string }[];
-      configuration?: { properties?: Record<string, unknown> };
+      // One section or several: the settings editor draws each section of an
+      // array as its own headed group.
+      configuration?:
+        | { properties?: Record<string, unknown> }
+        | { properties?: Record<string, unknown> }[];
     };
   };
 
   it('documents every setting', () => {
-    const settings = Object.keys(manifest.contributes.configuration?.properties ?? {});
+    const configuration = manifest.contributes.configuration;
+    const sections = Array.isArray(configuration) ? configuration : [configuration ?? {}];
+    const settings = sections.flatMap((section) => Object.keys(section.properties ?? {}));
     assert.ok(settings.length > 0);
     assert.deepEqual(
       settings.filter((name) => !readme.includes(name)),

@@ -43,7 +43,11 @@
       {
         "command": "rehearsal.preview",
         "title": "Preview",
-        "category": "Rehearsal"
+        "category": "Rehearsal",
+        "icon": {
+          "light": "media/icon-light.svg",
+          "dark": "media/icon-dark.svg"
+        }
       },
       {
         "command": "rehearsal.exploreSchema",
@@ -84,112 +88,183 @@
         "command": "rehearsal.disconnect",
         "title": "Disconnect",
         "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.previewFile",
+        "title": "Preview with Rehearsal",
+        "category": "Rehearsal"
+      },
+      {
+        "command": "rehearsal.switchConnection",
+        "title": "Switch Connection",
+        "category": "Rehearsal"
       }
     ],
-    "configuration": {
-      "title": "Rehearsal",
-      "properties": {
-        "rehearsal.connectionString": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `REHEARSAL_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root."
-        },
-        "rehearsal.envFile": {
-          "type": "string",
-          "default": ".env",
-          "description": "Path (relative to the workspace root) of the .env file to read the connection string from."
-        },
-        "rehearsal.productionPatterns": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "Rehearsal",
+        "order": 0,
+        "properties": {
+          "rehearsal.connectionString": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Postgres connection string. Use an environment variable reference such as `${env:DATABASE_URL}` — never paste a password here. Leave empty to read `REHEARSAL_DATABASE_URL` or `DATABASE_URL` from a `.env` file in the workspace root.",
+            "order": 0
           },
-          "default": [
-            "prod",
-            "production",
-            "live"
-          ],
-          "description": "Case-insensitive regular expressions. If a connection string matches any of them, Rehearsal refuses to connect."
-        },
-        "rehearsal.allowedConnections": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "rehearsal.envFile": {
+            "type": "string",
+            "default": ".env",
+            "description": "Path (relative to the workspace root) of the .env file to read the connection string from.",
+            "order": 1
           },
-          "default": [],
-          "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override."
-        },
-        "rehearsal.statementTimeoutMs": {
-          "type": "number",
-          "default": 5000,
-          "minimum": 100,
-          "description": "statement_timeout applied inside every preview transaction."
-        },
-        "rehearsal.lockTimeoutMs": {
-          "type": "number",
-          "default": 2000,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue."
-        },
-        "rehearsal.sampleSize": {
-          "type": "number",
-          "default": 20,
-          "minimum": 1,
-          "maximum": 200,
-          "description": "How many affected rows to show in a before/after sample."
-        },
-        "rehearsal.cautionRowThreshold": {
-          "type": "number",
-          "default": 100,
-          "description": "Rows affected above which a statement is marked 'caution'."
-        },
-        "rehearsal.destructiveRowThreshold": {
-          "type": "number",
-          "default": 1000,
-          "description": "Rows affected above which a statement is marked 'destructive'."
-        },
-        "rehearsal.largeTableThreshold": {
-          "type": "number",
-          "default": 100000,
-          "description": "Row count above which a table is treated as large for lock and index-build warnings."
-        },
-        "rehearsal.explainAnalyze": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason."
-        },
-        "rehearsal.productionRows": {
-          "type": "object",
-          "default": {},
-          "additionalProperties": {
-            "type": "number"
+          "rehearsal.productionPatterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "prod",
+              "production",
+              "live"
+            ],
+            "description": "Case-insensitive regular expressions. If a connection string matches any of them, Rehearsal refuses to connect.",
+            "order": 2
           },
-          "markdownDescription": "How many rows each table holds in the database you actually deploy to, as `{\"users\": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. Nothing is read from that database — these are numbers you supply."
-        },
-        "rehearsal.previewOnSave": {
-          "type": "boolean",
-          "default": false,
-          "description": "Re-run the preview when you save a file the Rehearsal panel is already showing. Only that file, and only when a connection is already open — saving never opens one."
-        },
-        "rehearsal.mysql.measureOnCopy": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "On MySQL, measure a schema change by **running it against a copy of the table** rather than only by counting. MySQL commits DDL the moment it runs, so there is no transaction to roll one back — a copy is the only way to see what the server really does.\n\nThis is the one setting that causes a write. The copy carries a reserved `_rehearsal_clone_` prefix, is never the table you named, is dropped when the measurement finishes, and is swept up on the next connection if a crash left it behind. Your table is never touched.\n\nWhat it buys: the server's own error — *Incorrect integer value: 'a@b.com' for column 'email' at row 13* — instead of *88 rows cannot convert*. It cannot tell you about foreign key violations, because `CREATE TABLE … LIKE` does not copy foreign keys; the counts remain the authority for those."
-        },
-        "rehearsal.mysql.measureOnCopyRowLimit": {
-          "type": "number",
-          "default": 500000,
-          "description": "Above this many rows, Rehearsal will not copy a table to measure against — the copy costs more than the better answer is worth, and the counted result is used instead."
+          "rehearsal.allowedConnections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Connections that are exempt from production detection, written as `host:port/database`. Adding an entry here is a deliberate act — there is no one-click override.",
+            "order": 3
+          }
+        }
+      },
+      {
+        "title": "Rehearsal: Safety thresholds",
+        "order": 1,
+        "properties": {
+          "rehearsal.cautionRowThreshold": {
+            "type": "number",
+            "default": 100,
+            "description": "Rows affected above which a statement is marked 'caution'.",
+            "order": 0
+          },
+          "rehearsal.destructiveRowThreshold": {
+            "type": "number",
+            "default": 1000,
+            "description": "Rows affected above which a statement is marked 'destructive'.",
+            "order": 1
+          },
+          "rehearsal.largeTableThreshold": {
+            "type": "number",
+            "default": 100000,
+            "description": "Row count above which a table is treated as large for lock and index-build warnings.",
+            "order": 2
+          },
+          "rehearsal.statementTimeoutMs": {
+            "type": "number",
+            "default": 5000,
+            "minimum": 100,
+            "description": "statement_timeout applied inside every preview transaction.",
+            "order": 3
+          },
+          "rehearsal.lockTimeoutMs": {
+            "type": "number",
+            "default": 2000,
+            "minimum": 100,
+            "maximum": 10000,
+            "description": "lock_timeout applied inside every preview transaction. A preview must never be the cause of a lock queue.",
+            "order": 4
+          },
+          "rehearsal.sampleSize": {
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 200,
+            "description": "How many affected rows to show in a before/after sample.",
+            "order": 5
+          }
+        }
+      },
+      {
+        "title": "Rehearsal: Measuring",
+        "order": 2,
+        "properties": {
+          "rehearsal.productionRows": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "number"
+            },
+            "markdownDescription": "How many rows each table holds in the database you actually deploy to, as `{\"users\": 40000000}`. Every count in a preview is exact about the database it measured; given this, each finding also says what the same change costs at the size that matters. Nothing is read from that database — these are numbers you supply.",
+            "order": 0
+          },
+          "rehearsal.explainAnalyze": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Capture a query plan for each UPDATE, DELETE and INSERT. This runs the statement a **second time** inside the same rolled-back transaction, so it roughly doubles how long a preview takes on a large statement. Off by default for that reason.",
+            "order": 1
+          },
+          "rehearsal.previewOnSave": {
+            "type": "boolean",
+            "default": false,
+            "description": "Re-run the preview when you save a file the Rehearsal panel is already showing. Only that file, and only when a connection is already open — saving never opens one.",
+            "order": 2
+          }
+        }
+      },
+      {
+        "title": "Rehearsal: MySQL",
+        "order": 3,
+        "properties": {
+          "rehearsal.mysql.measureOnCopy": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "On MySQL, measure a schema change by **running it against a copy of the table** rather than only by counting. MySQL commits DDL the moment it runs, so there is no transaction to roll one back — a copy is the only way to see what the server really does.\n\nThis is the one setting that causes a write. The copy carries a reserved `_rehearsal_clone_` prefix, is never the table you named, is dropped when the measurement finishes, and is swept up on the next connection if a crash left it behind. Your table is never touched.\n\nWhat it buys: the server's own error — *Incorrect integer value: 'a@b.com' for column 'email' at row 13* — instead of *88 rows cannot convert*. It cannot tell you about foreign key violations, because `CREATE TABLE … LIKE` does not copy foreign keys; the counts remain the authority for those.",
+            "order": 0
+          },
+          "rehearsal.mysql.measureOnCopyRowLimit": {
+            "type": "number",
+            "default": 500000,
+            "description": "Above this many rows, Rehearsal will not copy a table to measure against — the copy costs more than the better answer is worth, and the counted result is used instead.",
+            "order": 1
+          }
         }
       }
-    },
+    ],
     "menus": {
       "editor/title": [
         {
           "command": "rehearsal.preview",
-          "when": "resourceLangId == sql",
+          "when": "resourceLangId == sql || resourceFilename =~ /\\.mongodb\\.js$/ || resourcePath =~ /[\\\\/](migrations|operations)[\\\\/][^\\\\/]+\\.js$/",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rehearsal.preview",
+          "when": "resourceLangId == sql || resourceFilename =~ /\\.mongodb\\.js$/ || resourcePath =~ /[\\\\/](migrations|operations)[\\\\/][^\\\\/]+\\.js$/",
+          "group": "rehearsal@1"
+        },
+        {
+          "command": "rehearsal.suggestIndexes",
+          "when": "resourceLangId == sql",
+          "group": "rehearsal@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "rehearsal.previewFile",
+          "when": "resourceLangId == sql || resourceFilename =~ /\\.mongodb\\.js$/ || resourcePath =~ /[\\\\/](migrations|operations)[\\\\/][^\\\\/]+\\.js$/",
+          "group": "rehearsal@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rehearsal.previewFile",
+          "when": "false"
         }
       ]
     },
@@ -198,13 +273,18 @@
         "command": "rehearsal.preview",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
-        "when": "resourceLangId == sql"
+        "when": "editorTextFocus && (resourceLangId == sql || resourceFilename =~ /\\.mongodb\\.js$/ || resourcePath =~ /[\\\\/](migrations|operations)[\\\\/][^\\\\/]+\\.js$/)"
       },
       {
         "command": "rehearsal.suggestIndexes",
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
-        "when": "resourceLangId == sql"
+        "when": "editorTextFocus && resourceLangId == sql"
+      },
+      {
+        "command": "rehearsal.exploreSchema",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
       }
     ]
   },
