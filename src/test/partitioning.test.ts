@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import { Client } from 'pg';
 import { PostgresAdapter } from '../adapters/postgres';
 import { analyzeStatements } from '../analysis/orchestrator';
+import { analyzeDml } from '../analysis/dml';
 import { Finding } from '../analysis/types';
 import { languageFor } from '../parser/language';
 import { PostgresFixture, startPostgres } from './support/pgFixture';
@@ -46,6 +47,25 @@ describe('a partitioned table', () => {
     await adapter.dispose().catch(() => undefined);
     await client.end().catch(() => undefined);
     await fixture.stop();
+  });
+
+  it('measures the WAL a write produces, inside the rolled-back run', async () => {
+    // WAL is written as a statement runs, commit or not, so the preview can
+    // read exactly what the migration would ship to every replica.
+    const sql = "UPDATE events SET kind = 'rewritten'";
+    const result = await analyzeDml(
+      adapter,
+      sql,
+      languageFor('postgres').classify(sql),
+      { cautionRows: 100, destructiveRows: 1000, largeTable: 100_000, sampleSize: 3 },
+      [],
+    );
+
+    assert.equal(result.rowCount, 2000);
+    assert.ok((result.walBytes ?? 0) > 0, `no WAL measured: ${result.walBytes}`);
+
+    const after = await client.query("SELECT count(*)::int AS n FROM events WHERE kind = 'rewritten'");
+    assert.equal(after.rows[0]?.n, 0, 'the update was not rolled back');
   });
 
   it('says the change reaches every partition, and offers a sequence that runs', async () => {

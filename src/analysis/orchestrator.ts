@@ -173,7 +173,7 @@ async function analyzeOne(
     // Two ways to run a write and undo it, because the SQL version leans on
     // RETURNING and savepoints and MongoDB has neither. Same question either
     // way: how many documents change, and which ones.
-    const { rowCount, sample, plan } =
+    const measured =
       adapter.engine === 'mongo'
         ? {
             ...(await analyzeMongoDml(adapter, statement.sql, classification, thresholds)),
@@ -198,6 +198,10 @@ async function analyzeOne(
               statement.params ?? [],
             );
 
+    const { rowCount, sample, plan } = measured;
+    // Only the Postgres path can say how much WAL a write produced.
+    const walBytes = 'walBytes' in measured ? measured.walBytes : undefined;
+
     const severity = blastRadiusSeverity(
       rowCount,
       classification.hasWhere !== false,
@@ -219,7 +223,8 @@ async function analyzeOne(
       detail:
         described.detail +
         (sample ? noOpRewriteNote(classification, sample) : '') +
-        describeCascade(cascade),
+        describeCascade(cascade) +
+        describeWal(walBytes),
       rowCount,
       ...(sample ? { sample } : {}),
       ...(plan ? { plan } : {}),
@@ -477,3 +482,26 @@ function describePartitioning(table: string, partitioning: Partitioning): string
     : `${table} is partitioned: this is applied to each of its ${count} ` +
         `${count === 1 ? 'partition' : 'partitions'} as well.`;
 }
+
+/**
+ * The WAL a write produces, once it is large enough to matter.
+ *
+ * Every byte of it is shipped to every replica and replayed there, and a big
+ * UPDATE that finishes in seconds on the primary can leave replicas minutes
+ * behind — which is when "the migration finished and the site was still
+ * broken" happens. Below one WAL segment, 16 MB, it is not worth a sentence.
+ */
+function describeWal(bytes: number | undefined): string {
+  if (bytes === undefined || bytes < 16 * 1024 * 1024) {
+    return '';
+  }
+  const size =
+    bytes >= 1024 ** 3
+      ? `${(bytes / 1024 ** 3).toFixed(1)} GB`
+      : `${Math.round(bytes / 1024 ** 2)} MB`;
+  return (
+    ` It writes about ${size} of WAL, which every replica has to receive and replay: ` +
+    `expect them to fall behind while it does.`
+  );
+}
+

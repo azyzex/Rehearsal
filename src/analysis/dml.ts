@@ -41,6 +41,8 @@ export interface DmlResult {
   readonly sample: Sample;
   /** Present only when plan capture was asked for and succeeded. */
   readonly plan?: AnalysedPlan;
+  /** WAL the statement wrote, in bytes, where the engine can say. */
+  readonly walBytes?: number;
 }
 
 const SAVEPOINT = 'rehearsal_stmt';
@@ -72,9 +74,17 @@ export async function analyzeDml(
         : undefined;
 
   return adapter.withRollback(async (tx) => {
+    // Where the WAL is before the statement runs. WAL is written as a
+    // statement executes, whether or not its transaction later commits, so the
+    // difference is exactly what it would write for real — and what every
+    // replica would have to receive and replay.
+    const walStart = adapter.engine === 'postgres' ? await walPosition(tx) : undefined;
+
     if (!canSample) {
       const result = await tx.query(sql, params);
+      const walBytes = await walSince(tx, walStart);
       return {
+        ...(walBytes === undefined ? {} : { walBytes }),
         rowCount: result.rowCount ?? 0,
         sample: {
           rows: [],
@@ -116,6 +126,9 @@ export async function analyzeDml(
       params,
     );
 
+    const walBytes = await walSince(tx, walStart);
+    const wal = walBytes === undefined ? {} : { walBytes };
+
     const rowCount = plain
       ? captured.rows.length
       : captured.rows.length > 0
@@ -127,7 +140,7 @@ export async function analyzeDml(
 
     if (keys.length === 0) {
       await tx.rollbackTo(SAVEPOINT);
-      return { rowCount, sample: { rows: [], totalAffected: rowCount } };
+      return { ...wal, rowCount, sample: { rows: [], totalAffected: rowCount } };
     }
 
     // Step 3: the new state. A DELETE has none by definition.
@@ -171,6 +184,7 @@ export async function analyzeDml(
     });
 
     return {
+      ...wal,
       rowCount,
       ...(plan ? { plan } : {}),
       sample: {
@@ -185,6 +199,33 @@ export async function analyzeDml(
       },
     };
   });
+}
+
+/** The current WAL insert position, or undefined where it cannot be read. */
+async function walPosition(tx: Transaction): Promise<string | undefined> {
+  try {
+    const result = await tx.query('SELECT pg_current_wal_insert_lsn()::text AS lsn');
+    return String(result.rows[0]?.['lsn'] ?? '') || undefined;
+  } catch {
+    // A role without the function, or a server too old for it. The statement
+    // is still measured; this one number is just absent.
+    return undefined;
+  }
+}
+
+async function walSince(tx: Transaction, start: string | undefined): Promise<number | undefined> {
+  if (!start) {
+    return undefined;
+  }
+  try {
+    const result = await tx.query(
+      'SELECT pg_wal_lsn_diff(pg_current_wal_insert_lsn(), $1::pg_lsn)::bigint AS bytes',
+      [start],
+    );
+    return Number(result.rows[0]?.['bytes'] ?? 0);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Columns whose value differs. Empty when one side does not exist. */
