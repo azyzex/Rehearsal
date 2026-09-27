@@ -319,6 +319,26 @@ Writes a file and exits. Paste the printed `sqlite:` string into the sidebar.
 
 ---
 
+### 13. The second round, never pressed in a real editor
+
+- [ ] **Status bar:** the database and the last verdict appear bottom-left. Click the
+      database: a switcher of saved connections opens.
+- [ ] **Try it on a sample database** on the sidebar's front door: a migration opens
+      and previews itself within seconds.
+- [ ] **CodeLens** above each statement: "Preview this statement" before a run, the
+      verdict after. Edit the file and they go back to the link.
+- [ ] **Hover** a table name in a `.sql` file while connected: rows, size, columns.
+- [ ] **Preview panel:** Run again, Copy as Markdown (paste it somewhere), the safe
+      rows folded, the counts filtering, and ↑/↓/Enter on the rows.
+- [ ] **Schema explorer:** `/` to search, `ctrl + z` after a change, the zoom buttons,
+      and a dragged layout surviving the panel being closed and reopened.
+- [ ] **Rehearse on a Copy** (right-click in a `.sql` file, Postgres): a report opens
+      beside it with a time per statement. Then check the real tables are unchanged.
+- [ ] **Compare With the Prisma Schema** in a project that has one.
+- [ ] **Get Started page** (Help, then Welcome): the Rehearsal walkthrough is listed.
+
+---
+
 ## Themes — now checked, but still worth a look
 
 The harness renders both Light+ and Dark+ now and walks every element that
