@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DatabaseAdapter } from '../adapters/types';
 import { expandContractPlans, needsPlan, renderPlans } from '../edit/expandContract';
-import { replacement } from '../panel/rewriteText';
+import { hasLockTimeout, lockTimeoutPreamble, replacement } from '../panel/rewriteText';
 
 /**
  * The change, spread across deploys, and the rewrite as it lands in the file.
@@ -160,6 +160,14 @@ describe('a rewrite, as it lands in the file', () => {
 
   it('says out loud when the replacement cannot share a transaction', () => {
     assert.match(replacement(rewrite, ''), /must not share a transaction/);
+  });
+
+  it('offers a lock timeout in the engine own words, and only once', () => {
+    assert.match(String(lockTimeoutPreamble('postgres')), /SET lock_timeout = '3s';/);
+    assert.match(String(lockTimeoutPreamble('mysql')), /SET SESSION lock_wait_timeout = 3;/);
+    assert.equal(lockTimeoutPreamble('sqlite'), undefined, 'SQLite has no lock queue to fail out of');
+    assert.equal(hasLockTimeout("SET lock_timeout = '1s'; ALTER TABLE t ADD x int;"), true);
+    assert.equal(hasLockTimeout('ALTER TABLE t ADD x int;'), false);
   });
 
   it('keeps the statement indented where the original was, but not the first line', () => {

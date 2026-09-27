@@ -59,3 +59,41 @@ function wrap(text: string, width: number): string[] {
 
   return lines;
 }
+
+/**
+ * The line that makes a migration fail fast instead of queueing.
+ *
+ * A statement waiting for a strong lock does not wait alone: every query that
+ * arrives after it waits behind it, including reads that would otherwise have
+ * run. A routine ALTER stuck behind one long transaction takes the table down
+ * for as long as that transaction lasts. A lock timeout turns that outage into
+ * a failed migration, which is a much better thing to have to retry.
+ *
+ * Retrying is left to the migration tool, and the comment says so: a SQL file
+ * cannot catch the error and try again, and pretending otherwise with a
+ * procedural block would hide the failure it exists to surface.
+ */
+export function lockTimeoutPreamble(engine: string): string | undefined {
+  const why = [
+    '-- Fail fast rather than queue. A statement waiting for a lock makes every',
+    '-- query that arrives after it wait too, so a stuck ALTER is an outage.',
+    '-- With this it fails after three seconds instead; run it again, or let your',
+    '-- migration tool retry it.',
+  ];
+
+  switch (engine) {
+    case 'postgres':
+      return [...why, "SET lock_timeout = '3s';", '', ''].join('\n');
+    case 'mysql':
+      // The metadata lock is the one a schema change waits on in MySQL.
+      return [...why, 'SET SESSION lock_wait_timeout = 3;', '', ''].join('\n');
+    default:
+      return undefined;
+  }
+}
+
+/** Whether a file already bounds how long it will wait for a lock. */
+export function hasLockTimeout(text: string): boolean {
+  return /\block_timeout\b|\block_wait_timeout\b/i.test(text);
+}
+

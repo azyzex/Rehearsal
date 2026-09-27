@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { rewritesFor } from '../analysis/rewrite';
-import { replacement } from './rewriteText';
+import { hasLockTimeout, lockTimeoutPreamble, replacement } from './rewriteText';
 import { FindingDiagnostics } from './diagnostics';
 
 /**
@@ -42,8 +42,10 @@ export class RewriteActions implements vscode.CodeActionProvider {
     }
 
     const rewrites = rewritesFor(measured.finding, measured.engine);
+    const preamble = this.preambleAction(document, measured);
+
     if (rewrites.length === 0) {
-      return [];
+      return preamble ? [preamble] : [];
     }
 
     const start = document.positionAt(measured.start);
@@ -71,6 +73,38 @@ export class RewriteActions implements vscode.CodeActionProvider {
       action.isPreferred = position === 0;
 
       return action;
-    });
+    }).concat(preamble ? [preamble] : []);
+  }
+
+  /**
+   * "Fail fast instead of queueing", for a statement that takes a lock strong
+   * enough for the queue to matter — and only when the file does not already
+   * bound its lock waits.
+   */
+  private preambleAction(
+    document: vscode.TextDocument,
+    measured: NonNullable<ReturnType<FindingDiagnostics['measuredAt']>>,
+  ): vscode.CodeAction | undefined {
+    const level = measured.finding.lock?.level;
+    const strong =
+      level === 'ACCESS EXCLUSIVE' ||
+      level === 'SHARE' ||
+      level === 'SHARE ROW EXCLUSIVE';
+    if (!strong || hasLockTimeout(document.getText())) {
+      return undefined;
+    }
+
+    const text = lockTimeoutPreamble(measured.engine);
+    if (!text) {
+      return undefined;
+    }
+
+    const action = new vscode.CodeAction(
+      'Fail fast instead of queueing: add a lock timeout',
+      vscode.CodeActionKind.QuickFix,
+    );
+    action.edit = new vscode.WorkspaceEdit();
+    action.edit.insert(document.uri, new vscode.Position(0, 0), text);
+    return action;
   }
 }

@@ -41,7 +41,7 @@ thing that looks broken in VS Code.
 - [x] 27. Empty states that say what to press
 - [x] 28. Schema explorer: zoom buttons
 - [x] 29. Sidebar: a dropped connection says so
-- [ ] 30. The safe-migration preamble (`lock_timeout` and retry)
+- [x] 30. The safe-migration preamble (`lock_timeout` and retry)
 - [ ] 31. Sidebar: recent previews, one click to re-run
 - [ ] 32. Schema explorer: `ctrl + z` undoes the last pending change
 - [ ] 33. Schema explorer: remember dragged positions per database
