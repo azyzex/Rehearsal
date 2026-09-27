@@ -147,12 +147,13 @@ async function countDdl(
     case 'alter_column_type': {
       const failures = await adapter.countCastFailures(table!, column!, classification.newType!);
       const total = await adapter.countRows(table!);
+      const disk = await rewriteDisk(adapter, table!);
 
       if (failures === null) {
         return {
           severity: 'caution',
           headline: 'Cannot verify',
-          detail: `Postgres would not test this cast without running it, so the ${formatCount(total)}-row conversion is unchecked. Expect a full table rewrite, and a lock for its duration.`,
+          detail: `Postgres would not test this cast without running it, so the ${formatCount(total)}-row conversion is unchecked. Expect a full table rewrite, and a lock for its duration.${disk}`,
           rowCount: total,
           estimated: true,
         };
@@ -168,7 +169,7 @@ async function countDdl(
       return {
         severity: 'caution',
         headline: 'Rewrites the table',
-        detail: `All ${formatCount(total)} ${plural(total, 'row')} convert cleanly, but the table is rewritten and locked while it happens.`,
+        detail: `All ${formatCount(total)} ${plural(total, 'row')} convert cleanly, but the table is rewritten and locked while it happens.${disk}`,
         rowCount: total,
       };
     }
@@ -324,6 +325,30 @@ async function countDdl(
 }
 
 /** Used for statements whose shape was recognised but whose detail was not. */
+/**
+ * The disk a table rewrite needs while it runs.
+ *
+ * A rewrite writes a complete new copy of the table, and rebuilds every index
+ * on it, before the old one is dropped. For that window the table takes twice
+ * its space, and running out of disk half way through is one of the few
+ * migration failures that can take the whole database down with it.
+ *
+ * Free space is not stated, because it cannot be read honestly: neither
+ * Postgres nor MySQL reports free disk through SQL without superuser rights or
+ * an extension. The requirement can be read exactly, so that is what is said.
+ * Small tables say nothing — a few megabytes is not a sentence worth reading.
+ */
+async function rewriteDisk(adapter: DatabaseAdapter, table: string): Promise<string> {
+  const stats = await adapter.tableStats(table).catch(() => undefined);
+  if (!stats || stats.totalBytes < 64 * 1024 * 1024) {
+    return '';
+  }
+  return (
+    ` While it runs it needs about ${formatBytes(stats.totalBytes)} of free disk: the new copy ` +
+    `and its indexes are written in full before the old one is dropped.`
+  );
+}
+
 function unanalysable(reason: string): DdlOutcome {
   return {
     severity: 'caution',

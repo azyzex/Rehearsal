@@ -1,7 +1,7 @@
 import * as os from 'node:os';
 import { describeError } from '../errors';
 import * as vscode from 'vscode';
-import { DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
+import { BackupStatus, DatabaseAdapter, SchemaSnapshot } from '../adapters/types';
 import { Thresholds, Severity } from '../analysis/types';
 import { Edit } from '../edit/changeset';
 import { captureRescue } from '../edit/rescue';
@@ -41,6 +41,35 @@ export interface SchemaHost {
 }
 
 const LAYOUTS = 'rehearsal.diagramLayouts';
+
+/**
+ * The server's archiving, as one sentence for the Apply confirmation. Nothing
+ * when there is nothing it can see, rather than a warning about backups that
+ * probably exist somewhere SQL cannot reach.
+ */
+function describeBackup(status: BackupStatus | undefined): string | undefined {
+  if (!status) {
+    return undefined;
+  }
+  if (status.failingSince) {
+    return (
+      `WAL archiving on this server is failing: the last attempt failed at ` +
+      `${status.failingSince.toLocaleString()}, and nothing has been archived since.`
+    );
+  }
+  if (!status.archiving) {
+    return 'WAL archiving is off on this server, so it cannot be restored to a point in time.';
+  }
+  if (status.lastArchived) {
+    const hours = (Date.now() - status.lastArchived.getTime()) / 3_600_000;
+    const age =
+      hours < 1 ? 'within the last hour' : `${Math.round(hours)} hours ago`;
+    return hours > 24
+      ? `The last WAL archive on this server was ${age}. Check backups are running before you apply this.`
+      : `The last WAL archive on this server was ${age}.`;
+  }
+  return undefined;
+}
 
 export class SchemaPanel {
   private static current: SchemaPanel | undefined;
@@ -399,9 +428,14 @@ export class SchemaPanel {
             `${rescue.path}, with the statements to put them back.`
         : 'Rehearsal could not save a copy of the rows this removes.';
 
+      // What the server says about its own backups, beside the one copy
+      // Rehearsal can vouch for. Only said when there is something to say: a
+      // managed service keeps its backups where SQL cannot see them.
+      const backup = describeBackup(await adapter.backupStatus?.().catch(() => undefined));
+
       const choice = await vscode.window.showWarningMessage(
         'These changes destroy data that cannot be recovered. Apply them?',
-        { modal: true, detail },
+        { modal: true, detail: backup ? `${detail}\n\n${backup}` : detail },
         'Apply',
       );
       if (choice !== 'Apply') {

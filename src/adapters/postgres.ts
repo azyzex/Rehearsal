@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import {
+  BackupStatus,
   ColumnInfo,
   ConstraintInfo,
   ConnectionConfig,
@@ -1170,6 +1171,43 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   // ---- index experiments -------------------------------------------------
+
+  /**
+   * WAL archiving, from pg_stat_archiver. Undefined when it cannot be read or
+   * says nothing, which on a managed service is the normal case: their
+   * backups happen where SQL cannot see them.
+   */
+  async backupStatus(): Promise<BackupStatus | undefined> {
+    try {
+      const mode = await this.probe(`SELECT current_setting('archive_mode') AS mode`);
+      const archiving = String(mode.rows[0]?.['mode'] ?? 'off') !== 'off';
+
+      const stats = await this.probe(
+        `SELECT last_archived_time, last_failed_time FROM pg_stat_archiver`,
+      );
+      const row = stats.rows[0] ?? {};
+      const lastArchived = row['last_archived_time']
+        ? new Date(String(row['last_archived_time']))
+        : undefined;
+      const lastFailed = row['last_failed_time']
+        ? new Date(String(row['last_failed_time']))
+        : undefined;
+
+      if (!archiving && !lastArchived) {
+        return undefined;
+      }
+
+      return {
+        archiving,
+        ...(lastArchived ? { lastArchived } : {}),
+        ...(lastFailed && (!lastArchived || lastFailed > lastArchived)
+          ? { failingSince: lastFailed }
+          : {}),
+      };
+    } catch {
+      return undefined;
+    }
+  }
 
   async supportsHypotheticalIndexes(): Promise<boolean> {
     const { rows } = await this.probe(`SELECT 1 FROM pg_extension WHERE extname = 'hypopg'`);

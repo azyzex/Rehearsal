@@ -326,6 +326,16 @@ export interface TriggerInfo {
 
 export type PrimaryKeyValue = Record<string, unknown>;
 
+/** What a server can say about its own WAL archiving. */
+export interface BackupStatus {
+  /** Whether continuous archiving is switched on at all. */
+  readonly archiving: boolean;
+  /** When the last WAL segment was archived. */
+  readonly lastArchived?: Date;
+  /** Set when the most recent attempt failed, and nothing has succeeded since. */
+  readonly failingSince?: Date;
+}
+
 export interface DatabaseAdapter {
   readonly engine: Engine;
   readonly supportsTransactionalDDL: boolean;
@@ -482,6 +492,15 @@ export interface DatabaseAdapter {
 
   /** Whether indexes can be tested without building them. */
   supportsHypotheticalIndexes(): Promise<boolean>;
+
+  /**
+   * What this server says about its own backups, where it says anything.
+   *
+   * Optional, and undefined when it cannot be read: a managed service keeps
+   * its backups where SQL cannot see them, and "no evidence of backups" is not
+   * the same thing as "no backups".
+   */
+  backupStatus?(): Promise<BackupStatus | undefined>;
 
   /**
    * What `indexSql` would do to `query`.

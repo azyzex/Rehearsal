@@ -50,8 +50,8 @@ thing that looks broken in VS Code.
 - [x] 36. CodeLens above each statement
 - [x] 37. Get Started walkthrough
 - [x] 38. Try it on a sample database — no setup, no credentials
-- [ ] 39. Backup check before Apply
-- [ ] 40. Will it run out of disk?
+- [x] 39. Backup check before Apply
+- [x] 40. Will it run out of disk?
 - [ ] 41. Dead column report
 - [ ] 42. Constraints your data already satisfies
 - [ ] 43. Partitioned and Timescale tables
