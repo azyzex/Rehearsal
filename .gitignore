@@ -23,3 +23,7 @@ e2e.out.txt
 
 # The SQLite testbed builds its own database file.
 testbed/sqlite-notes/notes.db
+
+# Promo video work: rendered locally, too large to version.
+brag-output*/
+*.mp4

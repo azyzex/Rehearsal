@@ -28,3 +28,8 @@ examples/
 # on its own packages whatever is in dist/ — and a dev build there would ship
 # the whole original TypeScript inside the extension.
 dist/**/*.map
+
+# Promo video work: kept in the repo folder, never shipped in the extension.
+brag-output*/**
+*.mp4
+ROADMAP.md
